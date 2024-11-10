@@ -1289,7 +1289,7 @@ void application::wire_up_runtime_services(
         construct_service(
           _transform_rpc_service,
           ss::sharded_parameter([this] {
-              return transform::rpc::topic_metadata_cache::make_default(
+              return kafka::data::rpc::topic_metadata_cache::make_default(
                 &metadata_cache);
           }),
           ss::sharded_parameter([this] {
@@ -1306,15 +1306,15 @@ void application::wire_up_runtime_services(
           _transform_rpc_client,
           node_id,
           ss::sharded_parameter([this] {
-              return transform::rpc::partition_leader_cache::make_default(
+              return kafka::data::rpc::partition_leader_cache::make_default(
                 &controller->get_partition_leaders());
           }),
           ss::sharded_parameter([this] {
-              return transform::rpc::topic_metadata_cache::make_default(
+              return kafka::data::rpc::topic_metadata_cache::make_default(
                 &metadata_cache);
           }),
           ss::sharded_parameter([this] {
-              return transform::rpc::topic_creator::make_default(
+              return kafka::data::rpc::topic_creator::make_default(
                 controller.get());
           }),
           ss::sharded_parameter([this] {

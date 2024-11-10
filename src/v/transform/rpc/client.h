@@ -15,6 +15,7 @@
 #include "cluster/fwd.h"
 #include "config/property.h"
 #include "features/fwd.h"
+#include "kafka/data/rpc/deps.h"
 #include "kafka/data/rpc/fwd.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"
@@ -46,9 +47,9 @@ class client {
 public:
     client(
       model::node_id self,
-      std::unique_ptr<partition_leader_cache>,
-      std::unique_ptr<topic_metadata_cache>,
-      std::unique_ptr<topic_creator>,
+      std::unique_ptr<kafka::data::rpc::partition_leader_cache>,
+      std::unique_ptr<kafka::data::rpc::topic_metadata_cache>,
+      std::unique_ptr<kafka::data::rpc::topic_creator>,
       std::unique_ptr<cluster_members_cache>,
       ss::sharded<::rpc::connection_cache>*,
       ss::sharded<local_service>*,
@@ -260,9 +261,9 @@ private:
     model::node_id _self;
     std::unique_ptr<cluster_members_cache> _cluster_members;
     // need partition_leaders_table to know which node owns the partitions
-    std::unique_ptr<partition_leader_cache> _leaders;
-    std::unique_ptr<topic_metadata_cache> _topic_metadata;
-    std::unique_ptr<topic_creator> _topic_creator;
+    std::unique_ptr<kafka::data::rpc::partition_leader_cache> _leaders;
+    std::unique_ptr<kafka::data::rpc::topic_metadata_cache> _topic_metadata;
+    std::unique_ptr<kafka::data::rpc::topic_creator> _topic_creator;
     ss::sharded<::rpc::connection_cache>* _connections;
     ss::sharded<local_service>* _local_service;
     ss::sharded<kafka::data::rpc::client>* _kafka_client;
