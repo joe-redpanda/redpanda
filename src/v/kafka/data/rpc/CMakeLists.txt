@@ -23,3 +23,5 @@ v_cc_library(
     v::kafka_partition_proxy
     Seastar::seastar
 )
+
+add_subdirectory(test)
