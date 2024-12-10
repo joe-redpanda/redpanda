@@ -1838,9 +1838,9 @@ topic_table::get_target_replica_set(const model::ntp& ntp) const {
     return std::nullopt;
 }
 
-std::vector<model::ntp>
+chunked_vector<model::ntp>
 topic_table::all_ntps_moving_per_node(model::node_id node) const {
-    std::vector<model::ntp> ret;
+    chunked_vector<model::ntp> ret;
 
     for (const auto& [ntp, state] : _updates_in_progress) {
         auto current_assignment = get_partition_assignment(ntp);
@@ -1861,9 +1861,9 @@ topic_table::all_ntps_moving_per_node(model::node_id node) const {
     return ret;
 }
 
-std::vector<model::ntp>
+chunked_vector<model::ntp>
 topic_table::ntps_moving_to_node(model::node_id node) const {
-    std::vector<model::ntp> ret;
+    chunked_vector<model::ntp> ret;
 
     for (const auto& [ntp, state] : _updates_in_progress) {
         auto current_assignment = get_partition_assignment(ntp);
@@ -1880,9 +1880,9 @@ topic_table::ntps_moving_to_node(model::node_id node) const {
     return ret;
 }
 
-std::vector<model::ntp>
+chunked_vector<model::ntp>
 topic_table::ntps_moving_from_node(model::node_id node) const {
-    std::vector<model::ntp> ret;
+    chunked_vector<model::ntp> ret;
 
     for (const auto& [ntp, state] : _updates_in_progress) {
         auto current_assignment = get_partition_assignment(ntp);
@@ -1899,8 +1899,8 @@ topic_table::ntps_moving_from_node(model::node_id node) const {
     return ret;
 }
 
-std::vector<model::ntp> topic_table::all_updates_in_progress() const {
-    std::vector<model::ntp> ret;
+chunked_vector<model::ntp> topic_table::all_updates_in_progress() const {
+    chunked_vector<model::ntp> ret;
     ret.reserve(_updates_in_progress.size());
     for (const auto& [ntp, _] : _updates_in_progress) {
         ret.push_back(ntp);
