@@ -725,8 +725,8 @@
     ],
     "models": {
         "cpu_profile_shard_samples": {
-            "id": "cpu_profile_sample",
-            "description": "cpu profile sample",
+            "id": "cpu_profile_shard_samples",
+            "description": "cpu profile object for one shard",
             "properties": {
                 "shard_id": {
                     "type": "long",
@@ -746,7 +746,7 @@
         },
         "cpu_profile_sample": {
             "id": "cpu_profile_sample",
-            "description": "cpu profile sample",
+            "description": "an individual cpu profile sample with backtrace and count",
             "properties": {
                 "user_backtrace": {
                     "type": "string",
