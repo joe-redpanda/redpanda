@@ -28,6 +28,8 @@
 #include "resource_mgmt/cpu_profiler.h"
 #include "serde/rw/rw.h"
 #include "storage/kvstore.h"
+#include "utils/arch.h"
+#include "version/version.h"
 
 #include <seastar/core/shard_id.hh>
 #include <seastar/core/smp.hh>
@@ -522,38 +524,47 @@ void check_shard_id(seastar::shard_id id) {
 
 ss::future<ss::json::json_return_type>
 admin_server::cpu_profile_handler(std::unique_ptr<ss::http::request> req) {
-    vlog(adminlog.info, "Request to sampled cpu profile");
+    using namespace ss::httpd::debug_json;
+
+    auto shard_param = req->get_query_param("shard");
+    auto wait_param = req->get_query_param("wait_ms");
+
+    vlog(
+      adminlog.info,
+      "Request to sample cpu profile, shard: {}, wait_ms: {}",
+      shard_param,
+      wait_param);
+
+    cpu_profile_result result;
+    // update this when you make an incompatible change to the result schema
+    result.schema = 2;
+    result.sample_period_ms = _cpu_profiler.local().sample_period() / 1ms;
 
     std::optional<size_t> shard_id;
-    if (auto e = req->get_query_param("shard"); !e.empty()) {
+    if (!shard_param.empty()) {
         try {
-            shard_id = boost::lexical_cast<size_t>(e);
+            shard_id = boost::lexical_cast<size_t>(shard_param);
         } catch (const boost::bad_lexical_cast&) {
-            throw ss::httpd::bad_param_exception(
-              fmt::format("Invalid parameter 'shard_id' value {{{}}}", e));
+            throw ss::httpd::bad_param_exception(fmt::format(
+              "Invalid parameter 'shard_id' value {{{}}}", shard_param));
         }
-    }
-
-    if (shard_id.has_value()) {
         check_shard_id(*shard_id);
     }
 
     std::optional<std::chrono::milliseconds> wait_ms;
-    if (auto e = req->get_query_param("wait_ms"); !e.empty()) {
+    if (!wait_param.empty()) {
         try {
             wait_ms = std::chrono::milliseconds(
-              boost::lexical_cast<uint64_t>(e));
+              boost::lexical_cast<uint64_t>(wait_param));
         } catch (const boost::bad_lexical_cast&) {
-            throw ss::httpd::bad_param_exception(
-              fmt::format("Invalid parameter 'wait_ms' value {{{}}}", e));
+            throw ss::httpd::bad_param_exception(fmt::format(
+              "Invalid parameter 'wait_ms' value {{{}}}", wait_param));
         }
-    }
-
-    if (wait_ms.has_value()) {
         if (*wait_ms < 1ms || *wait_ms > 15min) {
             throw ss::httpd::bad_param_exception(
               "wait_ms must be between 1ms and 15min");
         }
+        result.wait_ms = *wait_ms / 1ms;
     }
 
     std::vector<resources::cpu_profiler::shard_samples> profiles;
@@ -564,23 +575,41 @@ admin_server::cpu_profile_handler(std::unique_ptr<ss::http::request> req) {
           *wait_ms, shard_id);
     }
 
-    co_return co_await ss::make_ready_future<ss::json::json_return_type>(
-      ss::json::stream_range_as_array(
-        lw_shared_container(std::move(profiles)),
-        [](const resources::cpu_profiler::shard_samples& profile) {
-            ss::httpd::debug_json::cpu_profile_shard_samples ret;
-            ret.shard_id = profile.shard;
-            ret.dropped_samples = profile.dropped_samples;
+    result.arch = ss::sstring{util::cpu_arch::current().name};
+    // this version will help us identify the right symbols, it is like so:
+    // In released builds:
+    // v24.2.11 - 29b8a8e2329043d587e6de2cbf8e73cc32d9d69e
+    // Local bazel builds:
+    // 0.0.0-dev - 0000000000000000000000000000000000000000
+    // Local cmake builds with ENABLE_GIT_HASH=OFF and ENABLE_GIT_VERSION=OFF:
+    // no_version - 000-dev
+    result.version = ss::sstring{redpanda_version()};
 
-            for (auto& sample : profile.samples) {
-                ss::httpd::debug_json::cpu_profile_sample s;
-                s.occurrences = sample.occurrences;
-                s.user_backtrace = sample.user_backtrace;
+    auto& profile_vec = result.profile._elements;
+    profile_vec.reserve(profiles.size());
 
-                ret.samples.push(s);
-            }
-            return ret;
-        }));
+    for (auto& shard_profile : profiles) {
+        ss::httpd::debug_json::cpu_profile_shard_samples shard_samples;
+        shard_samples.shard_id = shard_profile.shard;
+        shard_samples.dropped_samples = shard_profile.dropped_samples;
+
+        // build up the samples list
+        std::vector<cpu_profile_sample> samples;
+        samples.reserve(shard_profile.samples.size());
+        for (auto& sample : shard_profile.samples) {
+            ss::httpd::debug_json::cpu_profile_sample json_sample;
+            json_sample.occurrences = sample.occurrences;
+            json_sample.user_backtrace = sample.user_backtrace;
+            samples.emplace_back(std::move(json_sample));
+        }
+
+        shard_samples.samples._set = true;
+        shard_samples.samples._elements = std::move(samples);
+
+        result.profile.push(shard_samples);
+    }
+
+    co_return co_await ssx::now(stream_object(result));
 }
 
 ss::future<ss::json::json_return_type>

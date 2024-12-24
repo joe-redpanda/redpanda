@@ -628,10 +628,7 @@
                     "produces": [
                         "application/json"
                     ],
-                    "type": "array",
-                    "items": {
-                        "type": "cpu_profile_shard_samples"
-                    },
+                    "type": "cpu_profile_result",
                     "parameters": [
                         {
                             "name": "shard",
@@ -724,6 +721,39 @@
         }
     ],
     "models": {
+        "cpu_profile_result": {
+            "id": "cpu_profile_result",
+            "description": "top level object for a cpu profile request",
+            "properties" : {
+                "schema": {
+                    "description": "the schema version of the response",
+                    "type": "int"
+                },
+                "arch": {
+                    "description": "the CPU architecture the profile was taken on, one of [amd64, arm64]",
+                    "type": "string"
+                },
+                "version": {
+                    "description": "the version of Redpanda the profile was taken on",
+                    "type": "string"
+                },
+                "wait_ms": {
+                    "description": "the requested sample period, in milliseconds, if specified using wait_ms query parameter, or missing otherwise",
+                    "type": "int"
+                },
+                "sample_period_ms": {
+                    "description": "the configured sample period in milliseconds (each shard samples at this rate)",
+                    "type": "int"
+                },
+                "profile": {
+                    "description": "the profile samples, one object per shard",
+                    "type": "array",
+                    "items": {
+                        "type": "cpu_profile_shard_samples"
+                    }
+                }
+            }
+        },
         "cpu_profile_shard_samples": {
             "id": "cpu_profile_shard_samples",
             "description": "cpu profile object for one shard",
