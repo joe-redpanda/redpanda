@@ -523,4 +523,6 @@ to_acl_binding_filter(const delete_acls_filter& filter) {
 std::optional<security::scram_algorithm_t>
 kafka_to_security_mechanism(kafka::scram_mechanism mechanism);
 
+scram_mechanism key_size_to_mechanism(size_t key_size);
+
 } // namespace kafka::details

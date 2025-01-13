@@ -11,6 +11,8 @@
 
 #include "kafka/server/handlers/details/security.h"
 
+#include "security/scram_algorithm.h"
+
 namespace kafka::details {
 
 std::optional<security::scram_algorithm_t>
@@ -24,5 +26,16 @@ kafka_to_security_mechanism(kafka::scram_mechanism mechanism) {
         return security::scram_algorithm_t::sha512;
     }
     return std::nullopt;
+}
+
+scram_mechanism key_size_to_mechanism(size_t key_size) {
+    switch (key_size) {
+    case security::scram_sha256::key_size:
+        return scram_mechanism::scram_sha_256;
+    case security::scram_sha512::key_size:
+        return scram_mechanism::scram_sha_512;
+    default:
+        return scram_mechanism::unknown;
+    }
 }
 } // namespace kafka::details
