@@ -912,18 +912,7 @@ public:
 
 private:
     ss::sstring help_text() const {
-        // String-ize the available values
-        std::vector<std::string> str_values;
-        str_values.reserve(_values.size());
-        std::transform(
-          _values.begin(),
-          _values.end(),
-          std::back_inserter(str_values),
-          [](const T& v) { return fmt::format("{}", v); });
-
-        return fmt::format(
-          "Must be one of {}",
-          fmt::join(str_values.begin(), str_values.end(), ","));
+        return fmt::format("Must be one of {}", fmt::join(enum_values(), ","));
     }
 
     std::vector<T> _values;
