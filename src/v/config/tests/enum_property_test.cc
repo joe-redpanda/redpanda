@@ -59,8 +59,7 @@ SEASTAR_THREAD_TEST_CASE(enum_property_validation) {
         verr = cfg.opt_enum_str.validate(YAML::Load(v));
         BOOST_REQUIRE(verr.has_value());
         BOOST_REQUIRE_EQUAL(
-          verr.value().error_message(),
-          "Must be one of {nullopt},{foo},{bar},{baz}");
+          verr.value().error_message(), "Must be one of foo,bar,baz or null");
     }
 
     // Optional variant should also always consider null to be valid.
@@ -78,11 +77,10 @@ SEASTAR_THREAD_TEST_CASE(enum_property_values) {
     BOOST_CHECK_EQUAL(values[2], "baz");
 
     auto opt_values = cfg.opt_enum_str.enum_values();
-    BOOST_CHECK_EQUAL(opt_values.size(), 4);
-    BOOST_CHECK_EQUAL(opt_values[0], "{nullopt}");
-    BOOST_CHECK_EQUAL(opt_values[1], "{foo}");
-    BOOST_CHECK_EQUAL(opt_values[2], "{bar}");
-    BOOST_CHECK_EQUAL(opt_values[3], "{baz}");
+    BOOST_CHECK_EQUAL(opt_values.size(), 3);
+    BOOST_CHECK_EQUAL(opt_values[0], "foo");
+    BOOST_CHECK_EQUAL(opt_values[1], "bar");
+    BOOST_CHECK_EQUAL(opt_values[2], "baz");
 }
 
 } // namespace
