@@ -46,6 +46,7 @@ class CrashLoopChecksTest(RedpandaTest):
             },
             log_config=LoggingConfig('info', logger_levels={'main': 'debug'}),
         )
+        self.broker = self.redpanda.nodes[0]
 
     def remove_crash_loop_tracker_file(self, broker):
         broker.account.ssh(
@@ -63,6 +64,10 @@ class CrashLoopChecksTest(RedpandaTest):
             self.redpanda.start_node(broker)
         self.redpanda.signal_redpanda(node=broker)
         self.redpanda.start_node(node=broker, expect_fail=True)
+
+    def expect_crash_count(self, expected):
+        crash_files = self.count_crash_files(self.broker)
+        assert crash_files == expected, f"Unexpected number of crashes: {crash_files} != {expected}"
 
     @cluster(num_nodes=1, log_allow_list=CRASH_LOOP_LOG)
     def test_crash_loop_checks_with_tracker_file(self):
@@ -144,18 +149,14 @@ class CrashLoopChecksTest(RedpandaTest):
     def test_crash_report_with_startup_exception(self):
         broker = self.redpanda.nodes[0]
 
-        def expect_crash_count(expected):
-            crash_files = self.count_crash_files(broker)
-            assert crash_files == expected, f"Unexpected number of crashes: {crash_files} != {expected}"
-
         # A SIGKILL'd broker will leave behind an empty crash report
         self.redpanda.signal_redpanda(broker)
-        expect_crash_count(1)
+        self.expect_crash_count(1)
 
         # A clean broker start+stop will not leave behind a crash report
         self.redpanda.start_node(broker)
         self.redpanda.stop_node(broker)
-        expect_crash_count(1)
+        self.expect_crash_count(1)
 
         # Exceptions during startup should generate crash reports
         invalid_conf = dict(
@@ -164,7 +165,7 @@ class CrashLoopChecksTest(RedpandaTest):
             self.redpanda.start_node(broker,
                                      override_cfg_params=invalid_conf,
                                      expect_fail=True)
-        expect_crash_count(1 + CrashLoopChecksTest.CRASH_LOOP_LIMIT + 1)
+        self.expect_crash_count(1 + CrashLoopChecksTest.CRASH_LOOP_LIMIT + 1)
 
         # No new crash report should be generated for when redpanda stops with the crash loop limit reached
         self.redpanda.start_node(broker,
@@ -176,7 +177,7 @@ class CrashLoopChecksTest(RedpandaTest):
             broker,
             "Crash #4 at 20.* UTC - Failure during startup: std::__1::system_error (error C-Ares:4, unreachable_host.com: Not found) Backtrace: 0x.*"
         )
-        expect_crash_count(1 + CrashLoopChecksTest.CRASH_LOOP_LIMIT + 1)
+        self.expect_crash_count(1 + CrashLoopChecksTest.CRASH_LOOP_LIMIT + 1)
 
     @cluster(num_nodes=1, log_allow_list=CRASH_LOOP_LOG + HOSTNAME_ERRORS)
     def test_crash_report_parser(self):
