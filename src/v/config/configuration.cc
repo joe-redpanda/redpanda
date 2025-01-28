@@ -2453,6 +2453,20 @@ configuration::configuration()
       "and shouldn't be set in production.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       false)
+  , cloud_storage_enable_remote_allow_gaps(
+      *this,
+      "cloud_storage_enable_remote_allow_gaps",
+      "This property affects the behavior of the Tiered-Storage during pause. "
+      "If 'false' (default value) Redpanda will evict from the local storage "
+      "only data which was already uploaded to the cloud storage. Eventually, "
+      "this will lead to a situation when the local volume is filled with data "
+      "which can't be evicted. When this will happen Redpanda will throttle "
+      "producers. To avoid this the property can be set to 'true'. In this "
+      "case Redpanda will allow segments that wasn't uploaded to the cloud "
+      "storage to be evicted from the local storage. The local storage "
+      "eviction may create a gap in offsets in this case.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      false)
   , cloud_storage_azure_storage_account(
       *this,
       "cloud_storage_azure_storage_account",
