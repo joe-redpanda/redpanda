@@ -11,6 +11,14 @@ from rptest.services.redpanda import ResourceSettings, SISettings
 
 
 class ScaleParameters:
+    """ScaleParameters helps tests size their workload as appropriate for the current environment.
+    Test will in general run on dedicated nodes (in CDT or cloud tests), or in docker containers
+    (in dev or CI), so the available memory, CPU and disk resources will be very different between
+    those environments. Many functional tests which only create a very modest number of partitions,
+    do a few operations and check the results will just work in any of these environments, but test
+    which are scale or performance tests, or which test some system limits need to be "scale aware"
+    and can use ScaleParameters for that purpose."""
+
     # Number of partitions to create when running in docker (i.e.
     # when dedicated_nodes=false).  This is independent of the
     # amount of RAM or CPU that the nodes claim to have, because
