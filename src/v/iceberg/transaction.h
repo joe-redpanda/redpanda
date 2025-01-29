@@ -38,6 +38,11 @@ public:
     // is assigned based on the state of the table.
     ss::future<txn_outcome> set_schema(schema);
 
+    // Adds a new partition spec and sets it as the default one. Partition
+    // source fields are resolved using the current schema and existing
+    // partition fields are reused.
+    ss::future<txn_outcome> set_partition_spec(unresolved_partition_spec);
+
     // Adds the given data files to a new snapshot for the table, potentially
     // merging manifests to reduce manifest list size.
     //
