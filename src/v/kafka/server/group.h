@@ -922,6 +922,8 @@ private:
 
     cluster::tx::errc map_tx_replication_error(std::error_code ec);
 
+    void setup_metrics();
+
     kafka::group_id _id;
     group_state _state;
     std::optional<model::timestamp> _state_timestamp;
@@ -965,6 +967,7 @@ private:
     chunked_hash_map<model::topic_partition, offset_metadata>
       _pending_offset_commits;
     enable_group_metrics _enable_group_metrics;
+    config::binding<bool> _enable_consumer_lag_metrics;
 
     ss::gate _gate;
     ss::timer<clock_type> _auto_abort_timer;

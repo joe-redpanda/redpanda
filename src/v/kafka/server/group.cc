@@ -134,9 +134,7 @@ group::group(
                          .abort_timed_out_transactions_interval_ms.value())
   , _tx_frontend(tx_frontend)
   , _feature_table(feature_table) {
-    if (_enable_group_metrics) {
-        _probe.setup_public_metrics(_id);
-    }
+    setup_metrics();
 
     start_abort_timer();
 }
@@ -193,9 +191,7 @@ group::group(
     // update when restoring from metadata value
     update_subscriptions();
 
-    if (_enable_group_metrics) {
-        _probe.setup_public_metrics(_id);
-    }
+    setup_metrics();
 
     start_abort_timer();
 }
@@ -3618,6 +3614,13 @@ group::delete_offsets(std::vector<model::topic_partition> offsets) {
     }
 
     return deleted_offsets;
+}
+
+void group::setup_metrics() {
+    if (!_enable_group_metrics) {
+        return;
+    }
+    _probe.setup_public_metrics(_id);
 }
 
 } // namespace kafka
