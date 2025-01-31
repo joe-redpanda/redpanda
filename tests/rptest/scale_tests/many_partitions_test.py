@@ -768,7 +768,7 @@ class ManyPartitionsTest(PreallocNodesTest):
             self.redpanda,
             replication_factor=3,
             mib_per_partition=DEFAULT_MIB_PER_PARTITION,
-            topic_partitions_per_shard=DEFAULT_PARTITIONS_PER_SHARD,
+            topic_replicas_per_shard=DEFAULT_PARTITIONS_PER_SHARD,
             partition_memory_reserve_percentage=
             DEFAULT_PARTITIONS_MEMORY_ALLOCATION_PERCENT,
         )
