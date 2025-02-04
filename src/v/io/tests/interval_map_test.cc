@@ -29,12 +29,15 @@ TEST(IntervalMap, InsertZeroLengthInterval) {
     }
 }
 
-TEST(IntervalMap, InsertEmpty) {
+TEST(IntervalMap, InsertIntoEmptyMap) {
     for (unsigned int i = 0; i < 10; ++i) {
-        imap map;
-        auto res = map.insert({i, 10}, 0);
-        EXPECT_NE(res.first, map.end());
-        EXPECT_TRUE(res.second);
+        for (unsigned int len = 1; len < 10; ++len) {
+            imap map;
+            // start/length don't matter it should always succeed
+            auto res = map.insert({i, len}, 0);
+            EXPECT_NE(res.first, map.end());
+            EXPECT_TRUE(res.second);
+        }
     }
 }
 
