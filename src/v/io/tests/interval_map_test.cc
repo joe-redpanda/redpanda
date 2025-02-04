@@ -139,7 +139,7 @@ TEST(IntervalMap, InsertWithSparseOverlaps) {
     }
 }
 
-TEST(IntervalMap, FindEmpty) {
+TEST(IntervalMap, FindInEmptyMapReturnsEnd) {
     const imap map;
     EXPECT_EQ(map.find(0), map.end());
 }
@@ -153,7 +153,7 @@ TEST(IntervalMap, FindPastLast) {
     EXPECT_EQ(map.find(11), map.end());
 }
 
-TEST(IntervalMap, FindExact) {
+TEST(IntervalMap, FindExactStartOffset) {
     imap map;
     EXPECT_TRUE(map.insert({0, 10}, 11).second);
     EXPECT_TRUE(map.insert({20, 5}, 12).second);
@@ -161,7 +161,7 @@ TEST(IntervalMap, FindExact) {
     EXPECT_EQ(map.find(20)->second, 12);
 }
 
-TEST(IntervalMap, FindBeforeFirst) {
+TEST(IntervalMap, FindBeforeFirstReturnsEnd) {
     imap map;
     EXPECT_TRUE(map.insert({2, 10}, 33).second);
     EXPECT_EQ(map.find(0), map.end());
@@ -178,6 +178,8 @@ TEST(IntervalMap, FindMiddleNoGap) {
     EXPECT_EQ(map.find(9)->second, 3);
     EXPECT_EQ(map.find(11)->second, 4);
     EXPECT_EQ(map.find(19)->second, 4);
+    EXPECT_EQ(map.find(21)->second, 5);
+    EXPECT_EQ(map.find(29)->second, 5);
 }
 
 TEST(IntervalMap, FindMiddleWithGap) {
@@ -196,7 +198,7 @@ TEST(IntervalMap, FindMiddleWithGap) {
     EXPECT_EQ(map.find(39), map.end());
 }
 
-TEST(IntervalMap, BeginEndEmpty) {
+TEST(IntervalMap, BeginEndAreEqualInEmptyMap) {
     const imap map;
     EXPECT_EQ(map.begin(), map.end());
 }
@@ -209,6 +211,7 @@ TEST(IntervalMap, Empty) {
 }
 
 TEST(IntervalMap, Erase) {
+    // erase 1 becomes empty
     {
         imap map;
         auto res = map.insert({0, 10}, 0);
@@ -217,6 +220,7 @@ TEST(IntervalMap, Erase) {
         EXPECT_TRUE(map.empty());
     }
 
+    // erase 2 becomes empty
     {
         imap map;
         EXPECT_TRUE(map.insert({0, 10}, 0).second);
