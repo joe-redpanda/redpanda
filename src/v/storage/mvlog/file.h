@@ -82,8 +82,7 @@ public:
 
     // NOTE: defaults are for tests only and are not tuned for production.
     explicit file_manager(
-      size_t cache_size_bytes = 2_MiB,
-      size_t small_queue_size_bytes = 1_MiB);
+      size_t cache_size_bytes = 2_MiB, size_t small_queue_size_bytes = 1_MiB);
     ~file_manager();
 
     ss::future<std::unique_ptr<file>> create_file(std::filesystem::path);
