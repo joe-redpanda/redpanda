@@ -1959,7 +1959,22 @@ ntp_archiver::wait_uploads_complete(
     result.checks_disabled
       = config::shard_local_cfg()
           .cloud_storage_disable_upload_consistency_checks.value();
-    if (!result.checks_disabled) {
+    auto skip_metadata_check = [this] {
+        // Special handling of the situation when the gap was created
+        // while the archiver was paused with 'redpanda.remote.allowgaps'
+        // set to 'true'.
+        // If the property is set to true and the local start offset
+        // doesn't match the last uploaded offset we should skip the
+        // check.
+        auto manifest_last = manifest().get_last_offset();
+        auto local_first = _parent.raft_start_offset();
+        model::offset manifest_next = model::next_offset(manifest_last);
+        bool gaps_allowed
+          = _parent.log()->config().is_remote_allow_gaps_enabled();
+        return gaps_allowed && !manifest().empty()
+               && manifest_next < local_first;
+    }();
+    if (!skip_metadata_check && !result.checks_disabled) {
         // With read-write-fence it's guaranteed that the concurrent
         // updates are not a problem. But we still need this check
         // to prevent certain bugs from corrupting the cloud storage
