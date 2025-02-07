@@ -277,13 +277,6 @@ public:
         update_generation();
     }
 
-    template<typename Func>
-    void pop_front_and_dispose(Func func) {
-        io_fragment* front = _head;
-        pop_front();
-        func(front);
-    }
-
     io_fragment& back() {
         check_consistency();
         return *_tail;
@@ -320,13 +313,6 @@ public:
         elem._prev = _tail;
         _tail = &elem;
         update_generation();
-    }
-
-    template<typename Func>
-    void pop_back_and_dispose(Func func) {
-        io_fragment* back = _tail;
-        pop_back();
-        func(back);
     }
 
     template<typename Func>

@@ -234,42 +234,4 @@ TEST(FragmentListTests, Clear) {
     EXPECT_TRUE(list.empty());
 }
 
-TEST(FragmentListTests, PopFront) {
-    io_fragment_list list;
-    io_fragment a{0};
-    io_fragment b{0};
-    io_fragment c{0};
-    list.push_back(a);
-    list.push_back(b);
-    list.push_back(c);
-    std::list<io_fragment*> shadow = {&a, &b, &c};
-    while (!list.empty()) {
-        EXPECT_EQ(&c, &list.back());
-        list.pop_front_and_dispose([&shadow](io_fragment* f) {
-            EXPECT_EQ(shadow.front(), f);
-            shadow.pop_front();
-        });
-    }
-    EXPECT_TRUE(shadow.empty());
-}
-
-TEST(FragmentListTests, PopBack) {
-    io_fragment_list list;
-    io_fragment a{0};
-    io_fragment b{0};
-    io_fragment c{0};
-    list.push_back(a);
-    list.push_back(b);
-    list.push_back(c);
-    std::list<io_fragment*> shadow = {&a, &b, &c};
-    while (!list.empty()) {
-        EXPECT_EQ(&a, &list.front());
-        list.pop_back_and_dispose([&shadow](io_fragment* f) {
-            EXPECT_EQ(shadow.back(), f);
-            shadow.pop_back();
-        });
-    }
-    EXPECT_TRUE(shadow.empty());
-}
-
 } // namespace

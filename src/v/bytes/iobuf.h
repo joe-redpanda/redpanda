@@ -325,10 +325,10 @@ iobuf::prepend(ss::temporary_buffer<char> b) {
 }
 [[gnu::always_inline]] inline void iobuf::prepend(iobuf b) {
     while (!b._frags.empty()) {
-        b._frags.pop_back_and_dispose([this](fragment* f) {
-            prepend(f->share());
-            details::dispose_io_fragment(f);
-        });
+        fragment* f = &b._frags.back();
+        b._frags.pop_back();
+        prepend(f->share());
+        details::dispose_io_fragment(f);
     }
 }
 /// append src + len into storage
@@ -392,29 +392,33 @@ iobuf::append(const uint8_t* src, size_t len) {
 /// appends the contents of buffer; might pack values into existing space
 inline void iobuf::append(iobuf o) {
     while (!o._frags.empty()) {
-        o._frags.pop_front_and_dispose([this](fragment* f) {
-            append(f->share());
-            details::dispose_io_fragment(f);
-        });
+        fragment* f = &o._frags.front();
+        o._frags.pop_front();
+        append(f->share());
+        details::dispose_io_fragment(f);
     }
 }
 
 inline void iobuf::append_fragments(iobuf o) {
     while (!o._frags.empty()) {
-        o._frags.pop_front_and_dispose([this](fragment* f) {
-            append(std::make_unique<fragment>(f->share()));
-            details::dispose_io_fragment(f);
-        });
+        fragment* f = &o._frags.front();
+        o._frags.pop_front();
+        append(std::make_unique<fragment>(f->share()));
+        details::dispose_io_fragment(f);
     }
 }
 /// used for iostreams
 inline void iobuf::pop_front() {
-    _size -= _frags.front().size();
-    _frags.pop_front_and_dispose(&details::dispose_io_fragment);
+    fragment* f = &_frags.front();
+    _size -= f->size();
+    _frags.pop_front();
+    details::dispose_io_fragment(f);
 }
 inline void iobuf::pop_back() {
-    _size -= _frags.back().size();
-    _frags.pop_back_and_dispose(&details::dispose_io_fragment);
+    fragment* f = &_frags.back();
+    _size -= f->size();
+    _frags.pop_back();
+    details::dispose_io_fragment(f);
 }
 inline void iobuf::trim_front(size_t n) {
     while (!_frags.empty()) {
