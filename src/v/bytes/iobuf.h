@@ -11,7 +11,6 @@
 
 #pragma once
 #include "base/likely.h"
-#include "base/oncore.h"
 #include "base/seastarx.h"
 #include "bytes/details/io_allocation_size.h"
 #include "bytes/details/io_byte_iterator.h"
