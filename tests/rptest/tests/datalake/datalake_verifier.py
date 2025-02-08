@@ -343,6 +343,7 @@ class DatalakeVerifier():
             self.logger.debug(f"No errors around waiting")
         except Exception as e:
             self.logger.error(f"Error around waiting: {e}")
+            raise
         finally:
             self.stop()
 
