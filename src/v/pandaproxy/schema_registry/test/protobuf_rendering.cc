@@ -167,4 +167,5 @@ INSTANTIATE_TEST_SUITE_P(
     "map_entry_hack",
     "repeated_custom_options",
     "enum_ordering",
-    "message_ordering"));
+    "message_ordering",
+    "service_ordering"));
