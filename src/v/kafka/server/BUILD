@@ -353,6 +353,28 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "datalake_throttle_manager",
+    srcs = [
+        "datalake_throttle_manager.cc",
+    ],
+    hdrs = [
+        "datalake_throttle_manager.h",
+    ],
+    include_prefix = "kafka/server",
+    visibility = [":__subpackages__"],
+    deps = [
+        ":logger",
+        "//src/v/base",
+        "//src/v/config",
+        "//src/v/container:chunked_hash_map",
+        "//src/v/metrics",
+        "//src/v/ssx:future_util",
+        "//src/v/utils:absl_sstring_hash",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "errors",
     hdrs = [
         "errors.h",
