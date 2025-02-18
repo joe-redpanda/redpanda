@@ -1099,6 +1099,7 @@ redpanda_cc_library(
     include_prefix = "iceberg",
     visibility = ["//visibility:public"],
     deps = [
+        ":datatypes",
         "//src/v/bytes:iobuf",
         "//src/v/container:fragmented_vector",
         "//src/v/utils:uuid",
