@@ -1386,6 +1386,7 @@ FIXTURE_TEST(truncate_and_roll_segment, storage_test_fixture) {
         // 1) append few single record batches in term 1
         append_single_record_batch(log, 14, model::term_id(1));
         log->flush().get();
+        check_dirty_and_closed_segment_bytes(log);
         // 2) truncate in the middle of segment
         model::offset truncate_at(7);
         info("Truncating at offset:{}", truncate_at);
@@ -1396,9 +1397,11 @@ FIXTURE_TEST(truncate_and_roll_segment, storage_test_fixture) {
         // 3) append some more batches to the same segment
         append_single_record_batch(log, 10, model::term_id(1));
         log->flush().get();
+        check_dirty_and_closed_segment_bytes(log);
         //  4) roll term by appending to new segment
         append_single_record_batch(log, 1, model::term_id(8));
         log->flush().get();
+        check_dirty_and_closed_segment_bytes(log);
     }
     // 5) restart log manager
     {
@@ -1447,6 +1450,7 @@ FIXTURE_TEST(compacted_log_truncation, storage_test_fixture) {
           ss::default_priority_class(),
           as);
         log->flush().get();
+        check_dirty_and_closed_segment_bytes(log);
         model::offset truncate_at(7);
         info("Truncating at offset:{}", truncate_at);
         log
@@ -1456,11 +1460,14 @@ FIXTURE_TEST(compacted_log_truncation, storage_test_fixture) {
         // roll segment
         append_single_record_batch(log, 10, model::term_id(2));
         log->flush().get();
+        check_dirty_and_closed_segment_bytes(log);
 
         // roll segment
         append_single_record_batch(log, 1, model::term_id(8));
+        check_dirty_and_closed_segment_bytes(log);
         // compact log
         log->housekeeping(c_cfg).get();
+        check_dirty_and_closed_segment_bytes(log);
     }
 
     // force recovery
@@ -1513,6 +1520,7 @@ FIXTURE_TEST(
       ss::default_priority_class(),
       as);
     log->flush().get();
+    check_dirty_and_closed_segment_bytes(log);
     model::offset truncate_at(7);
     info("Truncating at offset:{}", truncate_at);
     BOOST_REQUIRE_EQUAL(log->segment_count(), 1);
@@ -1522,10 +1530,12 @@ FIXTURE_TEST(
       .get();
     append_single_record_batch(log, 10, model::term_id(1));
     log->flush().get();
+    check_dirty_and_closed_segment_bytes(log);
 
     // segment should be rolled after truncation
     BOOST_REQUIRE_EQUAL(log->segment_count(), 2);
     log->housekeeping(c_cfg).get();
+    check_dirty_and_closed_segment_bytes(log);
 
     auto read = read_and_validate_all_batches(log);
     BOOST_REQUIRE_EQUAL(read.begin()->base_offset(), model::offset(6));
