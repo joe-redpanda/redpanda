@@ -494,7 +494,7 @@ TEST(DeduplicateSegmentsTest, TestBadReader) {
       disk_log.resources(),
       cfg.sanitizer_config);
     auto close = ss::defer([&] {
-        compacted_idx_writer.close().get();
+        compacted_idx_writer->close().get();
         appender->close().get();
     });
 
@@ -505,7 +505,7 @@ TEST(DeduplicateSegmentsTest, TestBadReader) {
         all_segs_map,
         first_seg,
         *appender,
-        compacted_idx_writer,
+        *compacted_idx_writer,
         disk_log.get_probe(),
         storage::internal::should_apply_delta_time_offset(b.feature_table()),
         b.feature_table(),

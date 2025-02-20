@@ -126,7 +126,7 @@ public:
       segment_reader_ptr,
       segment_index,
       segment_appender_ptr,
-      std::optional<compacted_index_writer>,
+      std::optional<std::unique_ptr<compacted_index_writer>>,
       std::optional<batch_cache_index>,
       storage_resources&,
       generation_id = generation_id{}) noexcept;
@@ -288,7 +288,7 @@ private:
     ss::future<> do_release_appender(
       segment_appender_ptr,
       std::optional<batch_cache_index>,
-      std::optional<compacted_index_writer>);
+      std::optional<std::unique_ptr<compacted_index_writer>>);
     ss::future<> compaction_index_batch(const model::record_batch&);
     ss::future<> do_compaction_index_batch(const model::record_batch&);
     void release_appender_in_background(readers_cache* readers_cache);
@@ -335,7 +335,7 @@ private:
     // (e.g. after compaction). when cleared it will reset the next time the
     // size of the compaction index is needed (e.g. estimating total seg size).
     std::optional<size_t> _compaction_index_size;
-    std::optional<compacted_index_writer> _compaction_index;
+    std::optional<std::unique_ptr<compacted_index_writer>> _compaction_index;
 
     std::optional<batch_cache_index> _cache;
     ss::rwlock _destructive_ops;
@@ -534,10 +534,10 @@ inline segment_appender& segment::appender() { return *_appender; }
 inline const segment_appender& segment::appender() const { return *_appender; }
 inline bool segment::has_appender() const { return !!_appender; }
 inline compacted_index_writer& segment::compaction_index() {
-    return *_compaction_index;
+    return *_compaction_index.value();
 }
 inline const compacted_index_writer& segment::compaction_index() const {
-    return *_compaction_index;
+    return *_compaction_index.value();
 }
 inline void segment::set_close() { _flags |= bitflags::closed; }
 inline bool segment::is_tombstone() const {

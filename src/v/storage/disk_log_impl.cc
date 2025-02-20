@@ -1424,7 +1424,7 @@ ss::future<> disk_log_impl::rewrite_segment_with_offset_map(
           map,
           seg,
           *appender,
-          compacted_idx_writer,
+          *compacted_idx_writer,
           *_probe,
           storage::internal::should_apply_delta_time_offset(_feature_table),
           _feature_table);
@@ -1433,7 +1433,7 @@ ss::future<> disk_log_impl::rewrite_segment_with_offset_map(
         eptr = std::current_exception();
     }
     // We must close the segment apender
-    co_await compacted_idx_writer.close();
+    co_await compacted_idx_writer->close();
     co_await appender->close();
     if (eptr) {
         std::rethrow_exception(eptr);
