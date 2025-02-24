@@ -968,3 +968,41 @@ TEST_F_CORO(raft_fixture, test_redelivery_of_matching_logs) {
     co_await wait_for_committed_offset(
       new_leader_node.raft()->dirty_offset(), 5s);
 }
+
+TEST_F_CORO(raft_fixture, test_term_conditional_replication) {
+    co_await create_simple_group(3);
+    auto leader_id = co_await wait_for_leader(10s);
+    auto& leader_node = node(leader_id);
+    auto term = leader_node.raft()->term();
+    // this should succeed as there were no leadership changes
+    auto result = co_await leader_node.raft()->replicate(
+      term,
+      make_batches(10, 10, 128),
+      replicate_options(consistency_level::quorum_ack, 10s));
+
+    ASSERT_TRUE_CORO(result.has_value());
+    /**
+     * Make sure the current leader will be re-elected
+     */
+    for (auto& [id, node] : nodes()) {
+        if (id != leader_id) {
+            node->raft()->block_new_leadership();
+        }
+    }
+    co_await leader_node.raft()->step_down("test-step-down");
+
+    auto new_leader_id = co_await wait_for_leader(10s);
+    ASSERT_EQ_CORO(new_leader_id, leader_id);
+    auto result_with_term = co_await leader_node.raft()->replicate(
+      term,
+      make_batches(10, 10, 128),
+      replicate_options(consistency_level::quorum_ack, 10s));
+
+    // Replication must fail as the term was increased in leader election
+    ASSERT_TRUE_CORO(result_with_term.has_error());
+    // No term provided, replication will succeed
+    auto result_without_term = co_await leader_node.raft()->replicate(
+      make_batches(10, 10, 128),
+      replicate_options(consistency_level::quorum_ack, 10s));
+    ASSERT_FALSE_CORO(result_without_term.has_error());
+}
