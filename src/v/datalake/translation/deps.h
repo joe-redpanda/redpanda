@@ -125,6 +125,14 @@ public:
       ss::abort_source&)
       = 0;
 
+    virtual void update_commit_lag(
+      std::optional<kafka::offset> max_committed_kafka_offset) const
+      = 0;
+
+    virtual void
+    update_translation_lag(kafka::offset max_translated_kafka_offset) const
+      = 0;
+
     static std::unique_ptr<data_source>
       make_default_data_source(ss::lw_shared_ptr<cluster::partition>);
 };

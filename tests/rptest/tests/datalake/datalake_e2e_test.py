@@ -345,7 +345,7 @@ class DatalakeMetricsTest(RedpandaTest):
                              si_settings=SISettings(test_context=test_ctx),
                              extra_rp_conf={
                                  "iceberg_enabled": "true",
-                                 "iceberg_catalog_commit_interval_ms": "5000",
+                                 "iceberg_catalog_commit_interval_ms": "1000",
                                  "enable_leader_balancer": False
                              },
                              schema_registry_config=SchemaRegistryConfig(),
@@ -406,4 +406,7 @@ class DatalakeMetricsTest(RedpandaTest):
             dl.catalog_service.start()
 
             self.wait_for_lag(m, DatalakeMetricsTest.translation_lag, 0)
-            self.wait_for_lag(m, DatalakeMetricsTest.commit_lag, 0)
+
+            time.sleep(5)
+            dl.produce_to_topic(self.topic_name, 1, msg_count=count)
+            self.wait_for_lag(m, DatalakeMetricsTest.commit_lag, count)

@@ -18,7 +18,6 @@
 namespace datalake::translation {
 
 // Misc todos:
-// Port metrics from existing translator
 // Port flush hook needed by migration
 
 namespace {
@@ -167,6 +166,7 @@ ss::future<> partition_translator::translate_until_stopped() {
             continue;
         }
 
+        auto last_committed_offset = result.last_iceberg_committed_offset;
         auto last_translated_offset = result.last_added_offset.value_or(
           kafka::prev_offset(_data_source->min_offset_for_translation()));
 
@@ -182,6 +182,14 @@ ss::future<> partition_translator::translate_until_stopped() {
               reset_error);
             continue;
         }
+
+        // Update partition metrics. Note that last committed offset here
+        // is NOT synchronized with outstanding commit operations. Therefore
+        // if we reach this point before the most recent batch of files has
+        // been committed, the commit lag metric will be out of sync at least
+        // until `wait_for_data_to_translate` wakes up.
+        _data_source->update_commit_lag(last_committed_offset);
+        _data_source->update_translation_lag(last_translated_offset);
 
         // Wait until some data is ready to be translated.
         auto begin_offset = co_await _data_source->wait_for_data_to_translate(
