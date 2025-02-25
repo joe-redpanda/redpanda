@@ -4116,7 +4116,21 @@ ss::future<> disk_log_impl::remove_kvstore_state(
       .discard_result();
 }
 
-double disk_log_impl::dirty_ratio() const {
+double disk_log_impl::dirty_ratio() {
+    // Sanity check/safety hatch against negative values
+    if (_dirty_segment_bytes < 0 || _closed_segment_bytes < 0) {
+        vlog(
+          stlog.info,
+          "{}: _dirty_segment_bytes ({}) and/or _closed_segment_bytes ({}) "
+          "have become negative - clearing counters and resumming over {} "
+          "segments in the log.",
+          config().ntp(),
+          _dirty_segment_bytes,
+          _closed_segment_bytes,
+          _segs.size());
+
+        reset_dirty_and_closed_bytes();
+    }
     // Avoid division by 0.
     return (_closed_segment_bytes == 0)
              ? 0.0
@@ -4163,6 +4177,21 @@ void disk_log_impl::subtract_segment_bytes(
         subtract_dirty_segment_bytes(bytes);
     }
     subtract_closed_segment_bytes(bytes);
+}
+
+void disk_log_impl::reset_dirty_and_closed_bytes() {
+    ssize_t dirty{0};
+    ssize_t closed{0};
+    for (const auto& seg : _segs) {
+        if (!seg->has_appender()) {
+            if (!seg->has_clean_compact_timestamp()) {
+                dirty += seg->size_bytes();
+            }
+            closed += seg->size_bytes();
+        }
+    }
+    _dirty_segment_bytes = dirty;
+    _closed_segment_bytes = closed;
 }
 
 } // namespace storage
