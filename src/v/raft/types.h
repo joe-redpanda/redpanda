@@ -739,23 +739,12 @@ inline constexpr voter_priority min_voter_priority = voter_priority{1};
  */
 struct scheduling_config {
     scheduling_config(
-      ss::scheduling_group recv_sg,
-      ss::io_priority_class default_iopc,
-      ss::scheduling_group learner_recovery_sg,
-      ss::io_priority_class learner_recovery_iopc)
+      ss::scheduling_group recv_sg, ss::io_priority_class default_iopc)
       : recv_sg(recv_sg)
-      , default_iopc(default_iopc)
-      , learner_recovery_sg(learner_recovery_sg)
-      , learner_recovery_iopc(learner_recovery_iopc) {}
-
-    scheduling_config(
-      ss::scheduling_group default_sg, ss::io_priority_class default_iopc)
-      : scheduling_config(default_sg, default_iopc, default_sg, default_iopc) {}
+      , default_iopc(default_iopc) {}
 
     ss::scheduling_group recv_sg;
     ss::io_priority_class default_iopc;
-    ss::scheduling_group learner_recovery_sg;
-    ss::io_priority_class learner_recovery_iopc;
 };
 
 std::ostream& operator<<(std::ostream& o, const consistency_level& l);
