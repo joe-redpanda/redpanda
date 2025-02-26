@@ -64,7 +64,7 @@ ss::future<> recovery_stm::recover() {
     }
 
     return ss::with_scheduling_group(
-      _scheduling.recv_sg,
+      _scheduling.send_sg,
       [this, iopc = _scheduling.default_iopc] { return do_recover(iopc); });
 }
 

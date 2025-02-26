@@ -398,6 +398,7 @@ raft_node_instance::raft_node_instance(
   , _base_directory(std::move(base_directory))
   , _protocol(ss::make_shared<in_memory_test_protocol>(node_map, _logger))
   , _buffered_protocol(ss::make_shared<buffered_protocol>(
+      ss::default_scheduling_group(),
       consensus_client_protocol(_protocol),
       _max_inflight_requests.bind(),
       _max_queued_bytes.bind()))
