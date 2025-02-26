@@ -136,7 +136,6 @@ private:
     checkpoint_translation_result(
       retry_chain_node&, coordinator::translated_offset_range);
 
-    scheduling::clock::duration _target_lag;
     ss::scheduling_group _sg;
     std::unique_ptr<coordinator_api> _coordinator;
     std::unique_ptr<data_source> _data_source;

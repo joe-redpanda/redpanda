@@ -43,9 +43,6 @@ ss::future<cluster::errc> wait_stm_translated(
 
 static constexpr auto poll_duration = 2s;
 
-// rebase on Oren's PR to pick this up from configurations
-static constexpr auto target_lag = 1min;
-
 ss::future<> noop_mem_tracker::maybe_reserve_memory(size_t, ss::abort_source&) {
     return ss::make_ready_future<>();
 }
@@ -419,8 +416,15 @@ private:
         // transfer happens after half a day, we cannot just reset the interval
         // window on the new leader. That probably works for smaller lag values
         // but has some oddness with large lags.
-        return std::chrono::duration_cast<scheduling::clock::duration>(
-          target_lag);
+        const auto& topic_cfg = _topics.get_topic_cfg(
+          model::topic_namespace_view{_ntp});
+        auto default_lag
+          = config::shard_local_cfg().iceberg_target_lag_ms.value();
+        if (!topic_cfg.has_value()) {
+            return default_lag;
+        }
+        return topic_cfg->properties.iceberg_target_lag_ms.value_or(
+          default_lag);
     }
 
     std::unique_ptr<parquet_file_writer_factory> make_writer_factory() {
