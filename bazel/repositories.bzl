@@ -206,6 +206,6 @@ filegroup(
     http_archive(
         name = "aarch64_sysroot",
         build_file_content = sysroot_build_file,
-        sha256 = "a162b62d4d34588232137c8f14d45849aaa36202b9081f2718452f4a086ae817",
-        urls = ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-19.1.7/sysroot-ubuntu-22.04-aarch64-2025-02-24.tar.zst"],
+        sha256 = "39e3d368d57a40d36f6735dcfe3ed699c6a5962cd47c5b1f652254f077632688",
+        urls = ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-19.1.7/sysroot-ubuntu-22.04-aarch64-2025-02-27.tar.zst"],
     )
