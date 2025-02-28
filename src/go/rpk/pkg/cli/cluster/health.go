@@ -11,6 +11,7 @@ package cluster
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"time"
 
@@ -38,6 +39,8 @@ following conditions are met:
   * All cluster nodes are responding
   * All partitions have leaders
   * The cluster controller is present
+
+If the cluster is reported as unhealthy, rpk will exit with code 10.
 `,
 		Example: `
 Basic usage, get cluster health information:
@@ -69,9 +72,11 @@ Get cluster health information and exit when the cluster is healthy:
 			// watch if --exit-when-healthy is provided.
 			watch = exit || watch
 			var lastOverview rpadmin.ClusterHealthOverview
+			var exit10 bool
 			for {
 				ret, err := cl.GetHealthOverview(cmd.Context())
 				out.MaybeDie(err, "unable to request cluster health: %v", err)
+				exit10 = !ret.IsHealthy
 				if !reflect.DeepEqual(ret, lastOverview) {
 					printHealthOverview(&ret, clusterUUID)
 				}
@@ -80,6 +85,11 @@ Get cluster health information and exit when the cluster is healthy:
 					break
 				}
 				time.Sleep(2 * time.Second)
+			}
+			if exit10 {
+				// We choose 10 to differentiate from any other error (1), or
+				// unhandled panics (2).
+				os.Exit(10)
 			}
 		},
 	}
