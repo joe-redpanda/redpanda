@@ -17,10 +17,11 @@
 namespace iceberg {
 
 struct unresolved_partition_spec {
+    using column_reference = std::vector<ss::sstring>;
     struct field {
         // Components of the nested source field name, in increasing depth
         // order.
-        std::vector<ss::sstring> source_name;
+        column_reference source_name;
         transform transform;
         ss::sstring name;
 
