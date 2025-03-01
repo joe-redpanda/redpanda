@@ -387,6 +387,7 @@ create_topic_properties_update(
                   update.properties.iceberg_invalid_record_action,
                   cfg.value,
                   op);
+                continue;
             }
             if (cfg.name == topic_property_remote_allow_gaps) {
                 parse_and_set_optional_bool_alpha(
