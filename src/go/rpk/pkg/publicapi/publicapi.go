@@ -12,8 +12,10 @@ package publicapi
 import (
 	"context"
 	"fmt"
+	"runtime"
 
 	"connectrpc.com/connect"
+	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/cli/version"
 	"go.uber.org/zap"
 )
 
@@ -38,4 +40,35 @@ func newLoggerInterceptor() connect.UnaryInterceptorFunc {
 			return next(ctx, req)
 		}
 	}
+}
+
+func defaultRpkUserAgent() string {
+	return fmt.Sprintf("rpk/%s (%s_%s)", version.Version, runtime.GOOS, runtime.GOARCH)
+}
+
+func newAgentInterceptor(agent string) connect.Interceptor {
+	return &agentInterceptor{agent: agent}
+}
+
+type agentInterceptor struct {
+	agent string
+}
+
+func (i *agentInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		req.Header().Set("User-Agent", i.agent)
+		return next(ctx, req)
+	}
+}
+
+func (i *agentInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		conn.RequestHeader().Set("User-Agent", i.agent)
+		return conn
+	}
+}
+
+func (*agentInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
 }
