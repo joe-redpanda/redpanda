@@ -77,7 +77,14 @@ struct update_applying_visitor {
             vlog(log.error, "Partition spec id {} already exists", sid);
             return outcome::unexpected_state;
         }
+
         meta.partition_specs.emplace_back(update.spec.copy());
+
+        for (const auto& field : update.spec.fields) {
+            meta.last_partition_id = std::max(
+              meta.last_partition_id, field.field_id);
+        }
+
         return outcome::success;
     }
     outcome operator()(const set_default_spec& update) {

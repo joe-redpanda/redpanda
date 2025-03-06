@@ -146,24 +146,38 @@ TEST_F(UpdateApplyingVisitorTest, TestSetCurrentSchemaUnassigned) {
 
 TEST_F(UpdateApplyingVisitorTest, TestAddSpec) {
     auto table = create_table();
-    const auto make_update = [&](int32_t spec_id) -> table_update::update {
+    const auto make_update =
+      [&](
+        int32_t spec_id,
+        chunked_vector<partition_field> fields) -> table_update::update {
         return table_update::add_spec{
             .spec = partition_spec{
                 .spec_id = partition_spec::id_t{spec_id},
-                .fields = {},
+                .fields = std::move(fields),
             },
         };
     };
-    auto outcome = table_update::apply(make_update(0), table);
+    auto outcome = table_update::apply(make_update(0, {}), table);
     ASSERT_EQ(outcome, table_update::outcome::success);
     ASSERT_EQ(table.partition_specs.size(), 1);
+    ASSERT_EQ(table.last_partition_id, -1);
 
-    outcome = table_update::apply(make_update(1), table);
+    outcome = table_update::apply(
+      make_update(
+        1,
+        {partition_field{
+          .source_id = nested_field::id_t{1},
+          .field_id = partition_field::id_t{1001},
+          .name = "field",
+          .transform = identity_transform{},
+        }}),
+      table);
     ASSERT_EQ(outcome, table_update::outcome::success);
     ASSERT_EQ(table.partition_specs.size(), 2);
+    ASSERT_EQ(table.last_partition_id, 1001);
 
     // Adding an existing spec fails.
-    outcome = table_update::apply(make_update(1), table);
+    outcome = table_update::apply(make_update(1, {}), table);
     ASSERT_EQ(outcome, table_update::outcome::unexpected_state);
 }
 
