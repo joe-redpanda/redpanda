@@ -7,6 +7,7 @@
 # the Business Source License, use of this software will be governed
 # by the Apache License, Version 2.0
 
+import collections
 import errno
 from functools import lru_cache
 import json
@@ -20,6 +21,8 @@ from time import sleep
 import requests
 
 from ducktape.utils.util import wait_until
+
+from rptest.utils.bookend_collection import BookendCollection
 
 # Match any version that may result from a redpanda binary, which may not be a
 # released version.
@@ -163,8 +166,8 @@ class RedpandaInstaller:
         Waits for each SSHOutputIter to complete.
         """
         for node in ssh_out_per_node:
-            logger.debug(f"{log_msg} for {node.account.hostname}")
-            captured_output = []
+            logger.info(f"{log_msg} for {node.account.hostname}")
+            captured_output = BookendCollection(head=100, tail=100)
             try:
                 for line in ssh_out_per_node[node]:
                     captured_output.append(line)
@@ -653,9 +656,9 @@ class RedpandaInstaller:
                         node, version)
 
         try:
-            self.wait_for_async_ssh(self._redpanda.logger,
-                                    ssh_download_per_node,
-                                    "Finished downloading binaries")
+            self.wait_for_async_ssh(
+                self._redpanda.logger, ssh_download_per_node,
+                "Waiting for downloading binaries to finish")
         except Exception as e:
             self._redpanda.logger.error(
                 f"Exception while downloading to {version_root}, cleaning up: {str(e)}"
@@ -699,7 +702,7 @@ class RedpandaInstaller:
 
     def _async_download_on_node_unlocked(self, node, version):
         """
-        Asynchonously downloads Redpanda of the given version on the given
+        Asynchronously downloads Redpanda of the given version on the given
         node. Returns an iterator to the results.
 
         Expects the install lock to have been taken before calling.
