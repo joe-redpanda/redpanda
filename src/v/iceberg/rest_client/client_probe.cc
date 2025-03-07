@@ -97,6 +97,14 @@ void client_probe::setup_public_metrics(
           labels)
           .aggregate({sm::shard_label}),
         sm::make_counter(
+          "num_request_timeouts",
+          [this] { return num_request_timeouts; },
+          sm::description(
+            "Total number of catalog requests that could no longer be retried "
+            "because they timed out. This may occur if the catalog is down"),
+          labels)
+          .aggregate({sm::shard_label}),
+        sm::make_counter(
           "num_oauth_token_requests",
           [this] { return num_oauth_token_requests; },
           sm::description(

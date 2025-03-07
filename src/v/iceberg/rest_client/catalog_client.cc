@@ -207,6 +207,9 @@ ss::future<expected<iobuf>> catalog_client::perform_request(
     while (true) {
         const auto permit = rtc.retry();
         if (!permit.is_allowed) {
+            if (!retriable_errors.empty() && _probe) {
+                _probe->register_timeout();
+            }
             co_return tl::unexpected(
               retries_exhausted{.errors = std::move(retriable_errors)});
         }

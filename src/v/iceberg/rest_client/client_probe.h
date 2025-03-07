@@ -31,12 +31,15 @@ public:
 
     void register_request(endpoint e);
     void register_failed_request(endpoint e);
+    void register_timeout() { ++num_request_timeouts; }
 
 private:
     void setup_public_metrics(
       net::public_metrics_disabled disable, ss::metrics::label_instance);
 
     metrics::public_metric_groups _public_metrics;
+
+    size_t num_request_timeouts{0};
 
     size_t num_oauth_token_requests{0};
     size_t num_oauth_token_requests_failed{0};
