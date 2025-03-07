@@ -187,3 +187,55 @@ INSTANTIATE_TEST_SUITE_P(
   TestAllTimeTimeTransforms,
   TestDateTransforms,
   ::testing::ValuesIn(date_transform_test_cases()));
+
+struct primitive_test_values {
+    value boolean_val = primitive_value{boolean_value{true}};
+    value int_val = primitive_value{int_value{321123}};
+    value long_val = primitive_value{long_value{321123321123}};
+    value float_val = primitive_value{float_value{3.14}};
+    value double_val = primitive_value{double_value{6.23}};
+    value date_val = primitive_value{date_value{1000}};
+    value time_val = primitive_value{time_value{std::chrono::hours(10) / 1us}};
+    value timestamp_val = primitive_value{timestamp_value{1741177530000000}};
+    value timestamptz_val = primitive_value{
+      timestamptz_value{1741177530000000}};
+    value string_val = primitive_value{
+      string_value{iobuf::from("hello Iceberg")}};
+    value uuid_val = primitive_value{
+      uuid_value{uuid_t::from_string("ab4ed576-b638-424f-89d8-4ea602393772")}};
+    value fixed_val = primitive_value{
+      fixed_value{iobuf::from("fixed Iceberg")}};
+    value binary_val = primitive_value{binary_value{iobuf::from("bytes ?")}};
+    value decimal_val = primitive_value{
+      decimal_value{absl::MakeInt128(0, 123)}};
+    value decimal_val_2 = primitive_value{
+      decimal_value{absl::MakeInt128(1, 123)}};
+    value decimal_val_3 = primitive_value{
+      decimal_value{absl::MakeInt128(6321412421, 53441242)}};
+    value decimal_val_4 = primitive_value{
+      decimal_value{absl::MakeInt128(0, 123)}};
+};
+
+TEST(TestTransformApplication, IdentityTransform) {
+    primitive_test_values test_values;
+
+    auto test_transform = [](const value& val) {
+        auto transformed = apply_transform(val, identity_transform{});
+        ASSERT_EQ(val, transformed);
+    };
+
+    test_transform(test_values.boolean_val);
+    test_transform(test_values.int_val);
+    test_transform(test_values.long_val);
+    test_transform(test_values.float_val);
+    test_transform(test_values.double_val);
+    test_transform(test_values.date_val);
+    test_transform(test_values.time_val);
+    test_transform(test_values.timestamp_val);
+    test_transform(test_values.timestamptz_val);
+    test_transform(test_values.string_val);
+    test_transform(test_values.uuid_val);
+    test_transform(test_values.fixed_val);
+    test_transform(test_values.binary_val);
+    test_transform(test_values.decimal_val);
+}
