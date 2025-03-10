@@ -144,16 +144,14 @@ private:
     metrics::internal_metric_groups _metrics;
 };
 
-class {{service_name}}_client_protocol {
+class {{service_name}}_client_protocol {% if final_protocol %}final{% endif %} {
 public:
     explicit {{service_name}}_client_protocol(ss::lw_shared_ptr<::rpc::transport> t)
       : _transport(t) {
     }
 
-    virtual ~{{service_name}}_client_protocol() = default;
-
     {%- for method in methods %}
-    virtual inline ss::future<result<::rpc::client_context<{{method.output_type}}>>>
+    ss::future<result<::rpc::client_context<{{method.output_type}}>>>
     {{method.name}}({{method.input_type}}&& r, ::rpc::client_opts opts) {
        return _transport->send_typed<{{method.input_type}}, {{method.output_type}}>(std::move(r),
               {{service_name}}_service::{{method.name}}_method, std::move(opts));
@@ -222,10 +220,13 @@ private:
 } // namespace
 """
 
+# default values applied to service definition
+SERVICE_DEFAULTS = {"final_protocol": True}
+
 
 def _read_file(name: str):
     with open(name, 'r') as f:
-        return json.load(f)
+        return SERVICE_DEFAULTS | json.load(f)
 
 
 def _enrich_methods(service: Any):
