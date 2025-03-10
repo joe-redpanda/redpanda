@@ -112,9 +112,15 @@ public:
          default: return nullptr;
        }
     }
+
+    {%- for method in methods %}
+    virtual ss::future<{{method.output_type}}>
+    {{method.name}}({{method.input_type}}, ::rpc::streaming_context&) = 0;
+    {%- endfor %}
+private:
     {%- for method in methods %}
     /// \\brief {{method.input_type}} -> {{method.output_type}}
-    virtual ss::future<::rpc::netbuf>
+    ss::future<::rpc::netbuf>
     raw_{{method.name}}(ss::input_stream<char>& in, ::rpc::streaming_context& ctx) {
       return execution_helper<{{method.input_type}},
                               {{method.output_type}},
@@ -124,10 +130,8 @@ public:
           return {{method.name}}(std::move(t), ctx);
       });
     }
-    virtual ss::future<{{method.output_type}}>
-    {{method.name}}({{method.input_type}}, ::rpc::streaming_context&) = 0;
     {%- endfor %}
-private:
+
     ss::scheduling_group _sc;
     ss::smp_service_group _ssg;
     std::array<::rpc::method, {{methods|length}}> _methods{%raw %}{{{% endraw %}
