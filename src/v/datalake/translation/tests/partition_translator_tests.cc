@@ -334,6 +334,8 @@ public:
         return ss::make_ready_future();
     }
 
+    size_t buffered_bytes() const final { return _buffered_bytes; }
+
 private:
     size_t _translated_bytes{0};
     size_t _flushed_bytes{0};
@@ -341,6 +343,7 @@ private:
     std::optional<kafka::offset> _max_offset_translated;
     fake_test_ctx& _test_ctx;
     bool _inflight_translation{false};
+    size_t _buffered_bytes{0};
 };
 
 class fake_lag_tracker : public translation_lag_tracker {

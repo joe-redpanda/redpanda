@@ -494,6 +494,12 @@ public:
         co_await std::move(task.value()).discard().discard_result();
     }
 
+    size_t buffered_bytes() const final {
+        return _in_progress_translation
+                 ? _in_progress_translation->buffered_bytes()
+                 : 0;
+    }
+
 private:
     scheduling::clock::duration compute_target_lag() const {
         // todo: In addition to integrating with config subsystem, an additional

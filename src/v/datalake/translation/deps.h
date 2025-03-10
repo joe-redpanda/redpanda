@@ -209,6 +209,10 @@ public:
      * Cleans up state and discards an translated result.
      */
     virtual ss::future<> discard() = 0;
+    /**
+     *  Returns the number of bytes buffered for the parquet file in memory
+     */
+    virtual size_t buffered_bytes() const = 0;
 
     static std::unique_ptr<translation_context>
     make_default_translation_context(
