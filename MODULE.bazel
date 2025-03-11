@@ -141,12 +141,12 @@ llvm.toolchain(
     cxx_standard = {"": CXX_STANDARD},
     llvm_version = "18.1.8",
     sha256 = {
-        "linux-aarch64": "621856db24f9b081d3d097f7b51b33f8cf096b0d103214b23c49fd5978ce2354",
-        "linux-x86_64": "b568ffa3ae21ac57b4dc5c96743b298343cc503cfb52192155f836b3b10213cf",
+        "linux-aarch64": "9f52789c5aee794d6f013249b6e003b50f72e4c3874fd656723a72bf9322eff9",
+        "linux-x86_64": "51e547308112bc6671f391d03420c315b7c099238d797631e00374f1bd80712e",
     },
     urls = {
-        "linux-aarch64": ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-18.1.8/llvm-18.1.8-ubuntu-22.04-aarch64-2025-02-25.tar.zst"],
-        "linux-x86_64": ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-18.1.8/llvm-18.1.8-ubuntu-22.04-x86_64-2025-02-25.tar.zst"],
+        "linux-aarch64": ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-18.1.8/llvm-18.1.8-debian-11-aarch64-2025-03-10.tar.zst"],
+        "linux-x86_64": ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-18.1.8/llvm-18.1.8-debian-11-x86_64-2025-03-10.tar.zst"],
     },
 )
 llvm.sysroot(
@@ -159,30 +159,9 @@ llvm.sysroot(
     label = "@aarch64_sysroot//:sysroot",
     targets = ["linux-aarch64"],
 )
-use_repo(llvm, "llvm_18_toolchain", "llvm_18_toolchain_llvm")
+use_repo(llvm, "llvm_18_toolchain")
 
 register_toolchains("@llvm_18_toolchain//:all")
-
-llvm.toolchain(
-    name = "llvm_20_toolchain",
-    compile_flags = COMPILE_FLAGS,
-    cxx_standard = {"": CXX_STANDARD},
-    llvm_version = "20.1.0",
-    sha256 = {
-        "linux-x86_64": "05d14395ed8367a42194245e34892938deff3b4e73b613354d0df439deead113",
-    },
-    urls = {
-        "linux-x86_64": ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-20.1.0/llvm-20.1.0-ubuntu-22.04-x86_64-2025-03-04.tar.zst"],
-    },
-)
-llvm.sysroot(
-    name = "llvm_20_toolchain",
-    label = "@x86_64_sysroot//:sysroot",
-    targets = ["linux-x86_64"],
-)
-use_repo(llvm, "llvm_20_toolchain", "llvm_20_toolchain_llvm")
-
-register_toolchains("@llvm_20_toolchain//:all")
 
 # ====================================
 # Go Toolchain
