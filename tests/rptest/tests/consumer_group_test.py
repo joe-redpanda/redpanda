@@ -1051,6 +1051,7 @@ class ConsumerGroupTest(RedpandaTest):
         self.logger.debug(f"Metrics lag max: {lag_max}")
 
         assert expected_hwm_len == committed_len, f"Expected {expected_hwm_len}, got {committed_len}. Not all partitions were consumed, tweak the produce and consume counts"
+        assert expected_hwm_len == hwm_len, f"Expected {expected_hwm_len}, got {hwm_len}. Not all partitions were consumed, tweak the produce and consume counts"
 
         # Check redpanda_kafka_max_offset
         assert expected_hwm_sum == hwm_sum, f"Expected {expected_hwm_sum}, got {hwm_sum}"
