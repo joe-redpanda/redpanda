@@ -11,9 +11,7 @@
 
 #include "resource_mgmt/cpu_profiler.h"
 
-#include "random/generators.h"
 #include "resource_mgmt/logger.h"
-#include "ssx/future-util.h"
 #include "ssx/sformat.h"
 
 #include <seastar/core/future.hh>
@@ -24,7 +22,6 @@
 #include <seastar/util/later.hh>
 
 #include <chrono>
-#include <iterator>
 
 namespace resources {
 
