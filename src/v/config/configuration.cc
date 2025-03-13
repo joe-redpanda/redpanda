@@ -3800,7 +3800,7 @@ configuration::configuration()
       "individual commits.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       std::chrono::milliseconds(1min),
-      {.min = 10ms})
+      {.min = std::chrono::milliseconds{10s}})
   , iceberg_catalog_base_location(
       *this,
       "iceberg_catalog_base_location",
