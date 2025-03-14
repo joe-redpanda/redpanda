@@ -297,18 +297,22 @@ ss::future<> partition_translator::translate_until_stopped() {
             continue;
         }
 
-        auto translation_result = co_await _translation_ctx->finish(rcn, _as);
-        vlog(
-          _logger.trace, "Translation finish result: {}", translation_result);
-        if (!translation_result) {
-            vlog(_logger.warn, "Failed to translate, retrying");
+        auto finish_result = co_await _translation_ctx->finish(rcn, _as);
+        if (finish_result.has_error()) {
+            vlog(
+              _logger.warn,
+              "Failed to translate with error: {}, retrying",
+              finish_result.error());
             continue;
         }
+        auto translation_result = std::move(finish_result.value());
+        vlog(
+          _logger.trace, "Translation finish result: {}", translation_result);
 
         // Check if the translated offset space is contiguous, if not make it
         // so.
         auto expected_begin = kafka::next_offset(checkpointed_lto);
-        if (expected_begin != translation_result->start_offset) {
+        if (expected_begin != translation_result.start_offset) {
             // This is possible if there is a gap in offsets range, eg from
             // compaction. Normally that shouldn't be the case, as translation
             // enforces max_collectible_offset which prevents compaction or
@@ -322,13 +326,13 @@ ss::future<> partition_translator::translate_until_stopped() {
               "detected an offset range gap in [{}, {}), adjusting the begin "
               "offset to avoid gaps in coordinator tracked offsets.",
               expected_begin,
-              translation_result->start_offset);
-            translation_result->start_offset = expected_begin;
+              translation_result.start_offset);
+            translation_result.start_offset = expected_begin;
         }
 
-        auto last_translated_offset = translation_result->last_offset;
+        auto last_translated_offset = translation_result.last_offset;
         auto checkpoint_result = co_await checkpoint_translation_result(
-          rcn, std::move(translation_result.value()));
+          rcn, std::move(translation_result));
         if (checkpoint_result.errc != coordinator::errc::ok) {
             vlog(
               _logger.warn,
