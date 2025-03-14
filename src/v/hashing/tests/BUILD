@@ -31,7 +31,10 @@ redpanda_cc_bench(
         "hash_bench.cc",
     ],
     deps = [
+        "//src/v/bytes",
+        "//src/v/bytes:random",
         "//src/v/hashing:crc32c",
+        "//src/v/hashing:murmur",
         "//src/v/hashing:xx",
         "//src/v/model",
         "//src/v/random:generators",
