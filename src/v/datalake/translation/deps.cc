@@ -702,7 +702,7 @@ public:
         if (!_translation_target) {
             return std::nullopt;
         }
-        
+
         if (last_translated_offset >= _translation_target->offset) {
             return _translation_target->ts;
         }

@@ -428,9 +428,8 @@ scheduling::translation_status partition_translator::status() const {
     };
 }
 
-ss::future<std::optional<std::chrono::milliseconds>>
-partition_translator::current_lag_ms() const {
-    co_return _lag_tracking->current_lag_ms();
+std::chrono::milliseconds partition_translator::current_lag_ms() const {
+    return _lag_tracking->current_lag_ms();
 }
 
 void partition_translator::start_translation(
