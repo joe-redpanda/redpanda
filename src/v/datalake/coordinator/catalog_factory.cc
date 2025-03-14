@@ -190,7 +190,16 @@ rest_catalog_factory::create_catalog() {
       .server_addr = endpoint_information.address,
     };
     if (endpoint_information.needs_tls) {
-        transport_config.credentials = co_await build_tls_credentials(*config_);
+        try {
+            transport_config.credentials = co_await build_tls_credentials(
+              *config_);
+        } catch (...) {
+            vlog(
+              datalake_log.error,
+              "Failed to create TLS credentials for Iceberg REST catalog: {}",
+              std::current_exception());
+            throw;
+        }
     }
     std::unique_ptr<http::abstract_client> http_client
       = static_cast<std::unique_ptr<http::abstract_client>>(
