@@ -13,9 +13,12 @@
 #include "iceberg/values.h"
 #include "model/timestamp.h"
 
+#include <absl/numeric/int128.h>
 #include <fmt/chrono.h>
 #include <gtest/gtest.h>
 
+#include <limits>
+#include <utility>
 #include <variant>
 
 using namespace iceberg;
@@ -289,4 +292,147 @@ TEST(TestTransformApplication, BucketTransform) {
     test_transform_3(test_values.decimal_val_4, 2, 50, 355);
     test_transform_3(test_values.decimal_val_5, 11, 123, 342);
     test_transform_3(test_values.decimal_val_6, 3, 3, 603);
+}
+
+TEST(TestTransformApplication, NumericTruncateTransform) {
+    auto test =
+      [](primitive_value input, uint32_t length, primitive_value expected) {
+          value input_wrapped{
+            std::in_place_type<primitive_value>, std::move(input)};
+          auto transformed = apply_transform(
+            std::move(input_wrapped), truncate_transform{.length = length});
+          ASSERT_TRUE(std::holds_alternative<primitive_value>(transformed));
+          ASSERT_EQ(std::get<primitive_value>(transformed), expected);
+      };
+
+    constexpr auto min_signed = std::numeric_limits<int32_t>::min();
+    constexpr auto max_signed = std::numeric_limits<int32_t>::max();
+    constexpr uint32_t max_signed_u = max_signed;
+    constexpr uint32_t max_unsigned = std::numeric_limits<uint32_t>::max();
+    auto various_int32s = std::to_array(
+      {min_signed, -100, -1, 0, 1, 100, max_signed});
+    for (auto i : various_int32s) {
+        test(int_value{i}, 0, int_value{i});
+        test(int_value{i}, 1, int_value{i});
+    }
+    test(int_value{1000}, 5, int_value{1000});
+    test(int_value{1001}, 5, int_value{1000});
+    test(int_value{-1000}, 5, int_value{-1000});
+    test(int_value{-1001}, 5, int_value{-1005});
+    test(int_value{0}, max_signed_u, int_value{0});
+    test(int_value{1000}, max_signed_u, int_value{0});
+    test(int_value{-1000}, max_signed_u, int_value{-max_signed});
+    test(int_value{max_signed}, max_signed_u, int_value{max_signed});
+    test(int_value{min_signed + 1}, max_signed_u, int_value{min_signed + 1});
+    // underflow
+    test(int_value{min_signed}, max_signed_u, int_value{2});
+    for (auto i : various_int32s) {
+        for (auto len : std::to_array({max_signed_u + 1, max_unsigned})) {
+            test(int_value{i}, len, int_value{0});
+        }
+    }
+
+    constexpr auto min_signed_long = std::numeric_limits<int64_t>::min();
+    constexpr auto max_signed_long = std::numeric_limits<int64_t>::max();
+    auto various_int64s = std::to_array(
+      {min_signed_long,
+       int64_t{-100},
+       int64_t{-1},
+       int64_t{0},
+       int64_t{1},
+       int64_t{100},
+       max_signed_long});
+    for (auto i : various_int64s) {
+        test(long_value{i}, 0, long_value{i});
+        test(long_value{i}, 1, long_value{i});
+    }
+    test(long_value{100010001000}, 5, long_value{100010001000});
+    test(long_value{100010001001}, 5, long_value{100010001000});
+    test(long_value{-100010001000}, 5, long_value{-100010001000});
+    test(long_value{-100010001005}, 5, long_value{-100010001005});
+    test(long_value{0}, max_signed_u, long_value{0});
+    test(long_value{1000}, max_signed_u, long_value{0});
+    test(long_value{-1000}, max_signed_u, long_value{-max_signed});
+    test(long_value{max_signed}, max_signed_u, long_value{max_signed});
+    test(long_value{min_signed + 1}, max_signed_u, long_value{min_signed + 1});
+    test(
+      long_value{int64_t{max_signed} * 10},
+      max_signed_u,
+      long_value{int64_t{max_signed} * 10});
+    test(
+      long_value{int64_t{max_signed} * 10 + 1},
+      max_signed_u,
+      long_value{int64_t{max_signed} * 10});
+    test(
+      long_value{int64_t{max_signed} * 10 - 1},
+      max_signed_u,
+      long_value{int64_t{max_signed} * 9});
+    test(
+      long_value{-int64_t{max_signed} * 10},
+      max_signed_u,
+      long_value{-int64_t{max_signed} * 10});
+    test(
+      long_value{-int64_t{max_signed} * 10 + 1},
+      max_signed_u,
+      long_value{-int64_t{max_signed} * 10});
+    test(
+      long_value{-int64_t{max_signed} * 10 - 1},
+      max_signed_u,
+      long_value{-int64_t{max_signed} * 11});
+    // underflow
+    test(long_value{min_signed_long}, 3, long_value{max_signed_long});
+
+    constexpr auto min_signed_128 = std::numeric_limits<absl::int128>::min();
+    constexpr auto max_signed_128 = std::numeric_limits<absl::int128>::max();
+    auto various_int128s = std::to_array(
+      {min_signed_128,
+       absl::int128{-100},
+       absl::int128{-1},
+       absl::int128{0},
+       absl::int128{1},
+       absl::int128{100},
+       max_signed_128});
+    for (auto i : various_int128s) {
+        test(decimal_value{i}, 0, decimal_value{i});
+        test(decimal_value{i}, 1, decimal_value{i});
+    }
+    test(decimal_value{100010001000}, 5, decimal_value{100010001000});
+    test(decimal_value{100010001001}, 5, decimal_value{100010001000});
+    test(decimal_value{-100010001000}, 5, decimal_value{-100010001000});
+    test(decimal_value{-100010001005}, 5, decimal_value{-100010001005});
+    test(decimal_value{0}, max_signed_u, decimal_value{0});
+    test(decimal_value{1000}, max_signed_u, decimal_value{0});
+    test(decimal_value{-1000}, max_signed_u, decimal_value{-max_signed});
+    test(decimal_value{max_signed}, max_signed_u, decimal_value{max_signed});
+    test(
+      decimal_value{min_signed + 1},
+      max_signed_u,
+      decimal_value{min_signed + 1});
+    test(
+      decimal_value{max_signed * absl::int128{max_signed_long}},
+      max_signed_u,
+      decimal_value{max_signed * absl::int128{max_signed_long}});
+    test(
+      decimal_value{max_signed * absl::int128{max_signed_long} + 1},
+      max_signed_u,
+      decimal_value{max_signed * absl::int128{max_signed_long}});
+    test(
+      decimal_value{max_signed * absl::int128{max_signed_long} - 1},
+      max_signed_u,
+      decimal_value{max_signed * absl::int128{max_signed_long - 1}});
+    test(
+      decimal_value{-max_signed * absl::int128{max_signed_long}},
+      max_signed_u,
+      decimal_value{-max_signed * absl::int128{max_signed_long}});
+    test(
+      decimal_value{-max_signed * absl::int128{max_signed_long} + 1},
+      max_signed_u,
+      decimal_value{-max_signed * absl::int128{max_signed_long}});
+    test(
+      decimal_value{-max_signed * absl::int128{max_signed_long} - 1},
+      max_signed_u,
+      decimal_value{-max_signed * (absl::int128{max_signed_long} + 1)});
+    // underflow
+    test(
+      decimal_value{min_signed_128 + 1}, 5, decimal_value{max_signed_128 - 1});
 }
