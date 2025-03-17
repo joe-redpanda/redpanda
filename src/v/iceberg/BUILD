@@ -1060,6 +1060,22 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "truncate_transform_visitor",
+    srcs = [
+        "truncate_transform_visitor.cc",
+    ],
+    hdrs = [
+        "truncate_transform_visitor.h",
+    ],
+    include_prefix = "iceberg",
+    deps = [
+        ":values",
+        "//src/v/bytes:iobuf",
+        "@abseil-cpp//absl/numeric:int128",
+    ],
+)
+
+redpanda_cc_library(
     name = "transform_utils",
     srcs = [
         "transform_utils.cc",
@@ -1073,6 +1089,7 @@ redpanda_cc_library(
         ":datatypes",
         ":time_transform_visitor",
         ":transform",
+        ":truncate_transform_visitor",
         ":values",
         "//src/v/base",
         "@seastar",

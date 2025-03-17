@@ -13,6 +13,7 @@
 #include "iceberg/bucket_transform_hashing_visitor.h"
 #include "iceberg/time_transform_visitor.h"
 #include "iceberg/transform.h"
+#include "iceberg/truncate_transform_visitor.h"
 
 #include <seastar/util/variant_utils.hh>
 
@@ -62,8 +63,14 @@ struct transform_applying_visitor {
         hash &= static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
         return int_value{static_cast<int32_t>(hash % tr.n)};
     }
-    value operator()(const truncate_transform&) {
-        return make_copy(source_val_);
+    value operator()(const truncate_transform& tr) {
+        auto primitive = std::get_if<primitive_value>(&source_val_);
+        if (!primitive) {
+            throw std::invalid_argument(
+              fmt::format("value {} must be primitive", source_val_));
+        }
+        return std::visit(
+          truncate_transform_visitor{.length = tr.length}, *primitive);
     }
     value operator()(const void_transform&) {
         throw std::runtime_error("not implemented");

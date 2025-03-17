@@ -84,6 +84,7 @@ v_cc_library(
     transform_json.cc
     transform_utils.cc
     update_partition_spec_action.cc
+    truncate_transform_visitor.cc
     update_schema_action.cc
     uri.cc
     values.cc
