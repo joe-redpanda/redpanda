@@ -117,6 +117,54 @@ uint32_t murmurhash3_x86_32(const void* key, std::size_t len, uint32_t seed) {
     return h1;
 }
 
+uint32_t murmurhash3_x86_32(const iobuf& data, uint32_t seed) {
+    uint32_t h1 = seed;
+
+    uint32_t torn_block; // murmur block split between iobuf fragments
+    auto torn_block_begin = reinterpret_cast<char*>(&torn_block);
+    auto torn_block_end = torn_block_begin + 4;
+    auto torn_block_data_end = torn_block_begin;
+
+    for (const auto& fragment : data) {
+        auto frag_begin = fragment.get();
+        auto frag_size = fragment.size();
+        auto frag_end = frag_begin + frag_size;
+
+        // torn block
+        size_t torn_remaining_capacity = torn_block_end - torn_block_data_end;
+        if (fragment.size() < torn_remaining_capacity) {
+            torn_block_data_end = std::copy(
+              frag_begin, frag_end, torn_block_data_end);
+            continue;
+        }
+
+        std::copy(
+          frag_begin,
+          frag_begin + torn_remaining_capacity,
+          torn_block_data_end);
+        x86_32::consume_block(h1, torn_block);
+
+        // rest of full blocks in fragment
+        auto blocks_begin = frag_begin + torn_remaining_capacity;
+        const ssize_t blocks_size = fragment.size() - torn_remaining_capacity;
+        auto nblocks = blocks_size / 4;
+        auto blocks_end = blocks_begin + nblocks * 4;
+        auto blocks = reinterpret_cast<const uint32_t*>(blocks_end);
+        for (ssize_t i = -nblocks; i; i++) {
+            uint32_t k1 = internal::getblock32(blocks, i);
+            x86_32::consume_block(h1, k1);
+        }
+
+        // next torn block
+        torn_block_data_end = std::copy(blocks_end, frag_end, torn_block_begin);
+    }
+
+    auto tail = reinterpret_cast<const uint8_t*>(torn_block_begin);
+    x86_32::consume_tail(
+      h1, tail, static_cast<int>(torn_block_data_end - torn_block_begin));
+
+    x86_32::finalize(h1, data.size_bytes());
+
     return h1;
 }
 
