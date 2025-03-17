@@ -2907,7 +2907,8 @@ void application::start_runtime_services(
             storage.local().kvs(),
             config::shard_local_cfg().rm_sync_timeout_ms.bind());
           pm.register_factory<datalake::coordinator::stm_factory>();
-          pm.register_factory<datalake::translation::stm_factory>();
+          pm.register_factory<datalake::translation::stm_factory>(
+            config::shard_local_cfg().iceberg_enabled());
           if (config::shard_local_cfg().development_enable_cloud_topics()) {
               pm.register_factory<experimental::cloud_topics::dl_stm_factory>();
           }
