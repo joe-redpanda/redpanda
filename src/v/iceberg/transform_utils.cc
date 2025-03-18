@@ -17,6 +17,8 @@
 
 #include <seastar/util/variant_utils.hh>
 
+#include <optional>
+
 namespace iceberg {
 
 struct transform_applying_visitor {
@@ -73,7 +75,7 @@ struct transform_applying_visitor {
           truncate_transform_visitor{.length = tr.length}, *primitive);
     }
     std::optional<value> operator()(const void_transform&) {
-        throw std::runtime_error("not implemented");
+        return std::nullopt; // null
     }
 };
 
