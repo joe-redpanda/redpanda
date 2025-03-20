@@ -189,7 +189,7 @@ public:
      * Since this call may perform zero-copy operations, the sharing-mutation
      * caveat in the class comment applies.
      */
-    void append(iobuf);
+    void append(iobuf&&);
 
     /*
      * Appends the contents of the passed buffer to this one.
@@ -389,14 +389,16 @@ iobuf::append(const uint8_t* src, size_t len) {
     }
     append(std::make_unique<fragment>(std::move(b)));
 }
+
 /// appends the contents of buffer; might pack values into existing space
-inline void iobuf::append(iobuf o) {
+inline void iobuf::append(iobuf&& o) {
     while (!o._frags.empty()) {
         fragment* f = &o._frags.front();
         o._frags.pop_front();
         append(f->share());
         details::dispose_io_fragment(f);
     }
+    o.clear();
 }
 
 inline void iobuf::append_fragments(iobuf o) {
