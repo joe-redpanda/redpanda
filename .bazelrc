@@ -65,7 +65,7 @@ build:sanitizer --//bazel:has_sanitizers=True
 # seastar has to be run with system allocator when using sanitizers
 build:sanitizer --@seastar//:system_allocator=True
 # krb5 is a foreign cc build and needs explicit list of sanitizers to build the shared library
-build:sanitizer --@krb5//:sanitizers=address,undefined,vptr,function
+build:sanitizer --@krb5//:sanitizers=address,undefined,vptr,function,alignment
 
 # =================================
 # clang-tidy
