@@ -56,6 +56,7 @@ build --@seastar//:debug=True
 # =================================
 # Sanitizer
 # =================================
+build:sanitizer --compilation_mode=dbg
 build:sanitizer --copt -fsanitize=address,undefined,vptr,function,alignment
 build:sanitizer --linkopt -fsanitize=address,undefined,vptr,function,alignment
 build:sanitizer --linkopt -fsanitize-link-c++-runtime
