@@ -29,6 +29,7 @@ using namespace std::chrono_literals;
 namespace {
 constexpr auto self_configure_attempts = 3;
 constexpr auto self_configure_backoff = 1s;
+constexpr auto self_config_timeout = 15s;
 } // namespace
 
 namespace cloud_storage_clients {
@@ -263,7 +264,13 @@ client_pool::acquire(ss::abort_source& as) {
         if (std::optional<ssx::semaphore_units> u = ss::try_get_units(
               _self_config_barrier, 1);
             !u.has_value()) {
-            u = co_await ss::get_units(_self_config_barrier, 1);
+            // Timeout exception will be thrown if the credentials are not
+            // refreshed yet. The code in the 'remote' class handles this
+            // exception. Most of the time this exception means that the
+            // IAM-roles (or other source of credentials) is not configured
+            // properly.
+            u = co_await ss::get_units(
+              _self_config_barrier, 1, self_config_timeout);
         }
 
         while (!client.has_value() && !_gate.is_closed()
