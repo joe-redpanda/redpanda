@@ -49,6 +49,11 @@ public:
         counter_ref(cause)++;
     }
 
+    void increment_raw_bytes_processed(size_t b) { _raw_bytes_processed += b; }
+    void increment_decompressed_bytes_processed(size_t b) {
+        _decompressed_bytes_processed += b;
+    }
+
     size_t& counter_ref(invalid_record_cause cause) {
         switch (cause) {
         case invalid_record_cause::failed_kafka_schema_resolution:
@@ -63,6 +68,7 @@ public:
 private:
     void register_created_files_metrics();
     void register_invalid_record_metric();
+    void register_throughput_metrics();
 
 private:
     model::ntp _ntp;
@@ -77,6 +83,11 @@ private:
     size_t _num_failed_kafka_schema_resolution = 0;
     size_t _num_failed_data_translation = 0;
     size_t _num_failed_iceberg_schema_resolution = 0;
+
+    // NOTE: the accounting for bytes here is not strictly accurate and should
+    // only be used to get a rough sense for translation throughput.
+    size_t _raw_bytes_processed = 0;
+    size_t _decompressed_bytes_processed = 0;
 };
 
 std::ostream&

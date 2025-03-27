@@ -31,12 +31,12 @@ translation_probe::translation_probe(model::ntp ntp)
         _public_metrics.emplace();
         register_created_files_metrics();
         register_invalid_record_metric();
+        register_throughput_metrics();
     }
 }
 
 void translation_probe::register_created_files_metrics() {
     namespace sm = ss::metrics;
-
     std::vector<sm::label_instance> labels{
       namespace_label(_ntp.ns()),
       topic_label(_ntp.tp.topic()),
@@ -97,6 +97,47 @@ void translation_probe::register_created_files_metrics() {
       });
 }
 
+void translation_probe::register_throughput_metrics() {
+    namespace sm = ss::metrics;
+    std::vector<sm::label_instance> labels{
+      namespace_label(_ntp.ns()),
+      topic_label(_ntp.tp.topic()),
+      partition_label(_ntp.tp.partition()),
+    };
+    _public_metrics->add_group(
+      group_name,
+      {{
+         sm::make_counter(
+           "raw_bytes_processed",
+           _raw_bytes_processed,
+           sm::description(
+             "Number of raw, potentially compressed bytes consumed for "
+             "processing that may or may not succeed in being processed. For "
+             "example, if we fail to communicate with the coordinator "
+             "preventing processing of a batch, this metric still ticks up."),
+           labels)
+           .aggregate({
+             sm::shard_label,
+             partition_label,
+           }),
+       },
+       {
+         sm::make_counter(
+           "decompressed_bytes_processed",
+           _decompressed_bytes_processed,
+           sm::description(
+             "Number of bytes post-decompression consumed for processing that "
+             "may or may not succeed in being processed. For example, if we "
+             "fail to communicate with the coordinator preventing processing "
+             "of a batch, this metric still ticks up."),
+           labels)
+           .aggregate({
+             sm::shard_label,
+             partition_label,
+           }),
+       }});
+}
+
 void translation_probe::register_invalid_record_metric() {
     namespace sm = ss::metrics;
 
@@ -142,5 +183,4 @@ operator<<(std::ostream& os, translation_probe::invalid_record_cause cause) {
         return os << "failed_iceberg_schema_resolution";
     }
 }
-
 }; // namespace datalake
