@@ -82,6 +82,7 @@ redpanda_cc_library(
     include_prefix = "iceberg/rest_client",
     deps = [
         ":error",
+        "//src/v/bytes:streambuf",
         "//src/v/http",
         "//src/v/net",
     ],

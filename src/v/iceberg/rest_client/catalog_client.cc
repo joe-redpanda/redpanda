@@ -304,6 +304,8 @@ ss::future<expected<iobuf>> catalog_client::perform_request(
         if (!request.has_value()) {
             co_return tl::unexpected(request.error());
         }
+        auto request_target = ss::sstring{
+          request->target().begin(), request->target().end()};
 
         if (_probe) {
             _probe->register_request(endpoint);
@@ -321,6 +323,12 @@ ss::future<expected<iobuf>> catalog_client::perform_request(
         }
 
         auto& error = call_res.error();
+        vlog(
+          iceberg::log.warn,
+          "[{}] error: {}, message: '{}'",
+          request_target,
+          error.err,
+          error.err_msg);
         if (error.aborted) {
             co_return tl::unexpected(
               aborted_error{"Shutting down while evaluating retry"});
