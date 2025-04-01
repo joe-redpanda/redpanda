@@ -20,7 +20,7 @@
 using namespace std::chrono_literals; // NOLINT
 
 namespace datalake {
-
+static ss::logger dl_ctrl_log{"dl_backlog_controller"};
 backlog_controller::backlog_controller(
   sampling_fn sampling_fn, ss::scheduling_group sg)
   : _sampling_f(std::move(sampling_fn))
@@ -71,7 +71,7 @@ void backlog_controller::update() {
     update = std::clamp(static_cast<int>(update), _min_shares, _max_shares);
 
     vlog(
-      datalake_log.trace,
+      dl_ctrl_log.trace,
       "state update: {{setpoint: {}, current_backlog: {:2f}, current_error: "
       "{:2f}, shares_update: {:2f}}}, total_err: {:2f}, i contribution: {:2f}",
       _setpoint(),
