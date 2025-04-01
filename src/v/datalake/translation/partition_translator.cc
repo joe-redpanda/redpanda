@@ -13,6 +13,8 @@
 #include "config/configuration.h"
 #include "datalake/logger.h"
 #include "resource_mgmt/io_priority.h"
+#include "ssx/watchdog.h"
+#include "utils/retry_chain_node.h"
 #include "utils/to_string.h"
 
 #include <seastar/coroutine/as_future.hh>
@@ -367,8 +369,9 @@ ss::future<bool> partition_translator::finish_inflight_translation(
     }
 
     auto last_translated_offset = translation_result.last_offset;
+    auto checkpoint_rcn = retry_chain_node(1min, 100ms, &rcn);
     auto checkpoint_result = co_await checkpoint_translation_result(
-      rcn, std::move(translation_result));
+      checkpoint_rcn, std::move(translation_result));
     if (checkpoint_result.errc != coordinator::errc::ok) {
         vlog(
           _logger.warn,
@@ -390,9 +393,13 @@ ss::future<bool> partition_translator::finish_inflight_translation(
       last_translated_offset,
       translated_offset_ts);
 
+    // Generous timeout to let STM catch up and avoid throwing work away on slow
+    // operations. By this point we have accumulated translation data and
+    // erroring out here would mean we need to re-translate the data.
+    // Better wait a bit longer.
     auto replicate_result
       = co_await _data_source->replicate_highest_translated_offset(
-        last_translated_offset, translated_offset_ts, _term, wait_timeout, _as);
+        last_translated_offset, translated_offset_ts, _term, 1min, _as);
     if (replicate_result) {
         vlog(
           _logger.warn,
@@ -414,7 +421,6 @@ ss::future<> partition_translator::translate_until_stopped() {
         if (needs_jitter) {
             co_await ss::sleep_abortable(_jitter.next_duration(), _as);
         }
-        retry_chain_node rcn{_as, _retry_max_timeout, _retry_initial_backoff};
         // We'll keep track of if we exit early out of this iteration, in which
         // case the next iteration should see some jitter.
         auto scoped_set_jitter = ss::defer(
@@ -427,7 +433,8 @@ ss::future<> partition_translator::translate_until_stopped() {
         auto clear_finish_request = ss::defer(
           [this] { _finish_translation_requested = false; });
 
-        auto offsets = co_await fetch_translation_offsets(rcn);
+        retry_chain_node fetch_offsets_rcn{_as, 1min, 100ms};
+        auto offsets = co_await fetch_translation_offsets(fetch_offsets_rcn);
         // this test of the finish translation request flag works here because
         // we are executing in a polling loop.
         auto finish_now = _finish_translation_requested
@@ -451,8 +458,30 @@ ss::future<> partition_translator::translate_until_stopped() {
             finish_now = translate_f.get();
         }
         if (finish_now || should_finish_inflight_translation()) {
+            // No global timeout for finishing. We are not blocking the
+            // scheduler here and if we can't make progress on this partition
+            // timing out/retrying can't help but wastes work.
+            retry_chain_node finish_rcn{
+              _as, ss::lowres_clock::time_point::max(), 100ms};
+
+            ssx::watchdog wd1min(1min, [ntp = _data_source->ntp()] {
+                vlog(
+                  datalake_log.debug,
+                  "Finishing inflight translation is taking more than 5min for "
+                  "{}",
+                  ntp);
+            });
+
+            ssx::watchdog wd5min(5min, [ntp = _data_source->ntp()] {
+                vlog(
+                  datalake_log.debug,
+                  "Finishing inflight translation is taking more than 5min "
+                  "for {}",
+                  ntp);
+            });
+
             auto success = co_await finish_inflight_translation(
-              offsets->coordinator_lto, rcn);
+              offsets->coordinator_lto, finish_rcn);
             if (!success) {
                 continue;
             }
