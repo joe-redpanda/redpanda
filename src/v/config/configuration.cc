@@ -1018,9 +1018,9 @@ configuration::configuration()
       "The topic property `min.cleanable.dirty.ratio` overrides the value of "
       "`min_cleanable_dirty_ratio` at the topic level.",
       {.needs_restart = needs_restart::no,
-       .example = "0.5",
+       .example = "0.2",
        .visibility = visibility::user},
-      0.5,
+      0.2,
       {.min = 0.0, .max = 1.0})
   , log_disable_housekeeping_for_tests(
       *this,
