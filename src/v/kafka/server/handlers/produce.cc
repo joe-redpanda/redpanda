@@ -620,8 +620,14 @@ produce_response produce_request::make_error_response(
     return response;
 }
 
-produce_response produce_request::make_full_disk_response() const {
-    auto resp = make_error_response(error_code::broker_not_available);
+produce_response
+produce_request::make_full_disk_response(api_version version) const {
+    // Version 4 is the same as version 3, but the requester must be prepared to
+    // handle a KAFKA_STORAGE_ERROR.
+    auto errc = version >= api_version(4) ? error_code::kafka_storage_error
+                                          : error_code::broker_not_available;
+    auto resp = make_error_response(
+      errc, "no disk space; bytes free less than configurable threshold");
     // TODO set a field in response to signal to quota manager to throttle the
     // client
     return resp;
@@ -667,7 +673,7 @@ produce_handler::handle(request_context ctx, ss::smp_service_group ssg) {
           ctx.connection()->client_port());
 
         return process_result_stages::single_stage(
-          ctx.respond(request.make_full_disk_response()));
+          ctx.respond(request.make_full_disk_response(ctx.header().version)));
     }
 
     // Account for special internal topic bytes for usage
