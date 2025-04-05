@@ -89,7 +89,7 @@ public:
                   value_memory_usage = sizeof(value_type);
               }
               _current_page_stats.record_value(v);
-              _value_buffer.push_back(std::move(v));
+              _value_buffer.add_value(std::move(v));
           },
           [this](null_value&) {
               // null values are valid, but are not encoded in the actual data,
@@ -126,13 +126,7 @@ public:
             encoded_rep_levels = encode_levels(_max_rep_level, _rep_levels);
         }
         _rep_levels.clear();
-        iobuf encoded_data;
-        if constexpr (std::is_trivially_copyable_v<value_type>) {
-            encoded_data = encode_plain(_value_buffer);
-            _value_buffer.clear();
-        } else {
-            encoded_data = encode_plain(std::exchange(_value_buffer, {}));
-        }
+        iobuf encoded_data = _value_buffer.get_encoded_buf();
         size_t uncompressed_page_size = encoded_def_levels.size_bytes()
                                         + encoded_rep_levels.size_bytes()
                                         + encoded_data.size_bytes();
@@ -246,7 +240,7 @@ private:
     column_stats_collector<value_type, comparator> _flushed_stats;
     int64_t _current_page_memory_usage = 0;
     int64_t _total_memory_usage = 0;
-    chunked_vector<value_type> _value_buffer;
+    plain_encoder<value_type> _value_buffer;
     chunked_vector<def_level> _def_levels;
     chunked_vector<rep_level> _rep_levels;
     chunked_vector<data_page> _flushed_pages;
