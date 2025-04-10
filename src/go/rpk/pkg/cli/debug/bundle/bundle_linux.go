@@ -157,6 +157,7 @@ func executeBundle(ctx context.Context, bp bundleParams) error {
 		saveStartupLog(ps, bp.y),
 		saveSlabInfo(ps),
 		saveSocketData(ctx, ps),
+		saveSoftwareInterrupts(ps),
 		saveSysctl(ctx, ps),
 		saveSyslog(ps),
 		saveTopOutput(ctx, ps),
@@ -561,6 +562,17 @@ func saveInterrupts(ps *stepParams) step {
 			return err
 		}
 		return writeFileToZip(ps, "proc/interrupts", bs)
+	}
+}
+
+// Saves the contents of '/proc/softirqs/'.
+func saveSoftwareInterrupts(ps *stepParams) step {
+	return func() error {
+		bs, err := afero.ReadFile(ps.fs, "/proc/softirqs")
+		if err != nil {
+			return err
+		}
+		return writeFileToZip(ps, "proc/softirqs", bs)
 	}
 }
 
