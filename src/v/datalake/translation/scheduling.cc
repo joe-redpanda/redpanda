@@ -215,13 +215,13 @@ void translator_executable::mark_idle() {
     _stop_in_progress = false;
 }
 
-void translator_executable::mark_stopping() {
+void translator_executable::mark_stopping(translator::stop_reason reason) {
     vassert(
       !_waiting_hook.is_linked() && _running_hook.is_linked()
         && !_stop_in_progress,
       "Invalid request to stop translation: {}",
       *this);
-    _translator->stop_translation();
+    _translator->stop_translation(reason);
     _stop_in_progress = true;
 }
 
@@ -245,11 +245,12 @@ void executor::start_translation(
     running.push_back(state);
 }
 
-void executor::stop_translation(translator_executable& state) {
+void executor::stop_translation(
+  translator_executable& state, translator::stop_reason reason) {
     auto holder = gate.hold();
     vlog(datalake_log.debug, "stopping translator: {}", state);
     try {
-        state.mark_stopping();
+        state.mark_stopping(reason);
     } catch (...) {
         vlog(
           datalake_log.warn,

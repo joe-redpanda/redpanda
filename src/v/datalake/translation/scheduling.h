@@ -183,7 +183,11 @@ public:
      * resources should be released and the translator should invoke \ref
      * scheduling_notifications::notify_done when done.
      */
-    virtual void stop_translation() = 0;
+    enum class stop_reason {
+        oom,
+    };
+
+    virtual void stop_translation(stop_reason) = 0;
 
     /**
      * Request that the translator finish and upload its data. This is distinct
@@ -251,7 +255,7 @@ public:
     void mark_waiting();
     void mark_running();
     void mark_idle();
-    void mark_stopping();
+    void mark_stopping(translator::stop_reason);
 
     // hook into the waiting queue
     intrusive_list_hook _waiting_hook;
@@ -310,7 +314,7 @@ using translators = chunked_hash_map<translator_id, translator_executable>;
  */
 struct executor {
     void start_translation(translator_executable&, clock::duration time_slice);
-    void stop_translation(translator_executable&);
+    void stop_translation(translator_executable&, translator::stop_reason);
     translators translators{};
     intrusive_list<translator_executable, &translator_executable::_running_hook>
       running;

@@ -38,7 +38,7 @@ public:
     ss::future<> close() noexcept override;
     translation_status status() const override;
     void start_translation(clock::duration translate_for) override;
-    void stop_translation() override;
+    void stop_translation(stop_reason) override;
     void reconcile_properties() noexcept override {}
     std::chrono::milliseconds current_lag_ms() const override {
         return std::chrono::milliseconds{0};
@@ -125,7 +125,7 @@ public:
     ss::future<>
     init(scheduling_notifications&, reservations_tracker&) override;
     void start_translation(clock::duration deadline) override;
-    void stop_translation() override;
+    void stop_translation(stop_reason) override;
 };
 
 class scheduler_fixture : public seastar_test {

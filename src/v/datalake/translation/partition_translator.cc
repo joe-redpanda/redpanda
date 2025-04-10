@@ -571,15 +571,17 @@ void partition_translator::start_translation(
     _ready_to_translate.broadcast();
 }
 
-void partition_translator::stop_translation() {
+void partition_translator::stop_translation(translator::stop_reason reason) {
     if (_gate.is_closed() || !_inflight_translation_state) {
         return;
     }
 
-    // Currently only preempted on exceeding memory budget, if the policy
-    // changes to preempt on other errors, should be updated accordingly.
-    _inflight_translation_state->as.request_abort_ex(
-      translator_out_of_memory_error{});
+    switch (reason) {
+    case stop_reason::oom:
+        _inflight_translation_state->as.request_abort_ex(
+          translator_out_of_memory_error{});
+        break;
+    }
 }
 
 void partition_translator::set_finish_translation() {
