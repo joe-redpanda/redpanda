@@ -147,6 +147,7 @@ func executeBundle(ctx context.Context, bp bundleParams) error {
 		saveKernelSymbols(ps),
 		saveLogs(ctx, ps, bp.logsSince, bp.logsUntil, bp.logsLimitBytes),
 		saveLspci(ctx, ps),
+		saveLsblk(ctx, ps),
 		saveMdstat(ps),
 		saveMountedFilesystems(ps),
 		saveNTPDrift(ps),
@@ -812,6 +813,18 @@ func saveLspci(ctx context.Context, ps *stepParams) step {
 			ps,
 			filepath.Join(linuxUtilsRoot, "lspci.txt"),
 			"lspci",
+		)
+	}
+}
+
+// Saves the output of `lsblk --all`.
+func saveLsblk(ctx context.Context, ps *stepParams) step {
+	return func() error {
+		return writeCommandOutputToZip(
+			ctx,
+			ps,
+			filepath.Join(linuxUtilsRoot, "lsblk.txt"),
+			"lsblk", "--all",
 		)
 	}
 }
