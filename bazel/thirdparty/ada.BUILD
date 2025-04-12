@@ -12,6 +12,7 @@ cmake(
         "ADA_TESTING": "OFF",
         "ADA_TOOLS": "OFF",
         "ADA_BENCHMARKS": "OFF",
+        "ADA_INCLUDE_URL_PATTERN": "OFF",
         "CMAKE_INSTALL_LIBDIR": "lib",
     },
     env = {
