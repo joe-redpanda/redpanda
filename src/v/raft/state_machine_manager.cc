@@ -185,6 +185,11 @@ ss::future<> state_machine_manager::start() {
     });
     std::vector<model::offset> offsets;
     for (const auto& [name, stm_meta] : _machines) {
+        vlog(
+          _log.trace,
+          "state machine {} last applied offset: {}",
+          name,
+          stm_meta->stm->last_applied_offset());
         offsets.push_back(stm_meta->stm->last_applied_offset());
     }
     std::sort(offsets.begin(), offsets.end());
