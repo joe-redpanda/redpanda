@@ -1,6 +1,7 @@
 #include "test_utils/runfiles.h"
 
 #include <cstdlib>
+#include <filesystem>
 
 #ifdef BAZEL_TEST
 #include "tools/cpp/runfiles/runfiles.h"
@@ -22,7 +23,9 @@ get_runfile_path([[maybe_unused]] std::string_view path) {
         runfiles.reset(
           Runfiles::CreateForTest(BAZEL_CURRENT_REPOSITORY, &error));
     } else {
-        runfiles.reset(Runfiles::Create("", BAZEL_CURRENT_REPOSITORY, &error));
+        static auto argv0 = std::filesystem::canonical("/proc/self/exe");
+        runfiles.reset(
+          Runfiles::Create(argv0, BAZEL_CURRENT_REPOSITORY, &error));
     }
     if (runfiles == nullptr) {
         throw std::runtime_error(error);
