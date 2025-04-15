@@ -89,12 +89,9 @@ ss::future<subject_schema> sharded_store::make_canonical_schema(
                  config::shard_local_cfg().schema_registry_always_normalize()};
     }
     switch (schema.type()) {
-    case schema_type::avro: {
-        auto [sub, unparsed] = std::move(schema).destructure();
-        co_return subject_schema{
-          std::move(sub),
-          sanitize_avro_schema_definition(std::move(unparsed)).value()};
-    }
+    case schema_type::avro:
+        co_return co_await make_canonical_avro_schema(
+          *this, std::move(schema), norm);
     case schema_type::protobuf:
         co_return co_await make_canonical_protobuf_schema(
           *this, std::move(schema), norm);
