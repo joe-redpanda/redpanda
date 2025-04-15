@@ -34,15 +34,15 @@ class CloudBroker():
 
         spec = pod.get('spec', {})
         if not spec or 'nodeName' not in spec:
-            health_overview = self.get_health_overview()
             self.logger.error(
-                f"Pod spec is missing or does not contain 'nodeName'. Pod details: {pod}"
+                f"Pod spec is missing or does not contain 'nodeName'. Pod details: {pod}, Spec details: {spec}"
             )
+            health_overview = self.get_health_overview()
             self.logger.error(
                 f"Before processing pods, ensure that the Redpanda cluster is healthy. Health overview is: {health_overview}"
             )
             raise KeyError(
-                "Missing 'nodeName' in pod['spec']. Health overview: {health_overview}"
+                f"Missing 'nodeName' in pod['spec']. Health overview: {health_overview}"
             )
 
         # Backward compatibility
