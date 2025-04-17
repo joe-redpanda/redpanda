@@ -356,6 +356,18 @@ void partition_balancer_planner::init_per_node_state(
     }
 
     for (const auto& node_report : health_report.node_reports) {
+        if (
+          ctx.config().space_management_enabled
+          && !node_report->local_state.log_data_size) {
+            // Since space management is enabled, we expect log_data_size to be
+            // present in the health report. If it is not present, probably the
+            // node was recently restarted and hasn't yet had time to calculate
+            // it for the first time. To avoid possible skew caused by using raw
+            // disk usage numbers for some nodes and not the others, we skip
+            // this disk report.
+            continue;
+        }
+
         const auto [total, free] = get_node_bytes_info(
           node_report->local_state);
         auto disk_info = node_disk_space{node_report->id, total, total - free};
