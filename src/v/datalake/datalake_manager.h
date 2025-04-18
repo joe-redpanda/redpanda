@@ -138,6 +138,12 @@ private:
      */
     ss::future<> check_and_manage_disk_space();
 
+    /*
+     * A helper that can be called when disk limit configuration values change
+     * which will recompute the active configuration.
+     */
+    void update_disk_limits();
+
 private:
     model::node_id _self;
     ss::sharded<raft::group_manager>* _group_mgr;
@@ -171,6 +177,35 @@ private:
     ssx::work_queue _queue;
     ssx::semaphore _disk_space_monitor_sem{0, "datalake::disk_space_monitor"};
     config::binding<std::chrono::milliseconds> _disk_usage_interval;
+    /*
+     * _disk_bytes_reservable_total
+     *
+     * - this is the total amount of disk space that can be reserved. it is
+     * a fixed value set when configuration changes. it's basically the upper
+     * limit on the total size of the scratch space used on the system. it
+     * is only accessed by core 0.
+     *
+     * _core0_disk_bytes_reservable
+     *
+     * - this is a semaphore that represents a subset of the reservable
+     * total which is currently available for reserving. when the system
+     * starts this semaphore has units equal to the reservable total. as
+     * translators on other cores reserve disk space, they subtract off
+     * units from this semaphore, making those units unreservable. the
+     * semaphore is only used on core 0.
+     *
+     * schedulers consume units from the semaphore by contacting the datalake
+     * manager on core 0. currently cores do not return units willingly.
+     * instead, when the data lake manager is low on reservable space, it (1)
+     * requests translators to free space by finishing and then (2) steals
+     * unreserved units from each core to be handed back out on demand.
+     */
+    size_t _disk_bytes_reservable_total{0};
+    size_t _disk_bytes_reservable_soft_limit{0};
+    ssx::semaphore _core0_disk_bytes_reservable;
+    config::binding<bool> _disk_space_manager_enable;
+    config::binding<size_t> _scratch_space_size_bytes;
+    config::binding<double> _scratch_space_soft_limit_size_percent;
 };
 
 } // namespace datalake

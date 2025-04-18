@@ -4125,6 +4125,16 @@ configuration::configuration()
       "Size, in bytes, of the amount of scratch space datalake should use.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       5_GiB)
+  , datalake_scratch_space_soft_limit_size_percent(
+      *this,
+      "datalake_scratch_space_soft_limit_size_percent",
+      "Size of the scratch space datalake soft limit expressed as a percentage "
+      "of the datalake_scratch_space_size_bytes configuration value.",
+      {.needs_restart = needs_restart::no,
+       .example = "80.0",
+       .visibility = visibility::user},
+      80.0,
+      {.min = 0.0, .max = 100.0})
   , datalake_disk_usage_overage_coeff(
       *this,
       "datalake_disk_usage_overage_coeff",

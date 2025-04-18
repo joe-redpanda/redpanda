@@ -142,7 +142,15 @@ datalake_manager::datalake_manager(
             ex);
       })
   , _disk_usage_interval(
-      config::shard_local_cfg().datalake_disk_space_monitor_interval.bind()) {}
+      config::shard_local_cfg().datalake_disk_space_monitor_interval.bind())
+  , _core0_disk_bytes_reservable{0, "datalake::core0_disk_bytes_reservable"}
+  , _disk_space_manager_enable(
+      config::shard_local_cfg().datalake_disk_space_monitor_enable.bind())
+  , _scratch_space_size_bytes(
+      config::shard_local_cfg().datalake_scratch_space_size_bytes.bind())
+  , _scratch_space_soft_limit_size_percent(
+      config::shard_local_cfg()
+        .datalake_scratch_space_soft_limit_size_percent.bind()) {}
 datalake_manager::~datalake_manager() = default;
 
 size_t datalake_manager::total_translation_backlog() const {
@@ -266,6 +274,15 @@ ss::future<> datalake_manager::start() {
      */
     const ss::shard_id disk_space_monitor_core = 0;
     if (ss::this_shard_id() == disk_space_monitor_core) {
+        // setup config bindings to trigger reconfiguration
+        _disk_space_manager_enable.watch([this] { update_disk_limits(); });
+        _scratch_space_size_bytes.watch([this] { update_disk_limits(); });
+        _scratch_space_soft_limit_size_percent.watch(
+          [this] { update_disk_limits(); });
+
+        // initialize
+        update_disk_limits();
+
         ssx::spawn_with_gate(_gate, [this] { return disk_space_monitor(); });
     }
 
@@ -648,6 +665,60 @@ size_t datalake_manager::partitions_with_translation_blocked() const {
     // TODO: Return blocked if partition wasn't translated for a long time f.e.
     // moret
     return 0;
+}
+
+void datalake_manager::update_disk_limits() {
+    // the requests
+    auto new_total_size = _scratch_space_size_bytes();
+    if (!_disk_space_manager_enable()) {
+        // when we disable the manager we want to effectively stop enforcing
+        // limits. so make the total allowable size massive, but not so big that
+        // we need to worry about any kind of integer overflow.
+        new_total_size = 50_TiB;
+    }
+
+    const auto new_soft_percent = _scratch_space_soft_limit_size_percent();
+
+    // current settings
+    const auto prev_total = _disk_bytes_reservable_total;
+    const auto prev_soft_limit = _disk_bytes_reservable_soft_limit;
+    const auto prev_available = _core0_disk_bytes_reservable.available_units();
+
+    _disk_bytes_reservable_soft_limit = static_cast<size_t>(
+      static_cast<double>(new_total_size) * (new_soft_percent / 100.0));
+
+    if (new_total_size > _disk_bytes_reservable_total) {
+        auto units = new_total_size - _disk_bytes_reservable_total;
+        _disk_bytes_reservable_total = new_total_size;
+        _core0_disk_bytes_reservable.signal(units);
+
+    } else if (new_total_size < _disk_bytes_reservable_total) {
+        auto units = _disk_bytes_reservable_total - new_total_size;
+        _disk_bytes_reservable_total = new_total_size;
+        _core0_disk_bytes_reservable.consume(units);
+    }
+
+    /*
+     * when shrinking the size of the scratch space the semaphore tracking
+     * available units on core 0 may become negative because all the units are
+     * currently handed out to other cores.
+     */
+    auto format_reservable = [](auto v) {
+        if (v >= 0) {
+            return fmt::format("{}", human::bytes(v));
+        }
+        return fmt::format("{} ({})", human::bytes(0), v);
+    };
+
+    vlog(
+      datalake_log.info,
+      "Setting scratch space total {} soft {} available {} prev ({}, {}, {})",
+      human::bytes(_disk_bytes_reservable_total),
+      human::bytes(_disk_bytes_reservable_soft_limit),
+      format_reservable(_core0_disk_bytes_reservable.available_units()),
+      human::bytes(prev_total),
+      human::bytes(prev_soft_limit),
+      format_reservable(prev_available));
 }
 
 } // namespace datalake

@@ -763,6 +763,8 @@ struct configuration final : public config_store {
     bounded_property<std::chrono::milliseconds>
       datalake_disk_space_monitor_interval;
     property<size_t> datalake_scratch_space_size_bytes;
+    bounded_property<double, numeric_bounds>
+      datalake_scratch_space_soft_limit_size_percent;
     property<double> datalake_disk_usage_overage_coeff;
 
     configuration();
