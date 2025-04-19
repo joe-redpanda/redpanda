@@ -82,8 +82,7 @@ using reservation = ssx::semaphore_units;
 
 /**
  * Tracks the resources needed by translators. Translators work with a
- * reservation tracker to reserve resources needed for translation. Currently
- * tracks memory but can be extended to other resources like disk usage.
+ * reservation tracker to reserve resources needed for translation.
  *
  * note: All reservations must be destroyed before destroying the tracker.
  */
@@ -104,6 +103,20 @@ public:
     virtual bool memory_exhausted() const = 0;
 
     virtual size_t allocated_memory() const = 0;
+
+    /**
+     * Returns a reservation of disk space. The reservation may be any size,
+     * with the passed-in size being a hint. If more units are reserved than are
+     * needed, then release the unused units if they will not be used in the
+     * near term (e.g. a translator leaving the running state).
+     *
+     * Returning the unused units is important because disk space reservations
+     * are held across all translator states, including the idle state. Because
+     * of this persistence, even small amounts of unused reservation can add up
+     * to large reservations across hundreds or thousands of translators.
+     */
+    virtual ss::future<reservation> reserve_disk(size_t, ss::abort_source&) = 0;
+    virtual size_t release_unused_disk_units() = 0;
 
     static std::unique_ptr<reservations_tracker> make_default(
       size_t total_memory,
@@ -454,6 +467,13 @@ public:
           , reason(reason) {}
     };
     void request_immediate_finish(chunked_vector<finish_request>);
+
+    /*
+     * Consume and return unused disk reservation units. This interface is used
+     * by the global disk manager to harvest units from cores in order to
+     * redistribute them.
+     */
+    size_t release_unused_disk_units();
 
 private:
     ss::future<> main();

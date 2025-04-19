@@ -53,6 +53,7 @@ redpanda_cc_library(
         "//src/v/random:generators",
         "//src/v/ssx:future_util",
         "//src/v/ssx:semaphore",
+        "//src/v/utils:human",
         "//src/v/utils:to_string",
         "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",

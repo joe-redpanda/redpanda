@@ -11,6 +11,7 @@
 #include "datalake/logger.h"
 #include "datalake/translation/scheduling_policies.h"
 #include "ssx/future-util.h"
+#include "utils/human.h"
 #include "utils/to_string.h"
 
 namespace datalake::translation::scheduling {
@@ -28,6 +29,7 @@ public:
       , _available_memory{_total_memory, "dl/translation/memory"}
       , _reservation_block_size(block_size)
       , _notifier(notifier)
+      , _shard_available_disk{0, "dl/translation/disk"}
       , _disk_manager(disk_manager) {
         auto blocks = _total_memory / block_size;
         vassert(
@@ -76,6 +78,142 @@ public:
         return _total_memory - _available_memory.available_units();
     }
 
+    /*
+     * disk reservation overages are handled by requesting units from the global
+     * disk manager, and then waiting for sufficient disk resources to become
+     * available.
+     */
+    ss::future<reservation>
+    reserve_disk(size_t, ss::abort_source& as) override {
+        const auto init_backoff = 100ms;
+        const auto max_backoff = 1000ms;
+
+        /*
+         * Having some block reservation acquired by each translator is nice
+         * because even though the hot path for tiny, frequent allocations would
+         * usually return an immediately ready future in this method, we'd still
+         * be subject to seastar scheduler preemptions and these allocations are
+         * made in the translation loop.
+         *
+         * However, it is much less clear what a good value is for the size of a
+         * memory block reservation that a schedulers gives to a translator.
+         * Currently we use the same size as the memory reservation (on the
+         * order of single digit MBs). There are a few reasons for this. First,
+         * even modestly sized reservations will reduce small allocations
+         * round-trips to coroutine invocations and thus reduce preemption
+         * checks for the translation loop.
+         *
+         * But the primary reasons for re-using the memory block size is
+         * that (1) such reservations are unavailable to other translators so
+         * choosing a smaller size allows more fine grained control and (2)
+         * using a larger size is unlikely to provide any real value since disk
+         * will generally be found in more abundance than memory, and both disk
+         * and memory are decremented in lock step by the serde parquet reader.
+         */
+        const auto block_size = _reservation_block_size;
+
+        auto backoff = init_backoff;
+        while (true) {
+            /*
+             * first we attempt to acquire disk reservation from what is
+             * available local on this shard. when a translator on this core
+             * finishes it will return its units to this pool. we use up all of
+             * the available units, so check that get_units returns a positive
+             * value because when requesting 0 units it will be granted but the
+             * system won't make progress.
+             */
+            auto opt_units = ss::try_get_units(
+              _shard_available_disk,
+              std::min(block_size, _shard_available_disk.current()));
+            if (opt_units.has_value() && opt_units.value().count() > 0) {
+                if (datalake_log.is_enabled(ss::log_level::trace)) {
+                    vlog(
+                      datalake_log.trace,
+                      "Allocated {} disk reservation from shard-local pool. "
+                      "Total "
+                      "available {}",
+                      human::bytes(opt_units.value().count()),
+                      human::bytes(_shard_available_disk.current()));
+                }
+                co_return std::move(opt_units.value());
+            }
+
+            /*
+             * if we are unable to acquire units locally, then pop on over
+             * to core-0 and ask the disk manager if there are available
+             * units that we can have. deposit any units locally and try
+             * again. note that below we add a very short, intentional delay
+             * to prevent accidentally spinning. we avoid immediately taking the
+             * units and returning to avoid the possibility that the translators
+             * on a core continually take units from each other rather than
+             * giving the system an opportunity to redistribute the units. this
+             * concern, however, is speculative.
+             *
+             * unlike the smaller block reserved for a translators, here we
+             * will get back a much larger reservations, say 50mb or 100mb,
+             * which helps reduce x-core communication. The size of the block of
+             * memory reserved by a scheduler from the datalake manager is
+             * governed by datalake_disk_reservation_block_size.
+             */
+            auto units = co_await _disk_manager.reserve();
+            if (units > 0) {
+                _shard_available_disk.signal(units);
+                if (datalake_log.is_enabled(ss::log_level::debug)) {
+                    vlog(
+                      datalake_log.debug,
+                      "Received {} disk reservation from global pool. Total "
+                      "available {}",
+                      human::bytes(units),
+                      human::bytes(_shard_available_disk.current()));
+                }
+            }
+
+            /*
+             * for the case in which we are unable to get enough units to
+             * continue we go into a polling loop where we again check
+             * locally and then check with the disk manager. the reason that
+             * this works is that the contract with the disk manager is such
+             * that if it cannot satisfy a request for additional units that
+             * it will actively work towards acquiring more units. this is
+             * done by requesting translators to finish. the released disk
+             * reservations which will first be available to the finishing
+             * translator's core, and then to the global pool.
+             */
+            backoff = std::min(backoff, max_backoff);
+            try {
+                co_await ss::sleep_abortable(backoff, as);
+            } catch (...) {
+                as.check();
+                std::rethrow_exception(std::current_exception());
+            }
+            backoff *= 2;
+
+            /*
+             * waiting until max backoff limits noise from normal retries, and
+             * limiting the logging rate itself helps when multiple translators
+             * are in this same retry loop.
+             */
+            if (backoff >= max_backoff) {
+                static constexpr auto freq = 5s;
+                thread_local static ss::logger::rate_limit rate(freq);
+                vloglr(
+                  datalake_log,
+                  ss::log_level::info,
+                  rate,
+                  "Waiting on shard-local disk reservation. Total available {}",
+                  human::bytes(_shard_available_disk.current()));
+            }
+        }
+    }
+
+    size_t release_unused_disk_units() override {
+        const auto units = _shard_available_disk.current();
+        if (units > 0) {
+            _shard_available_disk.consume(units);
+        }
+        return units;
+    }
+
 private:
     const size_t _total_memory;
     // note: the semaphore should be alive until all the reserved units are
@@ -83,7 +221,8 @@ private:
     ssx::semaphore _available_memory;
     const size_t _reservation_block_size;
     scheduling_notifications& _notifier;
-    [[maybe_unused]] disk_manager& _disk_manager;
+    ssx::semaphore _shard_available_disk;
+    disk_manager& _disk_manager;
 };
 
 std::ostream& operator<<(std::ostream& os, const translation_status& status) {
@@ -412,6 +551,10 @@ ss::future<> scheduler::remove_translator(const translator_id& id) {
 
 size_t scheduler::running_translators() const {
     return _executor.running.size();
+}
+
+size_t scheduler::release_unused_disk_units() {
+    return _mem_tracker->release_unused_disk_units();
 }
 
 void scheduler::request_immediate_finish(
