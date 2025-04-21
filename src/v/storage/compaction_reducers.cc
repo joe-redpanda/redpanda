@@ -161,7 +161,7 @@ copy_data_segment_reducer::filter(model::record_batch batch) {
     int32_t records_seen = 0;
     co_await batch.for_each_record_async(
       [this, &batch, &offset_deltas, &records_seen](const model::record& r) {
-          records_seen++;
+          ++records_seen;
           return maybe_keep_offset(
             batch, r, batch.record_count() == records_seen, offset_deltas);
       });
