@@ -29,4 +29,5 @@ apt-get install -qq \
   npm \
   openssh-server \
   pciutils \
+  software-properties-common \
   sudo
