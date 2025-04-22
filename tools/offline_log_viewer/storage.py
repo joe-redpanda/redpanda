@@ -139,6 +139,19 @@ class BatchType(Enum):
     version_fence = 23
     tx_tm_hosted_trasactions = 24
     prefix_truncate = 25
+    plugin_update = 26
+    tx_registry = 27
+    cluster_recovery_cmd = 28
+    compaction_placeholder = 29
+    role_management_cmd = 30
+    client_quota = 31
+    data_migration_cmd = 32
+    group_fence_tx = 33
+    partition_properties_update = 34
+    datalake_coordinator = 35
+    dl_placeholder = 36
+    dl_stm_command = 37
+    datalake_translation_state = 38
     unknown = -1
 
     @classmethod
