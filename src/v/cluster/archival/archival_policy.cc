@@ -36,14 +36,6 @@ namespace archival {
 
 using namespace std::chrono_literals;
 
-bool archival_policy::eligible_for_compacted_reupload(
-  const storage::segment& s) {
-    if (config::shard_local_cfg().log_compaction_use_sliding_window) {
-        return s.finished_windowed_compaction();
-    }
-    return s.finished_self_compaction();
-}
-
 std::ostream& operator<<(std::ostream& s, const upload_candidate& c) {
     vassert(
       c.sources.empty() || c.remote_sources.empty(),

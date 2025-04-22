@@ -28,6 +28,14 @@
 #include <ranges>
 
 namespace archival {
+
+bool eligible_for_compacted_reupload(const storage::segment& s) {
+    if (config::shard_local_cfg().log_compaction_use_sliding_window) {
+        return s.finished_windowed_compaction();
+    }
+    return s.finished_self_compaction();
+}
+
 segment_collector::segment_collector(
   model::offset begin_inclusive,
   const cloud_storage::partition_manifest& manifest,
@@ -569,8 +577,7 @@ segment_collector::lookup_result segment_collector::find_next_segment(
         return {};
     }
 
-    auto segment_is_compacted
-      = archival_policy::eligible_for_compacted_reupload(*segment);
+    auto segment_is_compacted = eligible_for_compacted_reupload(*segment);
     auto compacted_segment_expected
       = mode == segment_collector_mode::compacted_reupload;
     auto compacted_segment_allowed

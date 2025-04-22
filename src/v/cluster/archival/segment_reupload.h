@@ -56,6 +56,8 @@ struct segment_collector_stream {
     ss::noncopyable_function<ss::input_stream<char>()> create_input_stream;
 };
 
+bool eligible_for_compacted_reupload(const storage::segment&);
+
 class segment_collector {
 public:
     using segment_seq = std::vector<ss::lw_shared_ptr<storage::segment>>;
