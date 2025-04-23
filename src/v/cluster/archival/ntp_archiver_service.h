@@ -421,6 +421,10 @@ public:
 
     ss::future<std::error_code> reset_scrubbing_metadata();
 
+    cloud_storage::segment_name segment_name_for_stream(
+      const segment_collector_stream& strm,
+      std::optional<model::term_id> archiver_term = std::nullopt);
+
 private:
     // Labels for contexts in which manifest uploads occur. Used for logging.
     static constexpr const char* housekeeping_ctx_label = "housekeeping";
@@ -459,7 +463,7 @@ private:
         /// NOTE: scheduled future may hold segment read locks.
         std::optional<ss::future<ntp_archiver_upload_result>> result;
         /// Last offset of the uploaded segment or part
-        model::offset inclusive_last_offset;
+        model::offset inclusive_last_offset{};
         /// Segment metadata
         std::optional<cloud_storage::partition_manifest::segment_meta> meta;
         /// Name of the uploaded segment
@@ -496,6 +500,9 @@ private:
 
     ss::future<scheduled_upload> do_schedule_single_upload(
       upload_candidate_with_locks, model::term_id, segment_upload_kind);
+
+    ss::future<scheduled_upload> do_schedule_single_upload_streaming(
+      segment_collector_stream, model::term_id, segment_upload_kind);
 
     /// Start upload without waiting for it to complete
     ss::future<scheduled_upload>
@@ -580,11 +587,35 @@ private:
       std::optional<std::reference_wrapper<retry_chain_node>> source_rtc
       = std::nullopt);
 
+    ss::future<ntp_archiver_upload_result> upload_segment(
+      segment_collector_stream strm,
+      const cloud_storage::segment_meta& meta,
+      std::optional<fragmented_vector<model::tx_range>> tx_ranges
+      = std::nullopt);
+
+    /// Upload tx-manifest
+    /// Return error-code if the manifest was uploaded or upload was attempted
+    /// and failed. Return nullopt if there are no aborted transactions in the
+    /// provided offset range.
+    ss::future<std::optional<cloud_storage::upload_result>>
+    maybe_upload_aborted_tx(
+      cloud_storage::remote_segment_path path,
+      std::optional<fragmented_vector<model::tx_range>> tx,
+      retry_chain_node& parent_rtc);
+
     /// Get aborted transactions for upload
     ///
     /// \return list of aborted transactions
     ss::future<fragmented_vector<model::tx_range>>
     get_aborted_transactions(upload_candidate candidate);
+
+    ss::future<fragmented_vector<model::tx_range>> get_aborted_transactions(
+      model::offset start_offset, model::offset end_offset);
+
+    ss::future<
+      std::pair<std::optional<fragmented_vector<model::tx_range>>, size_t>>
+    get_aborted_transactions(
+      const segment_collector_stream& meta, const cloud_storage::segment_name&);
 
     /// Upload segment's transactions metadata to S3.
     ///
