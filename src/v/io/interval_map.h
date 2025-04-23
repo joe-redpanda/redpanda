@@ -116,9 +116,11 @@ public:
     /**
      * Erase the interval pointed to by the iterator \it.
      *
+     * Returns an iterator to the next element in the map.
+     *
      * Invalidates iterators.
      */
-    void erase(const_iterator it);
+    const_iterator erase(const_iterator it);
 
 private:
     map_type map_;
@@ -220,8 +222,10 @@ bool interval_map<T, V>::empty() const {
 }
 
 template<std::integral T, typename V>
-void interval_map<T, V>::erase(interval_map<T, V>::const_iterator it) {
-    map_.erase(it);
+interval_map<T, V>::const_iterator
+interval_map<T, V>::erase(interval_map<T, V>::const_iterator it) {
+    return map_.erase(it);
+}
 }
 
 } // namespace experimental::io
