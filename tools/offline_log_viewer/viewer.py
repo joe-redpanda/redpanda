@@ -122,14 +122,15 @@ class OfflineLogViewer():
                 l.decode()
                 self.output_json(l.records)
 
-    def print_consumer_offsets(self):
+    def print_consumer_offsets(self, decode_all_batches: bool):
         store = self.build_store()
         logs = {}
         for ntp in store.ntps:
             if ntp.nspace == "kafka" and ntp.topic == "__consumer_offsets":
                 if self._should_skip_partition(ntp.partition):
                     continue
-                logs[str(ntp)] = SerializableGenerator(OffsetsLog(ntp))
+                logs[str(ntp)] = SerializableGenerator(
+                    OffsetsLog(ntp, decode_all_batches))
         self.stream_json(logs, wrap_with_gen=False)
 
     def print_tx_coordinator(self):
@@ -215,7 +216,9 @@ class OfflineLogViewer():
         elif self._config.type == "legacy-group":
             self.print_groups()
         elif self._config.type == "consumer_offsets":
-            self.print_consumer_offsets()
+            self.print_consumer_offsets(decode_all_batches=False)
+        elif self._config.type == "consumer_offsets_all":
+            self.print_consumer_offsets(decode_all_batches=True)
         elif self._config.type == "tx_coordinator":
             self.validate_tx_coordinator()
             self.print_tx_coordinator()
@@ -251,11 +254,18 @@ def main():
         parser.add_argument('--type',
                             type=str,
                             choices=[
-                                'controller', 'kvstore', 'kafka',
-                                'consumer_offsets', 'legacy-group',
-                                'kafka_records', 'tx_coordinator',
-                                'topic_manifest', 'topic_manifest_legacy',
-                                'controller_snapshot', 'crash_report'
+                                'controller',
+                                'kvstore',
+                                'kafka',
+                                'consumer_offsets',
+                                'legacy-group',
+                                'kafka_records',
+                                'tx_coordinator',
+                                'topic_manifest',
+                                'topic_manifest_legacy',
+                                'controller_snapshot',
+                                'crash_report',
+                                "consumer_offsets_all",
                             ],
                             required=True,
                             help='operation to execute')

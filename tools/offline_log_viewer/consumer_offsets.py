@@ -176,20 +176,28 @@ def decode_record(hdr, r):
     return v
 
 
+# 1 - raft_data - regular offset commits and group metadata
+# 10 - tx_fence - tx offset commits
+# 15 - group_commit_tx
+# 16 - group_abort_tx
+
+GROUP_RECORDS = {1, 10, 15, 16}
+
+
 class OffsetsLog:
-    def __init__(self, ntp):
+    def __init__(self, ntp, decode_all_batches=False):
         self.ntp = ntp
+        self.decode_all = decode_all_batches
 
     def __iter__(self):
-        # 1 - raft_data - regular offset commits
-        # 10 - tx_fence - tx offset commits
-        # 15 - group_commit_tx
-        # 16 - group_abort_tx
-        accepted_batch_types = set([1, 10, 15, 16])
+
         for path in self.ntp.segments:
             s = Segment(path)
             for b in s:
-                if b.header.type not in accepted_batch_types:
-                    continue
-                for r in b:
-                    yield decode_record(b.header, r)
+                if b.header.type not in GROUP_RECORDS:
+                    if not self.decode_all:
+                        continue
+                    yield b.header_dict()
+                else:
+                    for r in b:
+                        yield decode_record(b.header, r)
