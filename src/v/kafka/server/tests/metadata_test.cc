@@ -95,6 +95,15 @@ protected:
         BOOST_REQUIRE(!res.errc);
     }
 
+    void disable_sasl() {
+        cluster::config_update_request r{.upsert = {{"enable_sasl", "false"}}};
+        auto res = app.controller->get_config_frontend()
+                     .local()
+                     .patch(r, model::timeout_clock::now() + 1s)
+                     .get();
+        BOOST_REQUIRE(!res.errc);
+    }
+
     security::server_first_message send_scram_client_first(
       kafka::client::transport& client,
       const security::client_first_message& client_first) {
@@ -198,7 +207,7 @@ FIXTURE_TEST(metadata_v9_no_topics, metadata_fixture) {
 }
 
 FIXTURE_TEST(metadata_v9_topics, metadata_fixture) {
-    ss::sstring test_topic_name = "test";
+    ss::sstring test_topic_name = "metadata_v9_topics";
 
     create_topic(test_topic_name, 1, 1);
 
@@ -240,13 +249,14 @@ FIXTURE_TEST(metadata_v9_topics, metadata_fixture) {
 
 FIXTURE_TEST(metadata_v9_authz_acl, metadata_fixture) {
     wait_for_controller_leadership().get();
-    ss::sstring test_topic_name = "test";
+    ss::sstring test_topic_name = "metadata_v9_authz_acl";
 
     create_topic(test_topic_name, 1, 1);
     create_user(test_username, test_password);
 
     // Enable SASL to enable authentication
     enable_sasl();
+    auto disable_sasl_defer = ss::defer([this] { disable_sasl(); });
 
     // Start by creating just describe ACLs for the cluster for the user
     std::vector<security::acl_binding> cluster_bindings{security::acl_binding(
@@ -331,4 +341,28 @@ FIXTURE_TEST(metadata_v9_authz_acl, metadata_fixture) {
     BOOST_CHECK_EQUAL(
       resp.data.topics[0].topic_authorized_operations,
       kafka::details::to_bit_field(expected_cluster_ops));
+}
+
+FIXTURE_TEST(metadata_empty_topic_name, metadata_fixture) {
+    using kafka::api_version;
+
+    auto client = make_kafka_client().get();
+    client.connect().get();
+
+    constexpr auto make_request = []() {
+        return kafka::metadata_request{.data{
+          .topics = {{{.name{}}}},
+          .allow_auto_topic_creation = false,
+          .include_cluster_authorized_operations = false,
+          .include_topic_authorized_operations = false}};
+    };
+    const kafka::metadata_response_data default_response;
+    for (api_version ver{8}; ver < api_version{10}; ++ver) {
+        auto resp = client.dispatch(make_request(), ver).get();
+        BOOST_REQUIRE(resp.data.errored());
+        BOOST_REQUIRE(!resp.data.topics.empty());
+        BOOST_REQUIRE_EQUAL(
+          resp.data.topics.front().error_code,
+          kafka::error_code::invalid_topic_exception);
+    }
 }

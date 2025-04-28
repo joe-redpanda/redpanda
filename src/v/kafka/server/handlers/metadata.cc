@@ -24,6 +24,7 @@
 #include "kafka/server/handlers/details/security.h"
 #include "kafka/server/handlers/topics/topic_utils.h"
 #include "kafka/server/response.h"
+#include "model/errc.h"
 #include "model/metadata.h"
 #include "model/namespace.h"
 #include "model/timeout_clock.h"
@@ -326,8 +327,12 @@ get_topic_metadata(
         if (
           !config::shard_local_cfg().auto_create_topics_enabled
           || !request.data.allow_auto_topic_creation) {
+            bool valid = validate_kafka_topic_name(topic.name)
+                         == model::errc::success;
             res.push_back(make_error_topic_response(
-              std::move(topic.name), error_code::unknown_topic_or_partition));
+              std::move(topic.name),
+              valid ? error_code::unknown_topic_or_partition
+                    : error_code::invalid_topic_exception));
             continue;
         }
         /**
