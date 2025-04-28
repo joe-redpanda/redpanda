@@ -2851,8 +2851,8 @@ disk_log_impl::timequery(timequery_config cfg) {
 
     if (
       !batches.empty() && batches.front().header().max_timestamp >= cfg.time) {
-        co_return batch_timequery(
-          batches.front(), cfg.min_offset, cfg.time, cfg.max_offset);
+        co_return co_await batch_timequery(
+          std::move(batches.front()), cfg.min_offset, cfg.time, cfg.max_offset);
     }
 
     co_return std::nullopt;
