@@ -141,7 +141,7 @@ public:
     static uint64_t estimate_size(uint64_t log_size) {
         // Index entry every `step` bytes, each entry is 16 bytes
         // plus one entry that is with the first batch.
-        return 1 + 16 * log_size / default_data_buffer_step;
+        return 16 * (log_size / default_data_buffer_step + 1);
     }
 
     void maybe_track(
