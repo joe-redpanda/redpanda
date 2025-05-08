@@ -383,6 +383,34 @@ path_type_map = {
             "MatchType": ("kafka::describe_client_quotas_match_type", "int8"),
         },
     },
+    "DescribeUserScramCredentialsRequestData": {
+        "Users": {
+            "Name": ("kafka::scram_user_name", "string"),
+        },
+    },
+    "DescribeUserScramCredentialsResponseData": {
+        "Results": {
+            "User": ("kafka::scram_user_name", "string"),
+            "CredentialInfos": {
+                "Mechanism": ("kafka::scram_mechanism", "int8"),
+            },
+        },
+    },
+    "AlterUserScramCredentialsRequestData": {
+        "Deletions": {
+            "Name": ("kafka::scram_user_name", "string"),
+            "Mechanism": ("kafka::scram_mechanism", "int8"),
+        },
+        "Upsertions": {
+            "Name": ("kafka::scram_user_name", "string"),
+            "Mechanism": ("kafka::scram_mechanism", "int8"),
+        },
+    },
+    "AlterUserScramCredentialsResponseData": {
+        "Results": {
+            "User": ("kafka::scram_user_name", "string")
+        },
+    },
 }
 
 # a few kafka field types specify an entity type
@@ -643,6 +671,12 @@ STRUCT_TYPES = [
     "OpData",
     "ComponentData",
     "ValueData",
+    "UserName",
+    "DescribeUserScramCredentialsResult",
+    "CredentialInfo",
+    "ScramCredentialDeletion",
+    "ScramCredentialUpsertion",
+    "AlterUserScramCredentialsResult",
 ]
 
 # A list of StructTypes that are allowed to be not arrays in the schema.
