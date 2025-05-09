@@ -1157,3 +1157,24 @@ redpanda_cc_btest(
         "@seastar",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "distributed_kv_stm_test",
+    timeout = "short",
+    srcs = [
+        "distributed_kv_stm_tests.cc",
+    ],
+    cpu = 1,
+    deps = [
+        ":raft_fixture_retry_policy",
+        "//src/v/base",
+        "//src/v/cluster",
+        "//src/v/raft",
+        "//src/v/raft/tests:raft_fixture",
+        "//src/v/serde",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+        "@seastar",
+        "@seastar//:testing",
+    ],
+)
