@@ -105,19 +105,21 @@ func executeK8SBundle(ctx context.Context, bp bundleParams) error {
 
 		adminAddresses, err = adminAddressesFromK8S(ctx, bp.namespace)
 		if err != nil {
-			zap.L().Sugar().Debugf("unable to get admin API addresses from the k8s API: %v", err)
+			zap.L().Sugar().Warnf("unable to get admin API addresses from the k8s API: %v", err)
 		}
+	}
+	// It's always safe to use the admin API addresses from the profile, even if
+	// we already have the addresses from the k8s API.
+	if len(bp.p.AdminAPI.Addresses) > 0 {
+		adminAddresses = adminAddressesUnion(bp.p.AdminAPI.Addresses, adminAddresses)
+	} else {
+		zap.L().Sugar().Warnf("no admin API addresses found in the current rpk profile")
 	}
 	if len(adminAddresses) == 0 {
-		if len(bp.p.AdminAPI.Addresses) > 0 {
-			zap.L().Sugar().Debugf("using admin API addresses from profile: %v", bp.p.AdminAPI.Addresses)
-			adminAddresses = bp.p.AdminAPI.Addresses
-		} else {
-			defaultAddress := fmt.Sprintf("127.0.0.1:%v", config.DefaultAdminPort)
-			zap.L().Sugar().Debugf("profile empty, using %v for the Admin API address", defaultAddress)
-			adminAddresses = []string{defaultAddress}
-		}
+		defaultAddress := fmt.Sprintf("127.0.0.1:%v", config.DefaultAdminPort)
+		adminAddresses = []string{defaultAddress}
 	}
+	zap.L().Debug("using admin API addresses", zap.Strings("addresses", adminAddresses))
 	steps = append(steps, []step{
 		saveClusterAdminAPICalls(ctx, ps, bp.fs, bp.p, adminAddresses, bp.partitions),
 		saveSingleAdminAPICalls(ctx, ps, bp.fs, bp.p, adminAddresses, bp.cpuProfilerWait),
@@ -141,6 +143,20 @@ func executeK8SBundle(ctx context.Context, bp bundleParams) error {
 
 	fmt.Printf("Debug bundle saved to %q\n", f.Name())
 	return nil
+}
+
+// adminAddressesUnion returns the union of two slices of adminAddresses.
+func adminAddressesUnion(a, b []string) []string {
+	m := make(map[string]struct{}) // track unique addresses.
+	for _, v := range a {
+		m[v] = struct{}{}
+	}
+	for _, v := range b {
+		if _, ok := m[v]; !ok {
+			a = append(a, v)
+		}
+	}
+	return a
 }
 
 func k8sClientset() (*kubernetes.Clientset, error) {
