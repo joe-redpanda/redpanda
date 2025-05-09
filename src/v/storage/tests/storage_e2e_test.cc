@@ -4019,6 +4019,8 @@ struct batch_summary {
     model::offset base;
     model::offset last;
     size_t batch_size;
+    model::timestamp base_ts;
+    model::timestamp max_ts;
 };
 
 struct batch_summary_accumulator {
@@ -4029,6 +4031,8 @@ struct batch_summary_accumulator {
           .last = b.last_offset(),
           .batch_size = b.data().size_bytes()
                         + model::packed_record_batch_header_size,
+          .base_ts = b.header().first_timestamp,
+          .max_ts = b.header().max_timestamp,
         };
         summaries.push_back(summary);
         acc_size.push_back(sz + summary.batch_size);
@@ -4284,6 +4288,8 @@ TEST_F(storage_test_fixture, test_offset_range_size) {
         auto ix_last = model::test::get_int(ix_base, summaries.size() - 1);
         auto base = summaries[ix_base].base;
         auto last = summaries[ix_last].last;
+        auto base_ts = summaries[ix_base].base_ts;
+        auto max_ts = summaries[ix_last].max_ts;
 
         auto expected_size = acc.acc_size[ix_last] - acc.prev_size[ix_base];
         auto result = log->offset_range_size(base, last).get();
@@ -4292,14 +4298,19 @@ TEST_F(storage_test_fixture, test_offset_range_size) {
 
         vlog(
           e2e_test_log.debug,
-          "base: {}, last: {}, expected size: {}, actual size: {}",
+          "base: {}, last: {}, base_ts: {}, max_ts: {}, expected size: {}, "
+          "actual size: {}",
           base,
           last,
+          base_ts,
+          max_ts,
           expected_size,
           result->on_disk_size);
 
         ASSERT_EQ(expected_size, result->on_disk_size);
         ASSERT_EQ(last, result->last_offset);
+        ASSERT_EQ(base_ts, result->first_timestamp);
+        ASSERT_EQ(max_ts, result->last_timestamp);
 
         // Validate using the segment reader
         size_t consumed_size = 0;
@@ -4392,6 +4403,7 @@ TEST_F(storage_test_fixture, test_offset_range_size2) {
         // - compare it to on_disk_size field of the result
         auto base_ix = model::test::get_int((size_t)0, summaries.size() - 1);
         auto base = summaries[base_ix].base;
+        auto base_ts = summaries[base_ix].base_ts;
         auto max_size = acc.acc_size.back() - acc.prev_size[base_ix];
         auto min_size = storage::segment_index::default_data_buffer_step;
         auto target_size = model::test::get_int(min_size, max_size);
@@ -4415,6 +4427,8 @@ TEST_F(storage_test_fixture, test_offset_range_size2) {
         }
         auto expected_size = acc.acc_size[result_ix] - acc.prev_size[base_ix];
         ASSERT_EQ(expected_size, result->on_disk_size);
+        ASSERT_EQ(base_ts, result->first_timestamp);
+        ASSERT_EQ(summaries[result_ix].max_ts, result->last_timestamp);
 
         // Validate using the segment reader
         size_t consumed_size = 0;
