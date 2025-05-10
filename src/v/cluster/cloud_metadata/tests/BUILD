@@ -100,3 +100,25 @@ redpanda_cc_gtest(
         "@seastar",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "manifest_downloads_test",
+    timeout = "short",
+    srcs = [
+        "manifest_downloads_test.cc",
+    ],
+    cpu = 1,
+    deps = [
+        ":manual_mixin",
+        "//src/v/cloud_io/tests:s3_imposter",
+        "//src/v/cloud_storage",
+        "//src/v/cluster",
+        "//src/v/model",
+        "//src/v/redpanda:application",
+        "//src/v/redpanda/tests:fixture",
+        "//src/v/test_utils:gtest",
+        "//src/v/utils:retry_chain_node",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)
