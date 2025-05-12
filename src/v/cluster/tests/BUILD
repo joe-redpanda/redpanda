@@ -41,17 +41,6 @@ redpanda_test_cc_library(
 )
 
 redpanda_test_cc_library(
-    name = "partition_balancer_planner_fixture",
-    hdrs = [
-        "partition_balancer_planner_fixture.h",
-    ],
-    include_prefix = "cluster/tests",
-    deps = [
-        ":utils",
-    ],
-)
-
-redpanda_test_cc_library(
     name = "cluster_test_fixture",
     hdrs = [
         "cluster_test_fixture.h",
@@ -70,6 +59,17 @@ redpanda_test_cc_library(
         "//src/v/test_utils:fixture",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@seastar",
+    ],
+)
+
+redpanda_test_cc_library(
+    name = "partition_balancer_planner_fixture",
+    hdrs = [
+        "partition_balancer_planner_fixture.h",
+    ],
+    include_prefix = "cluster/tests",
+    deps = [
+        ":cluster_test_fixture",
     ],
 )
 
@@ -384,9 +384,9 @@ redpanda_cc_btest(
         "partition_balancer_planner_test.cc",
     ],
     deps = [
+        ":partition_balancer_planner_fixture",
         "//src/v/base",
         "//src/v/cluster",
-        "//src/v/cluster/tests:partition_balancer_planner_fixture",
         "//src/v/test_utils:seastar_boost",
         "//src/v/utils:stable_iterator",
         "@boost//:test",
@@ -723,6 +723,15 @@ redpanda_cc_bench(
         "//src/v/cluster",
         "//src/v/raft",
         "@seastar",
+        "@seastar//:benchmark",
+    ],
+)
+
+redpanda_cc_bench(
+    name = "partition_balancer_rpbench",
+    srcs = ["partition_balancer_bench.cc"],
+    deps = [
+        ":partition_balancer_planner_fixture",
         "@seastar//:benchmark",
     ],
 )
