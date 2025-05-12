@@ -74,6 +74,17 @@ redpanda_test_cc_library(
 )
 
 redpanda_test_cc_library(
+    name = "rebalancing_tests_fixture",
+    hdrs = [
+        "rebalancing_tests_fixture.h",
+    ],
+    include_prefix = "cluster/tests",
+    deps = [
+        ":cluster_test_fixture",
+    ],
+)
+
+redpanda_test_cc_library(
     name = "rm_stm_test_fixture",
     hdrs = [
         "rm_stm_test_fixture.h",
@@ -605,6 +616,24 @@ redpanda_cc_btest(
         "@boost//:test",
         "@seastar",
         "@seastar//:testing",
+    ],
+)
+
+redpanda_cc_btest(
+    name = "decommissioning_test",
+    timeout = "short",
+    srcs = [
+        "decommissioning_tests.cc",
+    ],
+    cpu = 1,
+    memory = "1GiB",
+    deps = [
+        ":rebalancing_tests_fixture",
+        "//src/v/cluster",
+        "//src/v/test_utils:seastar_boost",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@boost//:test",
+        "@seastar",
     ],
 )
 
