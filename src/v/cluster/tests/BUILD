@@ -41,17 +41,6 @@ redpanda_test_cc_library(
 )
 
 redpanda_test_cc_library(
-    name = "partition_balancer_planner_fixture",
-    hdrs = [
-        "partition_balancer_planner_fixture.h",
-    ],
-    include_prefix = "cluster/tests",
-    deps = [
-        ":utils",
-    ],
-)
-
-redpanda_test_cc_library(
     name = "cluster_test_fixture",
     hdrs = [
         "cluster_test_fixture.h",
@@ -70,6 +59,28 @@ redpanda_test_cc_library(
         "//src/v/test_utils:fixture",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@seastar",
+    ],
+)
+
+redpanda_test_cc_library(
+    name = "partition_balancer_planner_fixture",
+    hdrs = [
+        "partition_balancer_planner_fixture.h",
+    ],
+    include_prefix = "cluster/tests",
+    deps = [
+        ":cluster_test_fixture",
+    ],
+)
+
+redpanda_test_cc_library(
+    name = "rebalancing_tests_fixture",
+    hdrs = [
+        "rebalancing_tests_fixture.h",
+    ],
+    include_prefix = "cluster/tests",
+    deps = [
+        ":cluster_test_fixture",
     ],
 )
 
@@ -373,13 +384,30 @@ redpanda_cc_btest(
         "partition_balancer_planner_test.cc",
     ],
     deps = [
+        ":partition_balancer_planner_fixture",
         "//src/v/base",
         "//src/v/cluster",
-        "//src/v/cluster/tests:partition_balancer_planner_fixture",
         "//src/v/test_utils:seastar_boost",
         "//src/v/utils:stable_iterator",
         "@boost//:test",
         "@seastar",
+        "@seastar//:testing",
+    ],
+)
+
+redpanda_cc_btest(
+    name = "partition_balancer_simulator_test",
+    timeout = "long",
+    srcs = [
+        "partition_balancer_simulator_test.cc",
+    ],
+    deps = [
+        ":partition_balancer_planner_fixture",
+        "//src/v/base",
+        "//src/v/cluster",
+        "//src/v/model",
+        "//src/v/random:generators",
+        "//src/v/test_utils:seastar_boost",
         "@seastar//:testing",
     ],
 )
@@ -591,6 +619,60 @@ redpanda_cc_btest(
     ],
 )
 
+redpanda_cc_btest(
+    name = "create_partitions_test",
+    timeout = "short",
+    srcs = [
+        "create_partitions_test.cc",
+    ],
+    cpu = 1,
+    deps = [
+        ":rebalancing_tests_fixture",
+        "//src/v/cluster",
+        "//src/v/model",
+        "//src/v/test_utils:seastar_boost",
+        "@boost//:test",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_btest(
+    name = "decommissioning_test",
+    timeout = "short",
+    srcs = [
+        "decommissioning_tests.cc",
+    ],
+    cpu = 1,
+    memory = "1GiB",
+    deps = [
+        ":rebalancing_tests_fixture",
+        "//src/v/cluster",
+        "//src/v/test_utils:seastar_boost",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@boost//:test",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_btest(
+    name = "replicas_rebalancing_test",
+    timeout = "moderate",
+    srcs = [
+        "replicas_rebalancing_tests.cc",
+    ],
+    cpu = 1,
+    deps = [
+        ":rebalancing_tests_fixture",
+        "//src/v/cluster",
+        "//src/v/model",
+        "//src/v/ssx:future_util",
+        "//src/v/test_utils:seastar_boost",
+        "@abseil-cpp//absl/container:node_hash_map",
+        "@boost//:test",
+        "@seastar",
+    ],
+)
+
 redpanda_cc_gtest(
     name = "manual_log_deletion_test",
     timeout = "short",
@@ -641,6 +723,15 @@ redpanda_cc_bench(
         "//src/v/cluster",
         "//src/v/raft",
         "@seastar",
+        "@seastar//:benchmark",
+    ],
+)
+
+redpanda_cc_bench(
+    name = "partition_balancer_rpbench",
+    srcs = ["partition_balancer_bench.cc"],
+    deps = [
+        ":partition_balancer_planner_fixture",
         "@seastar//:benchmark",
     ],
 )
