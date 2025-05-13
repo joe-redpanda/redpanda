@@ -164,6 +164,9 @@ func k8sClientset() (*kubernetes.Clientset, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to get kubernetes cluster configuration: %v", err)
 	}
+	// We need to increase the burst size to avoid throttling. We do ~6-8 req
+	// per broker.
+	k8sCfg.Burst = 30
 
 	return kubernetes.NewForConfig(k8sCfg)
 }
@@ -567,7 +570,6 @@ func saveK8SLogs(ctx context.Context, ps *stepParams, namespace, since string, l
 		limitBytes := int64(logsLimitBytes)
 		logOpts := &k8score.PodLogOptions{
 			LimitBytes: &limitBytes,
-			Container:  "redpanda",
 		}
 
 		if len(since) > 0 {
@@ -581,12 +583,22 @@ func saveK8SLogs(ctx context.Context, ps *stepParams, namespace, since string, l
 
 		var grp multierror.Group
 		for _, p := range pods.Items {
-			p := p
-			cb := func(ctx context.Context) ([]byte, error) {
-				return podsInterface.GetLogs(p.Name, logOpts).Do(ctx).Raw()
+			for _, c := range p.Spec.Containers {
+				opts := logOpts.DeepCopy()
+				opts.Container = c.Name
+				cb := func(ctx context.Context) ([]byte, error) {
+					return podsInterface.GetLogs(p.Name, opts).Do(ctx).Raw()
+				}
+				grp.Go(func() error { return requestAndSave(ctx, ps, fmt.Sprintf("logs/%v-%v.txt", p.Name, c.Name), cb) })
 			}
-
-			grp.Go(func() error { return requestAndSave(ctx, ps, fmt.Sprintf("logs/%v.txt", p.Name), cb) })
+			for _, c := range p.Spec.InitContainers {
+				opts := logOpts.DeepCopy()
+				opts.Container = c.Name
+				cb := func(ctx context.Context) ([]byte, error) {
+					return podsInterface.GetLogs(p.Name, opts).Do(ctx).Raw()
+				}
+				grp.Go(func() error { return requestAndSave(ctx, ps, fmt.Sprintf("logs/%v-init-%v.txt", p.Name, c.Name), cb) })
+			}
 		}
 
 		errs := grp.Wait()
