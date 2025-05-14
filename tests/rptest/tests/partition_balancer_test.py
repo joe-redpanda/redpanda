@@ -1122,6 +1122,7 @@ class PartitionBalancerTest(PartitionBalancerService):
         )
         self.topic = TopicSpec(partition_count=random.randint(20, 30))
         self.client().create_topic(self.topic)
+        self.wait_until_ready()
 
         # throttle recovery to prevent partition moves from finishing
         self.logger.info("throttling recovery")
