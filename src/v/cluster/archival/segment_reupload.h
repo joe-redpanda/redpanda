@@ -172,8 +172,7 @@ public:
     ///
     /// \param mode defines what segments should be collected
     ///        compacted or normal.
-    void collect_segments(
-      segment_collector_mode mode = segment_collector_mode::compacted_reupload);
+    void collect_segments();
 
     segment_seq segments();
 
@@ -219,7 +218,7 @@ private:
 
     /// Collects segments until the end of the manifest, or until the
     /// end of compacted segments in log.
-    void do_collect(segment_collector_mode mode);
+    void do_collect();
 
     lookup_result
     find_next_segment(model::offset start_offset, segment_collector_mode mode);

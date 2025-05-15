@@ -203,8 +203,8 @@ static bool is_reupload_mode(segment_collector_mode mode) {
 }
 } // namespace
 
-void segment_collector::collect_segments(segment_collector_mode mode) {
-    if (_manifest.size() == 0 && is_reupload_mode(mode)) {
+void segment_collector::collect_segments() {
+    if (_manifest.size() == 0 && is_reupload_mode(_mode)) {
         vlog(
           archival_log.debug,
           "No segments to collect for ntp {}, manifest empty",
@@ -215,7 +215,7 @@ void segment_collector::collect_segments(segment_collector_mode mode) {
     // start_offset < log start due to eviction of segments before
     // they could be uploaded, skip forward to log start.
     if (_begin_inclusive < _log.offsets().start_offset) {
-        switch (mode) {
+        switch (_mode) {
         case segment_collector_mode::new_upload:
         case segment_collector_mode::compacted_reupload:
             vlog(
@@ -244,7 +244,7 @@ void segment_collector::collect_segments(segment_collector_mode mode) {
 
     // Handle begin offset alignment to manifest segment boundary (if
     // required).
-    switch (mode) {
+    switch (_mode) {
     case segment_collector_mode::compacted_reupload:
         align_begin_offset_to_manifest();
         break;
@@ -274,7 +274,7 @@ void segment_collector::collect_segments(segment_collector_mode mode) {
     }
 
     if (
-      is_reupload_mode(mode)
+      is_reupload_mode(_mode)
       && _begin_inclusive >= _manifest.get_last_offset()) {
         vlog(
           archival_log.warn,
@@ -299,7 +299,7 @@ void segment_collector::collect_segments(segment_collector_mode mode) {
             return;
         }
         if (
-          is_reupload_mode(mode)
+          is_reupload_mode(_mode)
           && _target_end_inclusive.value() > _manifest.get_last_offset()) {
             vlog(
               archival_log.debug,
@@ -312,18 +312,18 @@ void segment_collector::collect_segments(segment_collector_mode mode) {
         }
     }
 
-    do_collect(mode);
+    do_collect();
 }
 
 segment_collector::segment_seq segment_collector::segments() {
     return _segments;
 }
 
-void segment_collector::do_collect(segment_collector_mode mode) {
+void segment_collector::do_collect() {
     auto projected_end_inclusive = _target_end_inclusive.value_or(
       model::offset{});
     if (projected_end_inclusive == model::offset{}) {
-        projected_end_inclusive = find_replacement_boundary(mode);
+        projected_end_inclusive = find_replacement_boundary(_mode);
     }
     // In case of the new upload:
     // - _target_end_inclusive is not set means that the upload is not forced
@@ -355,7 +355,7 @@ void segment_collector::do_collect(segment_collector_mode mode) {
           = _segments.empty()
               ? model::offset{}
               : _segments.back()->offsets().get_committed_offset();
-        switch (mode) {
+        switch (_mode) {
         case segment_collector_mode::compacted_reupload:
         case segment_collector_mode::non_compacted_reupload:
             return last_collected <= _manifest.get_last_offset();
@@ -368,7 +368,7 @@ void segment_collector::do_collect(segment_collector_mode mode) {
         // which is above the _manifest.get_last_offset().
         // Otherwise, we need to find the next segment which is below the
         // _manifest.get_last_offset().
-        auto result = find_next_segment(start, mode);
+        auto result = find_next_segment(start, _mode);
         if (result.segment.get() == nullptr) {
             break;
         }
@@ -418,7 +418,7 @@ void segment_collector::do_collect(segment_collector_mode mode) {
         // re-aligned if it falls inside manifest segment.
         if (
           _segments.empty()
-          && mode == segment_collector_mode::compacted_reupload) {
+          && _mode == segment_collector_mode::compacted_reupload) {
             // We may have found our first segment, but we can't always use
             // its base offset:
             // - it's possible the log has been prefix truncated within a
@@ -467,7 +467,7 @@ void segment_collector::do_collect(segment_collector_mode mode) {
         _can_replace_manifest_segment = true;
     }
 
-    if (is_reupload_mode(mode)) {
+    if (is_reupload_mode(_mode)) {
         align_end_offset_to_manifest(
           _target_end_inclusive.value_or(last_collected));
     } else {
