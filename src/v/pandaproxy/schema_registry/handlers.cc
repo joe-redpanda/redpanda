@@ -448,12 +448,14 @@ post_subject(server::request_t rq, server::reply_t rp) {
         .value_or(include_deleted::no)};
     auto norm{parse::query_param<std::optional<normalize>>(*rq.req, "normalize")
                 .value_or(normalize::no)};
+    const auto format = parse_output_format(*rq.req);
     vlog(
       srlog.debug,
-      "post_subject subject='{}', normalize='{}', deleted='{}'",
+      "post_subject subject='{}', normalize='{}', deleted='{}', format='{}'",
       sub,
       norm,
-      inc_del);
+      inc_del,
+      format);
     // We must sync
     co_await rq.service().writer().read_sync();
 
@@ -478,9 +480,13 @@ post_subject(server::request_t rq, server::reply_t rp) {
     auto sub_schema = co_await rq.service().schema_store().has_schema(
       std::move(schema), inc_del);
 
+    auto [subject, def] = std::move(sub_schema.schema).destructure();
+    auto formatted_schema = co_await rq.service().schema_store().format_schema(
+      std::move(def), format);
+
     auto resp = ppj::rjson_serialize_iobuf(
       post_subject_versions_version_response{
-        .schema{std::move(sub_schema.schema)},
+        .schema{std::move(subject), std::move(formatted_schema)},
         .id{sub_schema.id},
         .version{sub_schema.version}});
     log_response(*rq.req, resp);

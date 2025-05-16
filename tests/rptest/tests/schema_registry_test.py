@@ -617,6 +617,11 @@ message ProtoType {
   float f = 1;
 }"""
 
+schema_proto_b64 = \
+"CgAiFgoJUHJvdG9UeXBlEgkKAWYYASABKAJKYQoGEgQAAAQBCggKAQwSAwAA" \
+"EgoKCgIEABIEAgAEAQoKCgMEAAESAwIIEQoLCgQEAAIAEgMDAg4KDAoFBAAC" \
+"AAUSAwMCBwoMCgUEAAIAARIDAwgJCgwKBQQAAgADEgMDDA1iBnByb3RvMw=="
+
 schema_avro_def = '{"type":"record","name":"myrecord","fields":[{"name":"f1","type":"string"}]}'
 
 schema_proto_dependee_def = """
@@ -1204,6 +1209,7 @@ class SchemaRegistryEndpoints(RedpandaTest):
                                data,
                                deleted=False,
                                normalize=False,
+                               format=None,
                                headers=HTTP_POST_HEADERS,
                                **kwargs):
         params = {}
@@ -1211,6 +1217,8 @@ class SchemaRegistryEndpoints(RedpandaTest):
             params['deleted'] = 'true'
         if (normalize):
             params['normalize'] = 'true'
+        if format is not None:
+            params['format'] = format
         return self._request("POST",
                              f"subjects/{subject}",
                              headers=headers,
@@ -3572,6 +3580,13 @@ class SchemaRegistryTestMethods(SchemaRegistryEndpoints):
                 "id": 1,
                 "failing_format": [ignore_extensions, serialized]
             },
+            "proto_b64": {
+                "schema": schema_proto_b64.strip(),
+                "type": "PROTOBUF",
+                "subject": "schema_proto",
+                "id": 1,
+                "failing_format": [ignore_extensions, serialized]
+            },
             "avro_def": {
                 "schema": schema_avro_def.strip(),
                 "type": "AVRO",
@@ -3635,6 +3650,42 @@ class SchemaRegistryTestMethods(SchemaRegistryEndpoints):
                         f"expected {501} but got {result_raw.status_code} for id {id} and format '{format}'"
 
         test_runner(test_ids_id)
+
+        def test_subjects_subject(schema_entry,
+                                  successful,
+                                  format=None,
+                                  expected_output=None):
+            subject = schema_entry["subject"]
+            schema = schema_entry["schema"]
+            schema_type = schema_entry["type"]
+            expected_schema = expected_output if expected_output else schema
+            result_raw = self._post_subjects_subject(subject=subject,
+                                                     format=format,
+                                                     data=json.dumps({
+                                                         "schema":
+                                                         schema,
+                                                         "schemaType":
+                                                         schema_type
+                                                     }))
+            if successful:
+                assert result_raw.status_code == requests.codes.ok, \
+                        f"expected {requests.codes.ok} but got {result_raw.status_code} " \
+                        f"for subject {subject}, schema {schema} and format '{format}'"
+                result = result_raw.json()['schema'].strip()
+                assert result == expected_schema.strip(), \
+                        f"expected:\n{schema}\ngot:\n{result}\n" \
+                        f"for subject {subject}, schema {schema} and format '{format}'"
+            else:
+                assert result_raw.status_code == 501, \
+                        f"expected {501} but got {result_raw.status_code} " \
+                        f"for subject {subject}, schema {schema} and format '{format}'"
+
+        #Test that the schema is discoverable in serialzed mode
+        test_subjects_subject(entries["proto_b64"],
+                              successful=True,
+                              expected_output=schema_proto_def.strip())
+
+        test_runner(test_subjects_subject)
 
 
 class SchemaRegistryModeNotMutableTest(SchemaRegistryEndpoints):

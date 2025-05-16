@@ -642,6 +642,12 @@
             "type": "boolean"
           },
           {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
             "name": "schema_def",
             "in": "body",
             "schema": {
