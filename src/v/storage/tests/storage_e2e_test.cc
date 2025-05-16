@@ -5607,6 +5607,68 @@ TEST_F(storage_test_fixture, max_compaction_lag) {
     read_and_validate_all_batches(log);
 }
 
+TEST_F(storage_test_fixture, min_compaction_lag) {
+    using log_manager_accessor = storage::testing_details::log_manager_accessor;
+    storage::log_manager mgr = make_log_manager();
+    auto deferred = ss::defer([&mgr]() mutable { mgr.stop().get(); });
+
+    using overrides_t = storage::ntp_config::default_overrides;
+    overrides_t ov;
+    ov.cleanup_policy_bitflags = model::cleanup_policy_bitflags::compaction;
+    // Surely, no test could run this slow...
+    ov.min_compaction_lag_ms = 100000s;
+
+    auto ntp = model::ntp("kafka", "tapioca", 0);
+    auto log
+      = mgr
+          .manage(storage::ntp_config(
+            ntp, mgr.config().base_dir, std::make_unique<overrides_t>(ov)))
+          .get();
+
+    using bflags = storage::log_housekeeping_meta::bitflags;
+    static constexpr auto is_set = [](bflags var, auto flag) {
+        return (var & flag) == flag;
+    };
+
+    auto append_and_force_roll = [this, &log]() {
+        auto headers = append_random_batches<linear_int_kv_batch_generator>(
+          log, 10);
+        log->force_roll().get();
+    };
+
+    // Append and close one segment, then compact.
+    // Because of min lag, no segments should be compacted.
+    append_and_force_roll();
+    log_manager_accessor::housekeeping_scan(mgr).get();
+
+    auto& meta = log_manager_accessor::logs_list(mgr).front();
+    ASSERT_TRUE(is_set(meta.flags, bflags::lifetime_checked));
+    ASSERT_TRUE(is_set(meta.flags, bflags::compaction_checked));
+    // The log was compacted, but no segments were eligible due to min lag.
+    ASSERT_TRUE(is_set(meta.flags, bflags::compacted));
+    for (const auto& batch : read_and_validate_all_batches(log)) {
+        // The batches should not have been compacted.
+        ASSERT_EQ(
+          batch.record_count(),
+          linear_int_kv_batch_generator::records_per_batch);
+    }
+
+    // Roll to reset compaction checks. Appending more batches breaks
+    // the batch generator's expectation after compacting.
+    log->force_roll().get();
+    overrides_t ov2;
+    ov2.cleanup_policy_bitflags = model::cleanup_policy_bitflags::compaction;
+    ov2.min_compaction_lag_ms = 0s; // The default.
+    log->set_overrides(ov2);
+
+    log_manager_accessor::housekeeping_scan(mgr).get();
+    ASSERT_TRUE(is_set(meta.flags, bflags::lifetime_checked));
+    ASSERT_TRUE(is_set(meta.flags, bflags::compaction_checked));
+    ASSERT_TRUE(is_set(meta.flags, bflags::compacted));
+    auto batches = read_and_validate_all_batches(log);
+    linear_int_kv_batch_generator::validate_post_compaction(std::move(batches));
+}
+
 // Ensures that the log_housekeeping_meta level locking/concurrency in
 // the log_manager is race free during ntp removal, addition, and housekeeping.
 // By allowing regular housekeeping to run on a quick interval and also
