@@ -3408,6 +3408,9 @@ TEST_F(storage_test_fixture, test_max_compact_offset) {
     // specified.
     ASSERT_LE(post_compact_gaps.first_gap_start, max_compact_offset);
     ASSERT_LE(post_compact_gaps.last_gap_end, max_compact_offset);
+    ASSERT_LE(
+      log->max_eligible_for_compacted_reupload_offset(model::offset{0}),
+      max_compact_offset);
 };
 
 TEST_F(storage_test_fixture, test_self_compaction_while_reader_is_open) {
@@ -3628,6 +3631,9 @@ do_compact_test(const compact_test_args args, storage_test_fixture& f) {
     //  Instead, we use weaker assert for now:
 
     ASSERT_LE(final_gaps.last_gap_end, args.max_compact_offs);
+    ASSERT_LE(
+      log->max_eligible_for_compacted_reupload_offset(model::offset{0}),
+      args.max_compact_offs);
 }
 
 TEST_F(storage_test_fixture, test_max_compact_offset_mid_segment) {
@@ -6735,4 +6741,244 @@ TEST_F(storage_test_fixture, test_offset_range_size_lock_timeout) {
             .get(),
           ss::timed_out_error);
     }
+}
+
+TEST_F(storage_test_fixture, test_max_eligible_for_compacted_reupload_offset) {
+    constexpr size_t num_segments = 2;
+    auto cfg = default_log_config(test_dir);
+    ss::abort_source as;
+    storage::log_manager mgr = make_log_manager(cfg);
+    SUCCEED() << fmt::format("Configuration: {}", mgr.config());
+    auto deferred = ss::defer([&mgr]() mutable { mgr.stop().get(); });
+    auto ntp = model::ntp("kafka", "test-topic", 0);
+
+    storage::ntp_config::default_overrides overrides{
+      .cleanup_policy_bitflags = model::cleanup_policy_bitflags::compaction,
+    };
+    storage::ntp_config ntp_cfg(
+      ntp,
+      mgr.config().base_dir,
+      std::make_unique<storage::ntp_config::default_overrides>(overrides));
+
+    auto log = mgr.manage(std::move(ntp_cfg)).get();
+
+    model::offset first_segment_last_offset;
+    for (size_t i = 0; i < num_segments; i++) {
+        append_random_batches(
+          log, 10, model::term_id(i), key_limited_random_batch_generator());
+        if (first_segment_last_offset == model::offset{}) {
+            first_segment_last_offset = log->offsets().dirty_offset;
+        }
+        log->force_roll().get();
+    }
+
+    auto& segments = log->segments();
+    auto first = *std::next(segments.begin(), 0);
+    auto second = *std::next(segments.begin(), 1);
+
+    auto mco = [&log](model::offset from) {
+        return log->max_eligible_for_compacted_reupload_offset(from);
+    };
+
+    EXPECT_FALSE(mco(first->offsets().get_base_offset()).has_value());
+    EXPECT_FALSE(mco(second->offsets().get_base_offset()).has_value());
+    EXPECT_FALSE(mco(first->offsets().get_committed_offset()).has_value());
+    EXPECT_FALSE(mco(model::offset::max()).has_value());
+    EXPECT_FALSE(mco(model::offset::min()).has_value());
+
+    {
+        // Compact the first segment only
+        vlog(e2e_test_log.info, "Starting compaction");
+        storage::housekeeping_config h_cfg(
+          model::timestamp::min(),
+          std::nullopt,
+          first->offsets().get_committed_offset(),
+          std::nullopt,
+          std::nullopt,
+          0ms,
+          as);
+        log->housekeeping(h_cfg).get();
+
+        EXPECT_TRUE(mco(first->offsets().get_base_offset()).has_value());
+        EXPECT_EQ(
+          mco(first->offsets().get_base_offset()),
+          first->offsets().get_committed_offset());
+        EXPECT_FALSE(mco(second->offsets().get_base_offset()).has_value());
+        EXPECT_TRUE(mco(first->offsets().get_committed_offset()).has_value());
+        EXPECT_EQ(
+          mco(first->offsets().get_committed_offset()),
+          first->offsets().get_committed_offset());
+    }
+
+    {
+        // Now the rest of the topic
+        vlog(e2e_test_log.info, "Starting compaction");
+        storage::housekeeping_config h_cfg(
+          model::timestamp::min(),
+          std::nullopt,
+          log->offsets().committed_offset,
+          std::nullopt,
+          std::nullopt,
+          0ms,
+          as);
+        log->housekeeping(h_cfg).get();
+
+        EXPECT_TRUE(mco(first->offsets().get_base_offset()).has_value());
+        EXPECT_EQ(
+          mco(first->offsets().get_base_offset()),
+          second->offsets().get_committed_offset());
+        EXPECT_TRUE(mco(second->offsets().get_base_offset()).has_value());
+        EXPECT_EQ(
+          mco(second->offsets().get_base_offset()),
+          second->offsets().get_committed_offset());
+
+        EXPECT_TRUE(mco(first->offsets().get_committed_offset()).has_value());
+        EXPECT_EQ(
+          mco(first->offsets().get_committed_offset()),
+          second->offsets().get_committed_offset());
+    }
+}
+
+TEST_F(storage_test_fixture, test_eligible_for_compacted_reupload) {
+    using namespace storage;
+    disk_log_builder b;
+    b | start();
+    auto cleanup = ss::defer([&] { b.stop().get(); });
+    auto& disk_log = b.get_disk_log_impl();
+    const auto num_segs = 2;
+    const auto start_offset = 0;
+    const auto records_per_seg = 150;
+    for (int i = 0; i < num_segs; ++i) {
+        auto offset = start_offset + i * records_per_seg;
+        b | add_segment(offset)
+          | add_random_batch(
+            offset, records_per_seg, maybe_compress_batches::yes);
+        disk_log.force_roll().get();
+    }
+
+    auto& seg1 = b.get_segment(0);
+    auto& seg2 = b.get_segment(1);
+
+    for (auto s : std::array{&seg1, &seg2}) {
+        s->mark_as_compacted_segment();
+        ASSERT_FALSE(s->has_self_compact_timestamp());
+        ASSERT_FALSE(s->has_clean_compact_timestamp());
+    }
+
+    auto efcr = [&disk_log](model::offset f, model::offset l) {
+        return disk_log.eligible_for_compacted_reupload(f, l);
+    };
+
+    // segments are initially not eligible for upload (no timestamps or marks)
+    ASSERT_FALSE(efcr(
+      seg1.offsets().get_base_offset(), seg2.offsets().get_committed_offset()));
+
+    auto set_sliding_window = [](bool v) -> scoped_config {
+        scoped_config cfg;
+        cfg.get("log_compaction_use_sliding_window").set_value(v);
+        return cfg;
+    };
+
+    {
+        auto loc_cfg = set_sliding_window(false);
+
+        ASSERT_FALSE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg1.offsets().get_committed_offset()));
+
+        seg1.index().maybe_set_self_compact_timestamp(model::timestamp::now());
+
+        ASSERT_TRUE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg1.offsets().get_committed_offset()));
+
+        ASSERT_FALSE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg2.offsets().get_committed_offset()));
+
+        seg2.index().maybe_set_self_compact_timestamp(model::timestamp::now());
+
+        ASSERT_TRUE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg2.offsets().get_committed_offset()));
+    }
+
+    {
+        auto loc_cfg = set_sliding_window(true);
+        ASSERT_FALSE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg2.offsets().get_committed_offset()));
+    }
+
+    auto set_collectable = [](bool v) {
+        scoped_config cfg;
+        model::cleanup_policy_bitflags policy;
+        if (v) {
+            std::istringstream{"compact,delete"} >> policy;
+        } else {
+            std::istringstream{"compact"} >> policy;
+        }
+        cfg.get("log_cleanup_policy").set_value(policy);
+        return cfg;
+    };
+
+    auto sliding_window_cfg = set_sliding_window(true);
+
+    {
+        auto loc_cfg = set_collectable(true);
+
+        ASSERT_FALSE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg1.offsets().get_committed_offset()));
+
+        seg1.mark_as_finished_windowed_compaction();
+
+        ASSERT_TRUE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg1.offsets().get_committed_offset()));
+
+        ASSERT_FALSE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg2.offsets().get_committed_offset()));
+
+        seg2.mark_as_finished_windowed_compaction();
+
+        ASSERT_TRUE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg2.offsets().get_committed_offset()));
+    }
+
+    {
+        auto loc_cfg = set_collectable(false);
+        ASSERT_FALSE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg2.offsets().get_committed_offset()));
+
+        seg1.index().maybe_set_clean_compact_timestamp(model::timestamp::now());
+        ASSERT_TRUE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg1.offsets().get_committed_offset()));
+
+        ASSERT_FALSE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg2.offsets().get_committed_offset()));
+
+        seg2.index().maybe_set_clean_compact_timestamp(model::timestamp::now());
+
+        ASSERT_TRUE(efcr(
+          seg1.offsets().get_base_offset(),
+          seg2.offsets().get_committed_offset()));
+    }
+
+    ASSERT_TRUE(efcr(
+      seg1.offsets().get_base_offset(), seg2.offsets().get_committed_offset()));
+
+    ASSERT_FALSE(efcr(
+      seg1.offsets().get_base_offset(),
+      model::next_offset(seg2.offsets().get_committed_offset())));
+
+    seg1.unmark_as_compacted_segment();
+
+    ASSERT_FALSE(efcr(
+      seg1.offsets().get_base_offset(), seg2.offsets().get_committed_offset()));
 }

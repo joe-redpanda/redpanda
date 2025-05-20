@@ -106,6 +106,12 @@ public:
 
     bool is_compacted(model::offset first, model::offset last) const final;
 
+    bool eligible_for_compacted_reupload(
+      model::offset first, model::offset last) const final;
+
+    std::optional<model::offset> max_eligible_for_compacted_reupload_offset(
+      model::offset first = model::offset{0}) const final;
+
     void set_overrides(storage::ntp_config::default_overrides) final;
 
     bool notify_compaction_update() final;

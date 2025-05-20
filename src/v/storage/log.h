@@ -200,6 +200,29 @@ public:
     virtual bool is_compacted(model::offset first, model::offset last) const
       = 0;
 
+    /// Determine whether an offset range is eligible for compacted reupload by
+    /// the archival system.
+    ///
+    /// The result depends on whether sliding window compaction is enabled and
+    /// on the configured cleanup policy.
+    ///
+    /// Returns 'false' unless all segments covering the offset range are marked
+    /// compacted.
+    ///
+    /// When sliding window compaction is enabled, returns true iff:
+    ///   - delete policy: all segments are marked as having finished windowed
+    ///     compaction
+    ///   - no-delete policy: all segments have a clean compact timestamp
+    /// Otherwise returns true iff all segments have a self compact timestamp
+    virtual bool eligible_for_compacted_reupload(
+      model::offset first, model::offset last) const
+      = 0;
+
+    virtual std::optional<model::offset>
+    max_eligible_for_compacted_reupload_offset(
+      model::offset first = model::offset{0}) const
+      = 0;
+
     /// Mutates the ntp_config stored in the log with the new
     /// topic/partition-level overrides
     virtual void set_overrides(ntp_config::default_overrides) = 0;

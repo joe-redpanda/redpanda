@@ -2954,6 +2954,60 @@ bool disk_log_impl::is_compacted(
     return false;
 }
 
+bool disk_log_impl::eligible_for_compacted_reupload(
+  model::offset first, model::offset last) const {
+    if (auto mco = max_eligible_for_compacted_reupload_offset(first);
+        mco.has_value()) {
+        return last <= mco.value();
+    }
+    return false;
+}
+
+std::optional<model::offset>
+disk_log_impl::max_eligible_for_compacted_reupload_offset(
+  model::offset first) const {
+    auto it = _segs.lower_bound(first);
+    if (it == _segs.end()) {
+        return std::nullopt;
+    }
+    auto compaction_complete = [this](const ss::lw_shared_ptr<segment>& seg) {
+        if (!seg->is_compacted_segment()) {
+            return false;
+        }
+        if (config::shard_local_cfg().log_compaction_use_sliding_window) {
+            // if deletion is enabled, we don't want to wait so long for
+            // perfectly compacted data that truncation leaves us with
+            // uncompacted data in cloud storage. so in this case, a single
+            // round of windowed compaction is 'enough'.
+            if (config().is_collectable()) {
+                return seg->finished_windowed_compaction();
+            }
+
+            // however, if deletion is not enabled, then we may as well wait
+            // for the best possible compacted version of the data.
+            return seg->has_clean_compact_timestamp();
+        }
+        return seg->has_self_compact_timestamp();
+    };
+
+    if (!compaction_complete(*it)) {
+        return std::nullopt;
+    }
+
+    // perform a linear search here because segment_set may not be partitioned
+    // with respect to has_clean_compact_timestamp
+    auto first_uncompacted = std::find_if_not(
+      it, _segs.end(), compaction_complete);
+
+    if (first_uncompacted == _segs.end()) {
+        // in this case everything is compacted enough for reupload
+        return _segs.back()->offsets().get_committed_offset();
+    }
+
+    return model::prev_offset(
+      first_uncompacted->get()->offsets().get_base_offset());
+}
+
 ss::future<model::record_batch_reader>
 disk_log_impl::make_reader(log_reader_config config) {
     vassert(!_closed, "make_reader on closed log - {}", *this);
