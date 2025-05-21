@@ -429,7 +429,7 @@ redpanda_cc_gtest(
     ],
 )
 
-redpanda_cc_btest(
+redpanda_cc_gtest(
     name = "produce_consume_test",
     timeout = "short",
     srcs = [
@@ -439,9 +439,9 @@ redpanda_cc_btest(
     deps = [
         ":disk_log_builder",
         "//src/v/model",
-        "//src/v/test_utils:seastar_boost",
+        "//src/v/test_utils:gtest",
         "@boost//:range",
-        "@seastar//:testing",
+        "@googletest//:gtest",
     ],
 )
 
