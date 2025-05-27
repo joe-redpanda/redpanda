@@ -147,9 +147,6 @@ datalake_manager::datalake_manager(
   ss::sharded<raft::group_manager>* group_mgr,
   ss::sharded<cluster::partition_manager>* partition_mgr,
   ss::sharded<cluster::topic_table>* topic_table,
-  ss::sharded<cluster::topics_frontend>* topics_frontend,
-  ss::sharded<cluster::partition_leaders_table>* leaders,
-  ss::sharded<cluster::shard_table>* shards,
   ss::sharded<features::feature_table>* features,
   ss::sharded<coordinator::frontend>* frontend,
   ss::sharded<cloud_io::remote>* cloud_io,
@@ -163,9 +160,6 @@ datalake_manager::datalake_manager(
   , _group_mgr(group_mgr)
   , _partition_mgr(partition_mgr)
   , _topic_table(topic_table)
-  , _topics_frontend(topics_frontend)
-  , _leaders(leaders)
-  , _shards(shards)
   , _features(features)
   , _coordinator_frontend(frontend)
   , _cloud_data_io(
@@ -175,9 +169,10 @@ datalake_manager::datalake_manager(
   , _catalog_factory(std::move(catalog_factory))
   // TODO: The cache size is currently arbitrary. Figure out a more reasoned
   // size and allocate a share of the datalake memory semaphore to this cache.
-  , _schema_cache(std::make_unique<chunked_schema_cache>(
-      chunked_schema_cache::cache_t::config{
-        .cache_size = 50, .small_size = 10}))
+  , _schema_cache(
+      std::make_unique<chunked_schema_cache>(
+        chunked_schema_cache::cache_t::config{
+          .cache_size = 50, .small_size = 10}))
   , _as(as)
   , _sg(sg)
   , _iceberg_invalid_record_action(
