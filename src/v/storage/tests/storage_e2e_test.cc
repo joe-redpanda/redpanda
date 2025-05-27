@@ -2033,7 +2033,7 @@ TEST_F(storage_test_fixture, many_segment_locking) {
 
     ASSERT_EQ(disk_log->segment_count(), 4);
 
-    std::vector<ss::lw_shared_ptr<storage::segment>> segments;
+    chunked_vector<ss::lw_shared_ptr<storage::segment>> segments;
     std::copy(
       disk_log->segments().begin(),
       disk_log->segments().end(),

@@ -857,7 +857,7 @@ ss::future<bool> disk_log_impl::sliding_window_compact(
 }
 
 std::optional<
-  std::vector<std::pair<segment_set::iterator, segment_set::iterator>>>
+  chunked_vector<std::pair<segment_set::iterator, segment_set::iterator>>>
 disk_log_impl::find_adjacent_compaction_ranges(
   const compaction_config& cfg, std::optional<model::offset> new_start_offset) {
     {
@@ -920,7 +920,8 @@ disk_log_impl::find_adjacent_compaction_ranges(
         return offset_delta <= u32_max;
     };
 
-    std::vector<std::pair<segment_set::iterator, segment_set::iterator>> ranges;
+    chunked_vector<std::pair<segment_set::iterator, segment_set::iterator>>
+      ranges;
 
     auto it = _segs.begin();
     size_t current_size{0};
@@ -995,11 +996,11 @@ disk_log_impl::find_adjacent_compaction_ranges(
     return ranges;
 }
 
-ss::future<std::optional<std::vector<compaction_result>>>
+ss::future<std::optional<chunked_vector<compaction_result>>>
 disk_log_impl::compact_adjacent_segment_ranges(
   storage::compaction_config cfg,
   std::optional<model::offset> new_start_offset) {
-    std::vector<compaction_result> rs;
+    chunked_vector<compaction_result> rs;
     if (auto ranges = find_adjacent_compaction_ranges(cfg, new_start_offset);
         ranges) {
         // lightweight copy of segments in all of the found ranges. once a
@@ -1008,8 +1009,8 @@ disk_log_impl::compact_adjacent_segment_ranges(
         // erase an element from the range. The act of compacting adjacent
         // segments will also invalidate iterators pointing to the original
         // _segs vector.
-        using vec_t = std::vector<ss::lw_shared_ptr<segment>>;
-        std::vector<vec_t> seg_ranges;
+        using vec_t = chunked_vector<ss::lw_shared_ptr<segment>>;
+        chunked_vector<vec_t> seg_ranges;
         seg_ranges.reserve(ranges->size());
         for (auto& range : *ranges) {
             seg_ranges.emplace_back(range.first, range.second);
@@ -1040,7 +1041,7 @@ disk_log_impl::compact_adjacent_segment_ranges(
 }
 
 ss::future<compaction_result> disk_log_impl::do_compact_adjacent_segments(
-  std::vector<ss::lw_shared_ptr<segment>>& segments,
+  chunked_vector<ss::lw_shared_ptr<segment>>& segments,
   storage::compaction_config cfg) {
     // This shouldn't be the case for any ranges returned from
     // find_adjacent_compaction_ranges(), but it is checked regardless.

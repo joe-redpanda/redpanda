@@ -281,12 +281,12 @@ public:
     // Otherwise, a vector containing pairs of iterators representing the
     // [start, end) of segment ranges (e.g inclusive start, exclusive end).
     std::optional<
-      std::vector<std::pair<segment_set::iterator, segment_set::iterator>>>
+      chunked_vector<std::pair<segment_set::iterator, segment_set::iterator>>>
     find_adjacent_compaction_ranges(
       const compaction_config& cfg,
       std::optional<model::offset> new_start_offset = std::nullopt);
 
-    ss::future<std::optional<std::vector<compaction_result>>>
+    ss::future<std::optional<chunked_vector<compaction_result>>>
     compact_adjacent_segment_ranges(
       storage::compaction_config cfg,
       std::optional<model::offset> new_start_offset = std::nullopt);
@@ -326,7 +326,7 @@ private:
     // executed, and the total size of the segments before and after the
     // operation.
     ss::future<compaction_result> do_compact_adjacent_segments(
-      std::vector<ss::lw_shared_ptr<segment>>& segments,
+      chunked_vector<ss::lw_shared_ptr<segment>>& segments,
       storage::compaction_config cfg);
 
     ss::future<std::optional<model::offset>> do_gc(gc_config);
