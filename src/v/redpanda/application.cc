@@ -2972,7 +2972,7 @@ void application::start_runtime_services(
     syschecks::systemd_message("Starting the partition manager").get();
     partition_manager
       .invoke_on_all([this](cluster::partition_manager& pm) {
-          pm.register_factory<cluster::tm_stm_factory>(feature_table);
+          pm.register_factory<cluster::tm_stm_factory>();
           pm.register_factory<cluster::id_allocator_stm_factory>();
           pm.register_factory<transform::transform_offsets_stm_factory>();
           pm.register_factory<cluster::rm_stm_factory>(
