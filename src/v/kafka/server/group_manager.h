@@ -127,8 +127,7 @@ public:
       ss::sharded<cluster::topic_table>&,
       ss::sharded<cluster::tx_gateway_frontend>& tx_frontend,
       ss::sharded<features::feature_table>&,
-      ss::sharded<consumer_group_lag_metrics_frontend>&,
-      group_metadata_serializer_factory);
+      ss::sharded<consumer_group_lag_metrics_frontend>&);
 
     ss::future<> start();
     ss::future<> stop();
@@ -309,7 +308,6 @@ private:
     ss::sharded<cluster::tx_gateway_frontend>& _tx_frontend;
     ss::sharded<features::feature_table>& _feature_table;
     ss::sharded<consumer_group_lag_metrics_frontend>& _lag_metrics_frontend;
-    group_metadata_serializer_factory _serializer_factory;
     config::configuration& _conf;
     absl::node_hash_map<group_id, group_ptr> _groups;
     absl::node_hash_map<model::ntp, ss::lw_shared_ptr<attached_partition>>

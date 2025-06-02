@@ -19,8 +19,7 @@ group_tx_tracker_stm::group_tx_tracker_stm(
   ss::sharded<features::feature_table>& feature_table)
   : raft::persisted_stm<>("group_tx_tracker_stm.snapshot", logger, raft)
   , group_data_parser<group_tx_tracker_stm>()
-  , _feature_table(feature_table)
-  , _serializer(make_consumer_offsets_serializer()) {
+  , _feature_table(feature_table) {
     _stale_tx_fence_gc_timer.set_callback([this] {
         ssx::spawn_with_gate(
           _gate, [this] { return gc_expired_tx_fence_transactions(); });
@@ -168,14 +167,15 @@ ss::future<iobuf> group_tx_tracker_stm::take_raft_snapshot(model::offset) {
 
 ss::future<> group_tx_tracker_stm::handle_raft_data(model::record_batch batch) {
     co_await model::for_each_record(batch, [this](model::record& r) {
-        auto record_type = _serializer.get_metadata_type(r.key().copy());
+        auto record_type = group_metadata_serializer::get_metadata_type(
+          r.key().copy());
         switch (record_type) {
         case offset_commit:
         case noop:
             return;
         case group_metadata:
             handle_group_metadata(
-              _serializer.decode_group_metadata(std::move(r)));
+              group_metadata_serializer::decode_group_metadata(std::move(r)));
             return;
         }
         __builtin_unreachable();

@@ -178,15 +178,16 @@ group_recovery_consumer::operator()(model::record_batch batch) {
 
 void group_recovery_consumer::handle_record(model::record r) {
     try {
-        auto record_type = _serializer.get_metadata_type(r.key().copy());
+        auto record_type = group_metadata_serializer::get_metadata_type(
+          r.key().copy());
         switch (record_type) {
         case offset_commit:
             handle_offset_metadata(
-              _serializer.decode_offset_metadata(std::move(r)));
+              group_metadata_serializer::decode_offset_metadata(std::move(r)));
             return;
         case group_metadata:
             handle_group_metadata(
-              _serializer.decode_group_metadata(std::move(r)));
+              group_metadata_serializer::decode_group_metadata(std::move(r)));
             return;
         case noop:
             // ignore noops, they are handled for backward compatibility

@@ -156,7 +156,6 @@ private:
     all_txs_t _all_txs;
 
     ss::sharded<features::feature_table>& _feature_table;
-    group_metadata_serializer _serializer;
     ss::abort_source _as;
     static constexpr ss::lowres_clock::duration tx_fence_gc_frequency{1h};
     ss::timer<ss::lowres_clock> _stale_tx_fence_gc_timer;

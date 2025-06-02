@@ -74,8 +74,7 @@ group_manager::group_manager(
   ss::sharded<cluster::topic_table>& topic_table,
   ss::sharded<cluster::tx_gateway_frontend>& tx_frontend,
   ss::sharded<features::feature_table>& feature_table,
-  ss::sharded<consumer_group_lag_metrics_frontend>& lag_metrics_frontend,
-  group_metadata_serializer_factory serializer_factory)
+  ss::sharded<consumer_group_lag_metrics_frontend>& lag_metrics_frontend)
   : _tp_ns(std::move(tp_ns))
   , _gm(gm)
   , _pm(pm)
@@ -83,7 +82,6 @@ group_manager::group_manager(
   , _tx_frontend(tx_frontend)
   , _feature_table(feature_table)
   , _lag_metrics_frontend(lag_metrics_frontend)
-  , _serializer_factory(std::move(serializer_factory))
   , _conf(config::shard_local_cfg())
   , _self(cluster::make_self_broker(config::node()))
   , _offset_retention_check(_conf.group_offset_retention_check_ms.bind())
@@ -911,9 +909,7 @@ ss::future<> group_manager::handle_partition_leader_change(
                   .then([this, term, p, timeout, expected_to_read](
                           model::record_batch_reader reader) {
                       return std::move(reader)
-                        .consume(
-                          group_recovery_consumer(_serializer_factory(), p->as),
-                          timeout)
+                        .consume(group_recovery_consumer(p->as), timeout)
                         .then([this, term, p, expected_to_read](
                                 group_recovery_consumer_state state) {
                             if (state.last_read_offset < expected_to_read) {
@@ -1008,8 +1004,7 @@ ss::future<> group_manager::do_recover_group(
               p->partition,
               term,
               _tx_frontend,
-              _feature_table,
-              _serializer_factory());
+              _feature_table);
             _groups.emplace(group_id, group);
             group->reschedule_all_member_heartbeats();
         }
@@ -1218,8 +1213,7 @@ group::join_group_stages group_manager::join_group(join_group_request&& r) {
           p,
           it->second->term,
           _tx_frontend,
-          _feature_table,
-          _serializer_factory());
+          _feature_table);
         _groups.emplace(r.data.group_id, group);
         _groups.rehash(0);
         is_new_group = true;
@@ -1371,8 +1365,7 @@ group_manager::txn_offset_commit(txn_offset_commit_request&& r) {
                 p->partition,
                 p->term,
                 _tx_frontend,
-                _feature_table,
-                _serializer_factory());
+                _feature_table);
               _groups.emplace(r.data.group_id, group);
               _groups.rehash(0);
           }
@@ -1466,8 +1459,7 @@ group_manager::begin_tx(cluster::begin_group_tx_request&& r) {
                 p->partition,
                 p->term,
                 _tx_frontend,
-                _feature_table,
-                _serializer_factory());
+                _feature_table);
               _groups.emplace(r.group_id, group);
               _groups.rehash(0);
           }
@@ -1540,8 +1532,7 @@ group_manager::offset_commit(offset_commit_request&& r) {
               p->partition,
               p->term,
               _tx_frontend,
-              _feature_table,
-              _serializer_factory());
+              _feature_table);
             _groups.emplace(r.data.group_id, group);
             _groups.rehash(0);
         } else {

@@ -39,8 +39,7 @@ using namespace std::chrono_literals;
 struct cg_recovery_test_fixture : seastar_test {
     ss::future<group_recovery_consumer_state>
     recover_from_batches(chunked_circular_buffer<model::record_batch> batches) {
-        group_recovery_consumer consumer(
-          make_consumer_offsets_serializer(), as);
+        group_recovery_consumer consumer(as);
 
         return model::make_memory_record_batch_reader(std::move(batches))
           .consume(std::move(consumer), model::no_timeout);
@@ -50,7 +49,7 @@ struct cg_recovery_test_fixture : seastar_test {
         storage::record_batch_builder buider(
           model::record_batch_type::raft_data, offset++);
 
-        auto kv = serializer.to_kv(std::move(metadata));
+        auto kv = group_metadata_serializer::to_kv(std::move(metadata));
         buider.add_raw_kv(std::move(kv.key), std::move(kv.value));
 
         return std::move(buider).build();
@@ -61,7 +60,7 @@ struct cg_recovery_test_fixture : seastar_test {
         storage::record_batch_builder buider(
           model::record_batch_type::raft_data, offset++);
         for (auto& m : metadata) {
-            auto kv = serializer.to_kv(std::move(m));
+            auto kv = group_metadata_serializer::to_kv(std::move(m));
             buider.add_raw_kv(std::move(kv.key), std::move(kv.value));
         }
 
@@ -134,7 +133,6 @@ struct cg_recovery_test_fixture : seastar_test {
             .metadata = std::move(metadata)}};
     }
 
-    group_metadata_serializer serializer = make_consumer_offsets_serializer();
     ss::abort_source as;
     model::offset offset{0};
 

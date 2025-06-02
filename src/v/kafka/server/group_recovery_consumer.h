@@ -44,10 +44,8 @@ public:
      * deduplicate both group and commit metadata snapshots.
      */
 
-    explicit group_recovery_consumer(
-      group_metadata_serializer serializer, ss::abort_source& as)
-      : _serializer(std::move(serializer))
-      , _as(as) {}
+    explicit group_recovery_consumer(ss::abort_source& as)
+      : _as(as) {}
 
     ss::future<ss::stop_iteration> operator()(model::record_batch batch);
 
@@ -74,7 +72,6 @@ private:
     void handle_offset_metadata(offset_metadata_kv);
     group_recovery_consumer_state _state;
     model::offset _batch_base_offset;
-    group_metadata_serializer _serializer;
     ss::abort_source& _as;
 };
 } // namespace kafka

@@ -2095,8 +2095,7 @@ void application::wire_up_redpanda_services(
       std::ref(controller->get_topics_state()),
       std::ref(tx_gateway_frontend),
       std::ref(controller->get_feature_table()),
-      std::ref(_consumer_group_lag_metrics_frontend),
-      &kafka::make_consumer_offsets_serializer)
+      std::ref(_consumer_group_lag_metrics_frontend))
       .get();
     construct_service(
       offsets_recoverer,

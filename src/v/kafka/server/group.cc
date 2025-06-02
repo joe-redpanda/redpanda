@@ -116,8 +116,7 @@ group::group(
   ss::lw_shared_ptr<cluster::partition> partition,
   model::term_id term,
   ss::sharded<cluster::tx_gateway_frontend>& tx_frontend,
-  ss::sharded<features::feature_table>& feature_table,
-  group_metadata_serializer serializer)
+  ss::sharded<features::feature_table>& feature_table)
   : _id(std::move(id))
   , _state(s)
   , _state_timestamp(model::timestamp::now())
@@ -130,7 +129,6 @@ group::group(
   , _probe(_members, _static_members, _offsets, _lag_metrics)
   , _ctxlog(cg_klog, *this)
   , _ctx_txlog(cluster::txlog, *this)
-  , _md_serializer(std::move(serializer))
   , _term(term)
   , _enable_group_metrics(conf.enable_consumer_group_metrics.bind(
       std::function{enabled_metrics::from_vector}))
@@ -151,8 +149,7 @@ group::group(
   ss::lw_shared_ptr<cluster::partition> partition,
   model::term_id term,
   ss::sharded<cluster::tx_gateway_frontend>& tx_frontend,
-  ss::sharded<features::feature_table>& feature_table,
-  group_metadata_serializer serializer)
+  ss::sharded<features::feature_table>& feature_table)
   : _id(std::move(id))
   , _state(md.members.empty() ? group_state::empty : group_state::stable)
   , _state_timestamp(
@@ -171,7 +168,6 @@ group::group(
   , _probe(_members, _static_members, _offsets, _lag_metrics)
   , _ctxlog(cg_klog, *this)
   , _ctx_txlog(cluster::txlog, *this)
-  , _md_serializer(std::move(serializer))
   , _term(term)
   , _enable_group_metrics(conf.enable_consumer_group_metrics.bind(
       std::function{enabled_metrics::from_vector}))
@@ -2171,7 +2167,7 @@ void group::update_store_offset_builder(
         value.expiry_timestamp = expiry_timestamp.value();
     }
 
-    auto kv = _md_serializer.to_kv(
+    auto kv = group_metadata_serializer::to_kv(
       offset_metadata_kv{.key = std::move(key), .value = std::move(value)});
     builder.add_raw_kv(std::move(kv.key), std::move(kv.value));
 }
@@ -2606,7 +2602,8 @@ void group::add_offset_tombstone_record(
       .topic = tp.topic,
       .partition = tp.partition,
     };
-    auto kv = _md_serializer.to_kv(offset_metadata_kv{.key = std::move(key)});
+    auto kv = group_metadata_serializer::to_kv(
+      offset_metadata_kv{.key = std::move(key)});
     builder.add_raw_kv(std::move(kv.key), std::nullopt);
 }
 
@@ -2615,7 +2612,8 @@ void group::add_group_tombstone_record(
     group_metadata_key key{
       .group_id = group,
     };
-    auto kv = _md_serializer.to_kv(group_metadata_kv{.key = std::move(key)});
+    auto kv = group_metadata_serializer::to_kv(
+      group_metadata_kv{.key = std::move(key)});
     builder.add_raw_kv(std::move(kv.key), std::nullopt);
 }
 
