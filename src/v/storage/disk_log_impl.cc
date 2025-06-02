@@ -861,8 +861,14 @@ std::optional<
 disk_log_impl::find_adjacent_compaction_ranges(
   const compaction_config& cfg, std::optional<model::offset> new_start_offset) {
     {
-        // Early return if cluster configured value effectively disables
+        // Early return if cluster configured values effectively disables
         // adjacent merge compaction.
+        auto max_ranges_size
+          = config::shard_local_cfg().log_compaction_merge_max_ranges();
+        if (max_ranges_size.has_value() && max_ranges_size < 1) {
+            return std::nullopt;
+        }
+
         auto max_segments_in_range
           = config::shard_local_cfg()
               .log_compaction_merge_max_segments_per_range();
@@ -950,6 +956,13 @@ disk_log_impl::find_adjacent_compaction_ranges(
           || is_unstable || !is_valid_offset_range) {
             if (num_segments_in_range > 1) {
                 ranges.push_back(current_range);
+                auto max_ranges_size
+                  = config::shard_local_cfg().log_compaction_merge_max_ranges();
+                if (
+                  max_ranges_size.has_value()
+                  && ranges.size() >= max_ranges_size.value()) {
+                    return ranges;
+                }
             }
 
             auto next_it = is_unstable ? std::next(it) : it;

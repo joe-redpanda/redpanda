@@ -1090,6 +1090,16 @@ configuration::configuration()
       "compaction.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       std::nullopt)
+  , log_compaction_merge_max_ranges(
+      *this,
+      "log_compaction_merge_max_ranges",
+      "The maximum number of ranges of segments that can be processed in a "
+      "single round of adjacent segment compaction. If `null` (the default "
+      "value), no maximum is imposed on the number of ranges that can be "
+      "processed at once. A value below 1 effectively disables adjacent merge "
+      "compaction.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      std::nullopt)
   , retention_bytes(
       *this,
       "retention_bytes",

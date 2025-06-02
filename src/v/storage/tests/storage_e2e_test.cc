@@ -5883,6 +5883,7 @@ struct sliding_ranges_test_case {
     std::vector<segment_fields> segment_fields;
     std::optional<model::offset> new_start_offset{std::nullopt};
     std::optional<uint32_t> max_segment_count{std::nullopt};
+    std::optional<uint32_t> max_range_count{std::nullopt};
     // These ranges have the same inclusivity as the iterator
     // constructor for std::vector, i.e [first, last).
     std::vector<std::pair<size_t, size_t>> expected_ranges;
@@ -6091,6 +6092,87 @@ TEST_F(storage_test_fixture, find_sliding_ranges) {
 	                                       // 6    - (Active)
 	  .max_segment_count = 2,
 	  .expected_ranges = {{0, 2}, {2, 4}, {4, 6}}},
+      sliding_ranges_test_case{
+	  .desc="Mergeable pairs of segments with ascending raft terms, but number of max ranges is limited to 0 via cluster config.",
+	  .segment_fields={
+	    {1_KiB, model::term_id{0}, true},  // 0 -
+	    {1_KiB, model::term_id{0}, true},  // 1 -
+	    {1_KiB, model::term_id{1}, true},  // 2 -
+	    {1_KiB, model::term_id{1}, true},  // 3 -
+	    {1_KiB, model::term_id{2}, true},  // 4 -
+	    {1_KiB, model::term_id{2}, true}}, // 5 -
+	                                       // 6 - (Active)
+	  .max_range_count = 0,
+	  .expected_ranges = {}},
+      sliding_ranges_test_case{
+	  .desc="Mergeable pairs of segments with ascending raft terms, but number of max ranges is limited to 1 via cluster config.",
+	  .segment_fields={
+	    {1_KiB, model::term_id{0}, true},  // 0 A
+	    {1_KiB, model::term_id{0}, true},  // 1 A
+	    {1_KiB, model::term_id{1}, true},  // 2  -
+	    {1_KiB, model::term_id{1}, true},  // 3  -
+	    {1_KiB, model::term_id{2}, true},  // 4  -
+	    {1_KiB, model::term_id{2}, true}}, // 5  -
+	                                       // 6  - (Active)
+	  .max_range_count = 1,
+	  .expected_ranges = {{0, 2}}},
+      sliding_ranges_test_case{
+	  .desc="Mergeable pairs of segments with ascending raft terms, but number of max ranges is limited to 2 via cluster config.",
+	  .segment_fields={
+	    {1_KiB, model::term_id{0}, true},  // 0 A
+	    {1_KiB, model::term_id{0}, true},  // 1 A
+	    {1_KiB, model::term_id{1}, true},  // 2  B
+	    {1_KiB, model::term_id{1}, true},  // 3  B
+	    {1_KiB, model::term_id{2}, true},  // 4  -
+	    {1_KiB, model::term_id{2}, true}}, // 5  -
+	                                       // 6  - (Active)
+	  .max_range_count = 2,
+	  .expected_ranges = {{0, 2}, {2, 4}}},
+      sliding_ranges_test_case{
+	  .desc="Mergeable pairs of segments with ascending raft terms, but number of max ranges is limited to 3 via cluster config.",
+	  .segment_fields={
+	    {1_KiB, model::term_id{0}, true},  // 0 A
+	    {1_KiB, model::term_id{0}, true},  // 1 A
+	    {1_KiB, model::term_id{1}, true},  // 2  B
+	    {1_KiB, model::term_id{1}, true},  // 3  B
+	    {1_KiB, model::term_id{2}, true},  // 4   C
+	    {1_KiB, model::term_id{2}, true}}, // 5   C
+	                                       // 6    - (Active)
+	  .max_range_count = 3,
+	  .expected_ranges = {{0, 2}, {2, 4}, {4, 6}}},
+      sliding_ranges_test_case{
+	  .desc="segment_count=2, range_count = 1 means only one pair of segments merged at a time.",
+	  .segment_fields={
+	    {1_KiB, model::term_id{0}, true},  // 0 A
+	    {1_KiB, model::term_id{0}, true},  // 1 A
+	    {1_KiB, model::term_id{0}, true},  // 2  -
+	    {1_KiB, model::term_id{1}, true},  // 3  -
+	    {1_KiB, model::term_id{1}, true},  // 4  -
+	    {1_KiB, model::term_id{1}, true}}, // 5  -
+	                                       // 6   - (Active)
+	  .max_segment_count = 2,
+	  .max_range_count = 1,
+	  .expected_ranges = {{0, 2}}},
+      sliding_ranges_test_case{
+	  .desc="Mixture of max range and segment count restricting range space.",
+	  .segment_fields={
+	    {1_KiB, model::term_id{0}, true},  // 0 A
+	    {1_KiB, model::term_id{0}, true},  // 1 A
+	    {1_KiB, model::term_id{0}, true},  // 2 A
+	    {1_KiB, model::term_id{0}, true},  // 3  B
+	    {1_KiB, model::term_id{0}, true},  // 4  B
+	    {2_MiB, model::term_id{1}, true},  // 5   -
+	    {1_KiB, model::term_id{1}, true},  // 6   -
+	    {1_KiB, model::term_id{2}, true},  // 7    C
+	    {1_KiB, model::term_id{2}, true},  // 8    C
+	    {1_KiB, model::term_id{2}, true},  // 9    C
+	    {1_KiB, model::term_id{2}, true},  // 10    -
+	    {1_KiB, model::term_id{3}, true},  // 11    -
+	    {1_KiB, model::term_id{3}, true}}, // 12    -
+	                                       // 13     - (Active)
+	  .max_segment_count = 3,
+	  .max_range_count = 3,
+	  .expected_ranges = {{0, 3}, {3, 5}, {7, 10}}},
     };
     // clang-format on
 
@@ -6100,6 +6182,8 @@ TEST_F(storage_test_fixture, find_sliding_ranges) {
         const auto& expected_ranges = test_case.expected_ranges;
         test_local_cfg.get("log_compaction_merge_max_segments_per_range")
           .set_value(test_case.max_segment_count);
+        test_local_cfg.get("log_compaction_merge_max_ranges")
+          .set_value(test_case.max_range_count);
         auto ntp = model::ntp(
           "default", fmt::format("test-{}", test_case_index++), 0);
         auto log = mgr
