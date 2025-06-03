@@ -51,7 +51,7 @@ redpanda_cc_library(
         "//src/v/model",
         "//src/v/net",
         "//src/v/pandaproxy:core",
-        "//src/v/pandaproxy:schema_registry",
+        "//src/v/pandaproxy/schema_registry:server",
         "//src/v/pandaproxy/rest:server",
         "//src/v/raft",
         "//src/v/redpanda/admin",

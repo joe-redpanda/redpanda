@@ -1,6 +1,5 @@
 load("//bazel:build.bzl", "redpanda_cc_library")
 load("//bazel/thirdparty:seastar.bzl", "seastar_cc_swagger_library")
-load("//src/v/schema/protobuf:well_known.bzl", "well_known_cc_protos")
 
 seastar_cc_swagger_library(
     name = "rest_swagger",
@@ -23,6 +22,18 @@ redpanda_cc_library(
 seastar_cc_swagger_library(
     name = "schema_registry_swagger",
     src = "api/api-doc/schema_registry.json",
+)
+
+redpanda_cc_library(
+    name = "schema_registry_swagger_definitions",
+    hdrs = [
+        "api/api-doc/schema_registry.json.hh",
+    ],
+    include_prefix = "pandaproxy",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":schema_registry_swagger",
+    ],
 )
 
 redpanda_cc_library(
@@ -132,7 +143,6 @@ redpanda_cc_library(
         ":json",
         ":logger",
         ":parsing",
-        ":schema_registry_exceptions",
         "//src/v/base",
         "//src/v/bytes:iobuf_parser",
         "//src/v/config",
@@ -143,6 +153,7 @@ redpanda_cc_library(
         "//src/v/metrics",
         "//src/v/model",
         "//src/v/net",
+        "//src/v/pandaproxy/schema_registry:exceptions",
         "//src/v/rpc",
         "//src/v/security:request_auth",
         "//src/v/ssx:future_util",
@@ -202,196 +213,10 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
-    name = "schema_registry_exceptions",
-    hdrs = [
-        "schema_registry/exceptions.h",
-    ],
-    include_prefix = "pandaproxy",
-    visibility = ["//visibility:public"],
-)
-
-redpanda_cc_library(
-    name = "schema_registry_core",
-    srcs = [
-        "schema_registry/error.cc",
-        "schema_registry/types.cc",
-    ],
-    hdrs = [
-        "schema_registry/error.h",
-        "schema_registry/errors.h",
-        "schema_registry/exceptions.h",
-        "schema_registry/fwd.h",
-        "schema_registry/schema_getter.h",
-        "schema_registry/types.h",
-        "schema_registry/util.h",
-    ],
-    include_prefix = "pandaproxy",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core",
-        ":error",
-        "//src/v/base",
-        "//src/v/bytes:iobuf_parser",
-        "//src/v/json",
-        "//src/v/kafka/protocol",
-        "//src/v/model",
-        "//src/v/strings:string_switch",
-        "//src/v/utils:named_type",
-        "@avro",
-        "@boost//:outcome",
-        "@fmt",
-        "@rapidjson",
-        "@seastar",
-    ],
-)
-
-redpanda_cc_library(
-    name = "schema_registry",
-    srcs = [
-        "schema_registry/api.cc",
-        "schema_registry/avro.cc",
-        "schema_registry/compatibility.cc",
-        "schema_registry/configuration.cc",
-        "schema_registry/handlers.cc",
-        "schema_registry/json.cc",
-        "schema_registry/protobuf.cc",
-        "schema_registry/seq_writer.cc",
-        "schema_registry/service.cc",
-        "schema_registry/sharded_store.cc",
-        "schema_registry/validation.cc",
-    ],
-    hdrs = [
-        "api/api-doc/schema_registry.json.hh",
-        "schema_registry/api.h",
-        "schema_registry/avro.h",
-        "schema_registry/compatibility.h",
-        "schema_registry/configuration.h",
-        "schema_registry/error.h",
-        "schema_registry/errors.h",
-        "schema_registry/exceptions.h",
-        "schema_registry/fwd.h",
-        "schema_registry/handlers.h",
-        "schema_registry/json.h",
-        "schema_registry/protobuf.h",
-        "schema_registry/requests/compatibility.h",
-        "schema_registry/requests/config.h",
-        "schema_registry/requests/get_schemas_ids_id.h",
-        "schema_registry/requests/get_schemas_ids_id_versions.h",
-        "schema_registry/requests/get_subject_versions_version.h",
-        "schema_registry/requests/mode.h",
-        "schema_registry/requests/post_subject_versions.h",
-        "schema_registry/schema_getter.h",
-        "schema_registry/schema_id_cache.h",
-        "schema_registry/seq_writer.h",
-        "schema_registry/service.h",
-        "schema_registry/sharded_store.h",
-        "schema_registry/storage.h",
-        "schema_registry/store.h",
-        "schema_registry/types.h",
-        "schema_registry/util.h",
-        "schema_registry/validation.h",
-        "schema_registry/validation_metrics.h",
-    ],
-    include_prefix = "pandaproxy",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":config",
-        ":core",
-        ":json",
-        ":logger",
-        ":parsing",
-        ":schema_registry_core",
-        ":schema_registry_swagger",
-        ":subject_name_strategy",
-        "//src/v/base",
-        "//src/v/bytes:iobuf_parser",
-        "//src/v/bytes:streambuf",
-        "//src/v/cluster",
-        "//src/v/config",
-        "//src/v/container:fragmented_vector",
-        "//src/v/container:json",
-        "//src/v/hashing:jump_consistent",
-        "//src/v/hashing:xx",
-        "//src/v/json",
-        "//src/v/kafka/client",
-        "//src/v/kafka/protocol",
-        "//src/v/kafka/protocol:create_topics",
-        "//src/v/kafka/protocol:list_offset",
-        "//src/v/metrics",
-        "//src/v/model",
-        "//src/v/random:time_jitter",
-        "//src/v/schema/protobuf:confluent_type_cc_proto",
-        "//src/v/schema/protobuf:google_type_cc_proto",
-        "//src/v/security",
-        "//src/v/security:request_auth",
-        "//src/v/security/audit",
-        "//src/v/ssx:future_util",
-        "//src/v/ssx:semaphore",
-        "//src/v/ssx:sformat",
-        "//src/v/storage:parser_utils",
-        "//src/v/storage:record_batch_builder",
-        "//src/v/strings:string_switch",
-        "//src/v/utils:adjustable_semaphore",
-        "//src/v/utils:base64",
-        "//src/v/utils:named_type",
-        "//src/v/utils:retry",
-        "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:btree",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/container:flat_hash_set",
-        "@abseil-cpp//absl/container:inlined_vector",
-        "@abseil-cpp//absl/container:node_hash_map",
-        "@abseil-cpp//absl/strings",
-        "@avro",
-        "@boost//:algorithm",
-        "@boost//:graph",
-        "@boost//:math",
-        "@boost//:multi_index",
-        "@boost//:outcome",
-        "@boost//:range",
-        "@fmt",
-        "@jsoncons",
-        "@protobuf",
-        "@protobuf//src/google/protobuf/compiler:importer",
-        "@protobuf//src/google/protobuf/io",
-        "@protobuf//src/google/protobuf/io:tokenizer",
-        "@rapidjson",
-        "@re2",
-        "@seastar",
-    ] + well_known_cc_protos,
-)
-
-redpanda_cc_library(
     name = "pandaproxy",
     visibility = ["//visibility:public"],
     deps = [
-        ":schema_registry",
         "//src/v/pandaproxy/rest:server",
-    ],
-)
-
-redpanda_cc_library(
-    name = "config",
-    hdrs = [
-        "schema_registry/schema_id_validation.h",
-    ],
-    include_prefix = "pandaproxy",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//src/v/strings:string_switch",
-        "@seastar",
-    ],
-)
-
-redpanda_cc_library(
-    name = "subject_name_strategy",
-    hdrs = [
-        "schema_registry/subject_name_strategy.h",
-    ],
-    include_prefix = "pandaproxy",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//src/v/base",
-        "//src/v/strings:string_switch",
+        "//src/v/pandaproxy/schema_registry:server",
     ],
 )

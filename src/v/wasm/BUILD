@@ -77,7 +77,7 @@ redpanda_cc_library(
     deps = [
         ":ffi",
         "//src/v/base",
-        "//src/v/pandaproxy:schema_registry",
+        "//src/v/pandaproxy/schema_registry:registry",
         "//src/v/schema:registry",
         "@seastar",
     ],
@@ -194,7 +194,7 @@ redpanda_cc_library(
         ":wasi_logger",
         "//src/v/base",
         "//src/v/model",
-        "//src/v/pandaproxy:schema_registry",
+        "//src/v/pandaproxy/schema_registry:server",
         "@fmt",
         "@seastar",
     ],
@@ -286,7 +286,7 @@ redpanda_cc_library(
     deps = [
         ":api",
         "//src/v/base",
-        "//src/v/pandaproxy:schema_registry_core",
+        "//src/v/pandaproxy/schema_registry:types",
         "@seastar",
     ],
 )

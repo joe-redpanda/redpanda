@@ -9,7 +9,7 @@ redpanda_cc_btest(
     deps = [
         "//src/v/base",
         "//src/v/pandaproxy:json",
-        "//src/v/pandaproxy:schema_registry",
+        "//src/v/pandaproxy/schema_registry:server",
         "//src/v/test_utils:seastar_boost",
         "@seastar",
         "@seastar//:testing",
@@ -24,7 +24,8 @@ redpanda_cc_btest(
     ],
     deps = [
         "//src/v/base",
-        "//src/v/pandaproxy:schema_registry",
+        "//src/v/pandaproxy:json",
+        "//src/v/pandaproxy/schema_registry:server",
         "//src/v/test_utils:seastar_boost",
         "@fmt",
         "@seastar",
