@@ -221,7 +221,6 @@ class std_unique_ptr:
         self.obj = obj
 
     def get(self):
-        # return self.obj['_M_t']['_M_t']['_M_head_impl']
         return self.obj['__ptr_']['__value_']
 
     def dereference(self):
@@ -591,41 +590,36 @@ def absl_get_nodes(val):
 
 
 class absl_flat_hash_map:
-    signed_byte_t = gdb.lookup_type('int8_t')
-
+    """
+    This is based off of absl::lts_20230802. This can be inspected dynamically
+    by looking at the container type derived in the constructor and then we can
+    use that to dynamically select different implementations when it comes time
+    to revise this implementation for a newer version of abseil.
+    """
     def __init__(self, p):
         self.map = p
-        container_type = self.map.type.strip_typedefs()
-        self.kt = container_type.template_argument(0)
-        self.vt = container_type.template_argument(1)
-        self._begin()
+        self.container_type = self.map.type.strip_typedefs()
+        self.kt = self.container_type.template_argument(0)
+        self.vt = self.container_type.template_argument(1)
+        self.settings = self.map["settings_"]["value"]
 
     def capacity(self):
-        return self.map["capacity_"]
+        return self.settings["capacity_"]
 
     def __len__(self):
-        return self.map["size_"]
-
-    def _begin(self):
-        self.it_ctrl = self.map["settings_"]
-        self.it_slot = self.map["slots_"]
-        self._skip_empty_or_deleted()
+        return self.settings["compressed_tuple_"]["value"]
 
     def __iter__(self):
-        while self.it_ctrl != (self.map["ctrl_"] + self.map["capacity_"]):
-            value = self.it_slot["value"]
-            yield value["first"], value["second"]
-            self.it_ctrl += 1
-            self.it_slot += 1
-            self._skip_empty_or_deleted()
+        slot_type = lookup_type(
+            f"{self.container_type}::slot_type").strip_typedefs()
+        control = self.settings["control_"]
+        slots = self.settings["slots_"].cast(slot_type.pointer())
 
-    def _skip_empty_or_deleted(self):
-        while self._ctrl_value() < -1:
-            self.it_ctrl += 1
-            self.it_slot += 1
-
-    def _ctrl_value(self):
-        return self.it_ctrl.cast(self.signed_byte_t.pointer()).dereference()
+        for i in range(self.capacity()):
+            if int(control[i]) < 0:
+                continue
+            slot = slots[i]
+            yield slot["value"]["first"], slot["value"]["second"]
 
 
 def has_enable_lw_shared_from_this(type):
@@ -1154,26 +1148,25 @@ class offset_tracker:
 
     @property
     def base_offset(self):
-        return model_offset(self.ref['base_offset'])
+        return model_offset(self.ref['_base_offset'])
 
     @property
     def dirty_offset(self):
-        return model_offset(self.ref['dirty_offset'])
+        return model_offset(self.ref['_dirty_offset'])
 
     @property
     def term(self):
-        return model_offset(self.ref['term'])
+        return model_offset(self.ref['_term'])
 
     @property
     def committed_offset(self):
-        return model_offset(self.ref['committed_offset'])
+        return model_offset(self.ref['_committed_offset'])
 
     @property
     def stable_offset(self):
-        return model_offset(self.ref['stable_offset'])
+        return model_offset(self.ref['_stable_offset'])
 
     def __str__(self):
-
         return f"[base_offset: {self.base_offset}, dirty_offset: {self.dirty_offset}, term: {self.term} committed_offset: {self.committed_offset}, stable_offset: {self.stable_offset}]"
 
 
@@ -1341,12 +1334,28 @@ class disk_log_impl:
         return readers_cache(std_unique_ptr(self.ref["_readers_cache"]).get())
 
 
+class log_housekeeping_meta:
+    """
+    This is based on the v24.2.x implementation. When implementing decoding for
+    newer versions it is often sufficient to use a try/catch block to
+    incrementally fall back when field names and types change.
+    """
+    log_housekeeping_meta_t = gdb.lookup_type("storage::log_housekeeping_meta")
+
+    def __init__(self, ref):
+        self.ref = ref.cast(self.log_housekeeping_meta_t.pointer())
+
+    def handle(self):
+        h = self.ref["handle"]
+        return seastar_shared_ptr(h).get()
+
+
 def find_logs(shard=None):
     storage = find_storage_api(shard)
     log_mgr = std_unique_ptr(storage["_log_mgr"]).dereference()
     for ntp, log in absl_flat_hash_map(log_mgr["_logs"]):
-        log_meta_ptr = std_unique_ptr(log)
-        impl = seastar_shared_ptr(log_meta_ptr["handle"]["_impl"]).get()
+        meta = log_housekeeping_meta(std_unique_ptr(log).get())
+        impl = meta.handle()
         yield ntp, disk_log_impl(impl)
 
 
