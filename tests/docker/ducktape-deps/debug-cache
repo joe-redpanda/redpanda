@@ -34,10 +34,13 @@ debug_cache() {
   all_caches=("$DL_CACHE_DIR" /var/cache/apt /var/lib/apt)
   local logdir=/debug-cache-logs
 
+  mkdir -p $logdir
+
   for cache_dir in "${all_caches[@]}"; do
     if [[ -d $cache_dir ]]; then
-      echo "DEBUG CACHE: contents for $cache_dir:"
-      find $cache_dir -ls
+      name=$(echo "${cache_dir#/}" | tr '/' '_')
+      echo "DEBUG CACHE: writing contents of $cache_dir to $logdir/$name.txt"
+      find $cache_dir -ls >"$logdir/$name.txt"
     else
       echo "CACHE_DIR does not exist: $cache_dir"
     fi
