@@ -300,7 +300,7 @@ class std_vector:
             # For example:
             #   std::__1::__compressed_pair_elem<seastar::shared_object*, 0, false>)
             s = str(end_cap_type)
-            m = re.match("struct ([\w:]+) \*", s)
+            m = re.match("struct ([\\w:]+) \\*", s)
             if m:
                 self.end_cap_type = gdb.lookup_type(
                     end_cap_type_fmt.format(m.group(1) + "*"))
@@ -2190,7 +2190,7 @@ def print_tree(root_node,
                node_filter=None):
     def print_node(node, is_last_history):
         stems = (" |   ", "     ")
-        branches = (" |-- ", " \-- ")
+        branches = (" |-- ", " \\-- ")
 
         label_lines = formatter(node).rstrip('\n').split('\n')
         prefix_without_branch = ''.join(
