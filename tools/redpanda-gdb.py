@@ -221,7 +221,6 @@ class std_unique_ptr:
         self.obj = obj
 
     def get(self):
-        # return self.obj['_M_t']['_M_t']['_M_head_impl']
         return self.obj['__ptr_']['__value_']
 
     def dereference(self):
@@ -611,7 +610,8 @@ class absl_flat_hash_map:
         return self.settings["compressed_tuple_"]["value"]
 
     def __iter__(self):
-        slot_type = lookup_type(f"{self.container_type}::slot_type").strip_typedefs()
+        slot_type = lookup_type(
+            f"{self.container_type}::slot_type").strip_typedefs()
         control = self.settings["control_"]
         slots = self.settings["slots_"].cast(slot_type.pointer())
 
@@ -620,6 +620,7 @@ class absl_flat_hash_map:
                 continue
             slot = slots[i]
             yield slot["value"]["first"], slot["value"]["second"]
+
 
 def has_enable_lw_shared_from_this(type):
     for f in type.fields():
@@ -1334,12 +1335,23 @@ class disk_log_impl:
         return readers_cache(std_unique_ptr(self.ref["_readers_cache"]).get())
 
 
+class log_housekeeping_meta:
+    log_housekeeping_meta_t = gdb.lookup_type("storage::log_housekeeping_meta")
+
+    def __init__(self, ref):
+        self.ref = ref.cast(self.log_housekeeping_meta_t.pointer())
+
+    def handle(self):
+        h = self.ref["handle"]
+        return seastar_shared_ptr(h).get()
+
+
 def find_logs(shard=None):
     storage = find_storage_api(shard)
     log_mgr = std_unique_ptr(storage["_log_mgr"]).dereference()
     for ntp, log in absl_flat_hash_map(log_mgr["_logs"]):
-        log_meta_ptr = std_unique_ptr(log)
-        impl = seastar_shared_ptr(log_meta_ptr["handle"]["_impl"]).get()
+        meta = log_housekeeping_meta(std_unique_ptr(log).get())
+        impl = meta.handle()
         yield ntp, disk_log_impl(impl)
 
 
