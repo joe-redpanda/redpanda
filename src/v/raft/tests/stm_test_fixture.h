@@ -114,6 +114,22 @@ struct simple_kv_base : public BaseT {
     size_t get_local_state_size() const final { return 0; }
     ss::future<> remove_local_state() final { co_return; }
 
+    ss::future<uint32_t> get_state_checksum() const override {
+        /**
+         * We have to use sorted map as flat_hash_map is not ordered and
+         * randomized.
+         */
+        absl::btree_map<ss::sstring, value_entry> sorted_state(
+          state.begin(), state.end());
+
+        crc::crc32c c;
+        for (auto& [k, v] : sorted_state) {
+            c.extend(k.c_str(), k.size());
+            c.extend(v.value.c_str(), v.value.size());
+        }
+        co_return c.value();
+    }
+
     state_t state;
     raft_node_instance& raft_node;
 };

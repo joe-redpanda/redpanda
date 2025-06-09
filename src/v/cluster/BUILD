@@ -771,6 +771,7 @@ redpanda_cc_library(
         "@boost//:random",
         "@boost//:range",
         "@boost//:uuid",
+        "@crc32c",
         "@fmt",
         "@rapidjson",
         "@roaring",

@@ -27,6 +27,7 @@
 #include <seastar/net/socket_defs.hh>
 #include <seastar/util/bool_class.hh>
 
+#include <absl/container/flat_hash_map.h>
 #include <boost/range/irange.hpp>
 #include <boost/range/join.hpp>
 
@@ -756,6 +757,36 @@ struct xshard_transfer_state {
     // leadership on the destination shard.
     std::optional<model::term_id> leader_term;
 };
+struct stm_state_checksum
+  : serde::envelope<
+      stm_state_checksum,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    uint32_t checksum{0};
+    model::offset last_applied_offset{};
+    friend bool
+    operator==(const stm_state_checksum& l, const stm_state_checksum& r)
+      = default;
+    auto serde_fields() { return std::tie(checksum, last_applied_offset); }
+};
+using state_machine_id = named_type<uint32_t, struct state_machine_id_tag>;
+using state_machine_checksums
+  = absl::flat_hash_map<state_machine_id, stm_state_checksum>;
+
+struct checksums_at_offset
+  : serde::envelope<
+      checksums_at_offset,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    model::offset prepared_at_offset;
+    state_machine_checksums prepared_checksums;
+
+    auto serde_fields() {
+        return std::tie(prepared_at_offset, prepared_checksums);
+    }
+};
+
+enum class stm_manager_key { state_machine_checksums = 0 };
 
 } // namespace raft
 

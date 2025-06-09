@@ -494,6 +494,30 @@ redpanda_cc_gtest(
     ],
 )
 
+redpanda_cc_btest(
+    name = "checksum_controller_test",
+    timeout = "moderate",
+    srcs = [
+        "checksum_controller_test.cc",
+    ],
+    deps = [
+        "//src/v/raft",
+        "//src/v/test_utils:seastar_boost",
+        "@boost//:test",
+        "@seastar",
+        "@seastar//:testing",
+        "//src/v/model",
+        "//src/v/serde",
+        "//src/v/storage",
+        "//src/v/storage:record_batch_builder",
+        "@abseil-cpp//absl/container:btree",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:node_hash_map",
+        "//src/v/serde:map",
+    ],
+)
+
 redpanda_cc_gtest(
     name = "stm_manager_test",
     timeout = "moderate",

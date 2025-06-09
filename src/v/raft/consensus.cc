@@ -898,6 +898,7 @@ replicate_stages consensus::do_replicate(
         _probe->replicate_requests_ack_leader();
         break;
     case consistency_level::quorum_ack:
+        vlog(_ctxlog.info, "joemiller quorum ack should inc probe");
         auto flush = opts.force_flush() || !_write_caching_enabled;
         if (flush) {
             _probe->replicate_requests_ack_all_with_flush();
@@ -4120,6 +4121,7 @@ ss::future<full_heartbeat_reply> consensus::full_heartbeat(
         reply.result = reply_result::group_unavailable;
         co_return reply;
     }
+
     /**
      * IMPORTANT: do not use request reference after the scheduling point
      */

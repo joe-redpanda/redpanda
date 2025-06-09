@@ -13,11 +13,13 @@
 
 #include "bytes/iostream.h"
 #include "config/property.h"
+#include "hashing/murmur.h"
 #include "model/fundamental.h"
 #include "model/timeout_clock.h"
 #include "raft/consensus.h"
 #include "raft/logger.h"
 #include "raft/state_machine_base.h"
+#include "raft/stm_checksum_component.h"
 #include "raft/types.h"
 #include "serde/async.h"
 #include "serde/rw/rw.h"
@@ -38,10 +40,14 @@
 #include <seastar/util/defer.hh>
 #include <seastar/util/later.hh>
 
+#include <functional>
 #include <stdexcept>
 #include <vector>
 
 namespace raft {
+
+using maybe_checksum_ref
+  = std::optional<std::reference_wrapper<stm_checksum_component>>;
 
 /**
  * Applicator which is a batch consumer that applies the same batch to multiple
@@ -54,7 +60,8 @@ public:
       const char* ctx,
       const std::vector<state_machine_manager::entry_ptr>& machines,
       ss::abort_source& as,
-      ctx_log& log);
+      ctx_log& log,
+      maybe_checksum_ref checksum_component = std::nullopt);
 
     ss::future<ss::stop_iteration> operator()(model::record_batch);
 
@@ -75,16 +82,21 @@ private:
     model::offset _max_last_applied;
     ss::abort_source& _as;
     ctx_log& _log;
+
+    // dont run the checksum logic on background fibers
+    maybe_checksum_ref _checksum_component;
 };
 
 batch_applicator::batch_applicator(
   const char* ctx,
   const std::vector<state_machine_manager::entry_ptr>& entries,
   ss::abort_source& as,
-  ctx_log& log)
+  ctx_log& log,
+  maybe_checksum_ref checksum_component)
   : _ctx(ctx)
   , _as(as)
-  , _log(log) {
+  , _log(log)
+  , _checksum_component(checksum_component) {
     for (auto& m : entries) {
         _machines.push_back(apply_state{.stm_entry = m});
     }
@@ -92,6 +104,11 @@ batch_applicator::batch_applicator(
 
 ss::future<ss::stop_iteration>
 batch_applicator::operator()(model::record_batch batch) {
+    // run the checksum operations
+    if (_checksum_component) {
+        co_await _checksum_component->get().apply(batch);
+    }
+
     const auto last_offset = batch.last_offset();
     std::vector<ss::future<applied_successfully>> futures;
     futures.reserve(_machines.size());
@@ -170,7 +187,9 @@ state_machine_manager::state_machine_manager(
   , _initial_recovery_snapshot_mgr(
       std::filesystem::path(_raft->log_config().work_directory()),
       "stm_manager.snapshot")
-  , _stm_shutdown_timeout(std::move(stm_shutdown_timeout)) {
+  , _stm_shutdown_timeout(std::move(stm_shutdown_timeout))
+  , _checksum_component{
+      std::make_unique<stm_checksum_component>(_log, this, _raft)} {
     for (auto& n_stm : stms) {
         _supports_snapshot_at_offset
           = _supports_snapshot_at_offset
@@ -180,6 +199,47 @@ state_machine_manager::state_machine_manager(
           ss::make_lw_shared<state_machine_entry>(
             n_stm.name, std::move(n_stm.stm)));
     }
+}
+
+state_machine_manager::state_machine_manager(
+  state_machine_manager&& other) noexcept
+  : _raft{other._raft} // trivially movable
+  , _log{std::move(other._log)}
+  , _apply_mutex{std::move(other._apply_mutex)}
+  , _machines{std::move(other._machines)}
+  , _next{other._next} // trivially movable
+  , _gate{std::move(other._gate)}
+  , _as{std::move(other._as)}
+  , _apply_sg{other._apply_sg} // trivially movable
+  , _supports_snapshot_at_offset{other._supports_snapshot_at_offset}
+  , _initial_recovery_snapshot_mgr{std::move(
+      other._initial_recovery_snapshot_mgr)}
+  , _stm_shutdown_timeout(std::move(other._stm_shutdown_timeout))
+  , _checksum_component{std::move(other._checksum_component)} {
+    // _checksum_component bears a back pointer to this object, on move, move it
+    // as well
+    _checksum_component->on_move(this);
+}
+
+state_machine_manager&
+state_machine_manager::operator=(state_machine_manager&& other) noexcept {
+    if (&other != this) {
+        _raft = other._raft;
+        _log = std::move(other._log);
+        _apply_mutex = std::move(other._apply_mutex);
+        _machines = std::move(other._machines);
+        _next = other._next;
+        _gate = std::move(other._gate);
+        _as = std::move(other._as);
+        _apply_sg = other._apply_sg;
+        _supports_snapshot_at_offset = other._supports_snapshot_at_offset;
+        _initial_recovery_snapshot_mgr = std::move(
+          other._initial_recovery_snapshot_mgr);
+        _stm_shutdown_timeout = std::move(other._stm_shutdown_timeout);
+        _checksum_component = std::move(other._checksum_component);
+        _checksum_component->on_move(this);
+    }
+    return *this;
 }
 
 model::offset state_machine_manager::max_next_offset() const {
@@ -260,6 +320,11 @@ ss::future<> state_machine_manager::stop() {
     co_await ss::coroutine::parallel_for_each(
       _machines, [this](auto p) { return do_stop_stm(p.second); });
     co_await std::move(gate_f);
+}
+ss::future<>
+state_machine_manager::state_machine_entry::update_state_checksum() {
+    state_checksum.last_applied_offset = stm->last_applied_offset();
+    state_checksum.checksum = co_await stm->get_state_checksum();
 }
 
 ss::future<> state_machine_manager::apply_initial_recovery_policy() {
@@ -539,7 +604,8 @@ ss::future<> state_machine_manager::try_apply_in_foreground() {
         model::record_batch_reader reader = co_await _raft->make_reader(config);
 
         auto max_last_applied = co_await std::move(reader).consume(
-          batch_applicator(default_ctx, machines, _as, _log),
+          batch_applicator(
+            default_ctx, machines, _as, _log, *_checksum_component),
           model::no_timeout);
 
         if (max_last_applied == model::offset{}) {
@@ -555,6 +621,9 @@ ss::future<> state_machine_manager::try_apply_in_foreground() {
              */
             co_await ss::sleep_abortable(100ms, _as);
             co_return;
+        }
+        for (auto& [_, entry] : _machines) {
+            co_await entry->update_state_checksum();
         }
         _next = std::max(model::next_offset(max_last_applied), _next);
         vlog(_log.trace, "updating _next offset with: {}", _next);
@@ -684,6 +753,8 @@ ss::future<> state_machine_manager::background_apply_fiber(
             co_await ss::sleep_abortable(100ms, _as);
         }
     }
+
+    co_await entry->update_state_checksum();
     units.return_all();
     vlog(
       _log.debug,
@@ -868,6 +939,19 @@ ss::future<> state_machine_manager::write_initial_recovery_snapshot(
 
     co_await writer.close();
     co_await _initial_recovery_snapshot_mgr.finish_snapshot(writer);
+}
+namespace {
+state_machine_id get_numeric_id(const ss::sstring& name) {
+    return state_machine_id(murmurhash3_x86_32(name.c_str(), name.size()));
+}
+} // namespace
+state_machine_checksums state_machine_manager::get_stm_state_checksums() {
+    state_machine_checksums checksums{};
+    checksums.reserve(_machines.size());
+    for (auto& [name, entry] : _machines) {
+        checksums.try_emplace(get_numeric_id(name), entry->state_checksum);
+    }
+    return checksums;
 }
 
 std::ostream& operator<<(

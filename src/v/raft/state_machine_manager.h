@@ -20,6 +20,7 @@
 #include "serde/envelope.h"
 #include "serde/rw/envelope.h"
 #include "serde/rw/map.h"
+#include "stm_checksum_component.h"
 #include "storage/snapshot.h"
 #include "utils/absl_sstring_hash.h"
 #include "utils/mutex.h"
@@ -31,6 +32,7 @@
 #include <absl/container/flat_hash_map.h>
 
 #include <concepts>
+#include <memory>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -50,6 +52,7 @@ concept StateMachineIterateFunc = requires(
   Func f, const ss::sstring& name, const state_machine_base& stm) {
     { f(name, stm) } -> std::convertible_to<void>;
 };
+
 /**
  * State machine manager is an entry point for registering state machines
  * built on top of replicated log. State machine managers uses a single
@@ -68,6 +71,13 @@ concept StateMachineIterateFunc = requires(
  */
 class state_machine_manager final {
 public:
+    // custom move logic
+    state_machine_manager(state_machine_manager&& other) noexcept;
+    state_machine_manager& operator=(state_machine_manager&& other) noexcept;
+    // disallow copy
+    state_machine_manager(const state_machine_manager&) = delete;
+    state_machine_manager& operator=(const state_machine_manager&) = delete;
+
     /**
      * A result returned after taking a snapshot it contains a serde serialized
      * snapshot data and last offset included into the snapshot.
@@ -136,6 +146,8 @@ public:
 
     ss::future<> remove_local_state();
 
+    state_machine_checksums get_stm_state_checksums();
+
 private:
     using stm_ptr = ss::shared_ptr<state_machine_base>;
     struct named_stm {
@@ -194,6 +206,12 @@ private:
 
         ss::sstring name;
         ss::shared_ptr<state_machine_base> stm;
+
+        ss::future<> update_state_checksum();
+
+        // checksum of state machine state, it is only updated after one or more
+        // batches were applied to the state machine.
+        stm_state_checksum state_checksum;
         mutex background_apply_mutex{
           "state_machine_manager::background_apply_mutex"};
     };
@@ -263,6 +281,7 @@ private:
     snapshot_at_offset_supported _supports_snapshot_at_offset{true};
     storage::simple_snapshot_manager _initial_recovery_snapshot_mgr;
     config::binding<std::chrono::milliseconds> _stm_shutdown_timeout;
+    std::unique_ptr<stm_checksum_component> _checksum_component;
 };
 
 /**

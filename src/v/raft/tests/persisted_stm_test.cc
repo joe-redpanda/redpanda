@@ -141,6 +141,10 @@ public:
     ss::future<> start() override { return persisted_stm<>::start(); }
     ss::future<> stop() override { return persisted_stm<>::stop(); }
 
+    ss::future<uint32_t> get_state_checksum() const override {
+        return ss::make_ready_future<uint32_t>(0);
+    }
+
     ss::future<result<bool>> execute(kv_operation op) {
         auto synced = co_await sync(10s);
         if (!synced) {
@@ -499,6 +503,10 @@ public:
 
     ss::future<iobuf> take_snapshot(model::offset) override {
         co_return iobuf{};
+    }
+
+    ss::future<uint32_t> get_state_checksum() const override {
+        return ss::make_ready_future<uint32_t>(0);
     }
 
     ss::future<raft::local_snapshot_applied>
@@ -1017,7 +1025,7 @@ class start_from_end_stm : public persisted_kv {
 public:
     static constexpr std::string_view name = "start_from_end_stm";
     explicit start_from_end_stm(raft_node_instance& rn)
-      : persisted_kv(rn, false, "start_from_end_stm_kv_stm_snapshot") {}
+      : persisted_kv(rn, false, "x_kv_stm_snapshot") {}
 
     ss::future<> apply_raft_snapshot(const iobuf& buffer) override {
         if (buffer.empty()) {
