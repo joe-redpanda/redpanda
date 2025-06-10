@@ -4034,7 +4034,7 @@ class RedpandaService(RedpandaServiceBase):
             f"Storage usage inconsistency on nodes {nodes}: max difference {max_diff} on node {max_node}"
         )
 
-    def decode_backtraces(self):
+    def decode_backtraces(self, raise_on_failure=False):
         """
         Decodes redpanda backtraces if any of them are present
         :return: None
@@ -4061,6 +4061,8 @@ class RedpandaService(RedpandaServiceBase):
                 # goes wrong we must not raise, or we would usurp
                 # the original exception that caused the failure.
                 self.logger.exception("Failed to run seastar-addr2line")
+                if raise_on_failure:
+                    raise
 
     def rp_install_path(self):
         if self._installer._started:
