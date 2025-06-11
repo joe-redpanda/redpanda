@@ -448,12 +448,21 @@ class FailureInjectorSelfTest(Test):
 
 class RedpandaServiceSelfTest(RedpandaTest):
     @cluster(num_nodes=1, log_allow_list=["Segmentation fault"])
-    def test_backtrace(self):
+    @matrix(simple_backtrace=[True, False])
+    def test_backtrace(self, simple_backtrace: bool):
         rp = self.redpanda
         node = rp.nodes[0]
-        rp.signal_redpanda(rp.nodes[0], signal=signal.SIGSEGV)
+
+        # before anything happens, the backtrace capture file should not exist
+        assert not node.account.exists(RedpandaService.BACKTRACE_CAPTURE), \
+            "Backtrace capture file should not exist before test"
+
+        rp._admin.log_backtrace(node, simple_backtrace=simple_backtrace)
         rp.decode_backtraces(raise_on_failure=True)
         backtrace_contents = node.account.ssh_output(
             f"cat {RedpandaService.BACKTRACE_CAPTURE}").decode()
-        assert "backtrace_buffer::append_backtrace" in backtrace_contents, \
-            "Didn't find expected string in backtrace: " + backtrace_contents
+        self.logger.debug(f"Backtrace contents: {backtrace_contents}")
+        # we look for this characteristic string in the backtrace, which is
+        # the method int he admin API that was called to capture the backtrace
+        assert "::log_backtrace" in backtrace_contents, \
+            "Didn't find expected string in backtrace (see debug log for contents)"
