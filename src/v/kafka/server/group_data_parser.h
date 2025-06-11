@@ -58,14 +58,28 @@ namespace kafka {
 
 template<class T>
 concept GroupDataParserBase = requires(T base, model::record_batch b) {
-    base.handle_raft_data(std::move(b));
-    base.handle_tx_offsets(b.header(), kafka::group_tx::offsets_metadata{});
-    base.handle_commit(b.header(), group_tx::commit_metadata{});
-    base.handle_abort(b.header(), group_tx::abort_metadata{});
-    base.handle_fence_v0(b.header(), group_tx::fence_metadata_v0{});
-    base.handle_fence_v1(b.header(), group_tx::fence_metadata_v1{});
-    base.handle_fence(b.header(), kafka::group_tx::fence_metadata{});
-    base.handle_version_fence(features::feature_table::version_fence{});
+    { base.handle_raft_data(std::move(b)) } -> std::same_as<ss::future<>>;
+    {
+        base.handle_tx_offsets(b.header(), kafka::group_tx::offsets_metadata{})
+    } -> std::same_as<ss::future<>>;
+    {
+        base.handle_commit(b.header(), group_tx::commit_metadata{})
+    } -> std::same_as<ss::future<>>;
+    {
+        base.handle_abort(b.header(), group_tx::abort_metadata{})
+    } -> std::same_as<ss::future<>>;
+    {
+        base.handle_fence_v0(b.header(), group_tx::fence_metadata_v0{})
+    } -> std::same_as<ss::future<>>;
+    {
+        base.handle_fence_v1(b.header(), group_tx::fence_metadata_v1{})
+    } -> std::same_as<ss::future<>>;
+    {
+        base.handle_fence(b.header(), kafka::group_tx::fence_metadata{})
+    } -> std::same_as<ss::future<>>;
+    {
+        base.handle_version_fence(features::feature_table::version_fence{})
+    } -> std::same_as<ss::future<>>;
 };
 
 template<class Base>
