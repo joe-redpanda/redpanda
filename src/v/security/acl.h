@@ -34,6 +34,10 @@
 
 namespace security {
 
+template<typename E>
+std::enable_if_t<std::is_enum_v<E>, std::optional<E>>
+  from_string_view(std::string_view);
+
 // cluster is a resource type and the acl data model requires that resources
 // have names, so this is a fixed name for that resource.
 //
@@ -57,6 +61,28 @@ enum class resource_type : int8_t {
     sr_subject = 4,
     sr_global = 5,
 };
+
+constexpr std::string_view to_string_view(resource_type type) {
+    switch (type) {
+    case resource_type::topic:
+        return "topic";
+    case resource_type::group:
+        return "group";
+    case resource_type::cluster:
+        return "cluster";
+    case resource_type::transactional_id:
+        return "transactional_id";
+    case resource_type::sr_subject:
+        return "schema_registry_subject";
+    case resource_type::sr_global:
+        return "schema_registry_global";
+    }
+    __builtin_unreachable();
+}
+
+template<>
+std::optional<resource_type>
+from_string_view<resource_type>(std::string_view str);
 
 template<typename T>
 consteval resource_type get_resource_type() {
@@ -88,6 +114,20 @@ enum class pattern_type : int8_t {
     prefixed = 1,
 };
 
+constexpr std::string_view to_string_view(pattern_type type) {
+    switch (type) {
+    case pattern_type::literal:
+        return "literal";
+    case pattern_type::prefixed:
+        return "prefixed";
+    }
+    __builtin_unreachable();
+}
+
+template<>
+std::optional<pattern_type>
+from_string_view<pattern_type>(std::string_view str);
+
 /*
  * An operation on a resource.
  *
@@ -107,7 +147,38 @@ enum class acl_operation : int8_t {
     idempotent_write = 10,
 };
 
+constexpr std::string_view to_string_view(acl_operation op) {
+    switch (op) {
+    case acl_operation::all:
+        return "all";
+    case acl_operation::read:
+        return "read";
+    case acl_operation::write:
+        return "write";
+    case acl_operation::create:
+        return "create";
+    case acl_operation::remove:
+        return "remove";
+    case acl_operation::alter:
+        return "alter";
+    case acl_operation::describe:
+        return "describe";
+    case acl_operation::cluster_action:
+        return "cluster_action";
+    case acl_operation::describe_configs:
+        return "describe_configs";
+    case acl_operation::alter_configs:
+        return "alter_configs";
+    case acl_operation::idempotent_write:
+        return "idempotent_write";
+    }
+    __builtin_unreachable();
+}
+
 std::ostream& operator<<(std::ostream&, acl_operation);
+template<>
+std::optional<acl_operation>
+from_string_view<acl_operation>(std::string_view str);
 
 /*
  * Grant or deny access.
@@ -119,7 +190,20 @@ enum class acl_permission : int8_t {
     allow = 1,
 };
 
+constexpr std::string_view to_string_view(acl_permission perm) {
+    switch (perm) {
+    case acl_permission::deny:
+        return "deny";
+    case acl_permission::allow:
+        return "allow";
+    }
+    __builtin_unreachable();
+}
+
 std::ostream& operator<<(std::ostream&, acl_permission);
+template<>
+std::optional<acl_permission>
+from_string_view<acl_permission>(std::string_view str);
 
 /*
  * Principal type
@@ -134,6 +218,22 @@ enum class principal_type : int8_t {
     ephemeral_user = 1,
     role = 2,
 };
+
+constexpr std::string_view to_string_view(principal_type type) {
+    switch (type) {
+    case principal_type::user:
+        return "user";
+    case principal_type::ephemeral_user:
+        return "ephemeral user";
+    case principal_type::role:
+        return "role";
+    }
+    __builtin_unreachable();
+}
+
+template<>
+std::optional<principal_type>
+from_string_view<principal_type>(std::string_view str);
 
 std::ostream& operator<<(std::ostream&, resource_type);
 std::ostream& operator<<(std::ostream&, pattern_type);
