@@ -61,6 +61,7 @@ public:
       const std::vector<state_machine_manager::entry_ptr>& machines,
       ss::abort_source& as,
       ctx_log& log,
+      state_machine_manager* parent,
       maybe_checksum_ref checksum_component = std::nullopt);
 
     ss::future<ss::stop_iteration> operator()(model::record_batch);
@@ -82,6 +83,7 @@ private:
     model::offset _max_last_applied;
     ss::abort_source& _as;
     ctx_log& _log;
+    state_machine_manager* _parent;
 
     // dont run the checksum logic on background fibers
     maybe_checksum_ref _checksum_component;
@@ -92,10 +94,12 @@ batch_applicator::batch_applicator(
   const std::vector<state_machine_manager::entry_ptr>& entries,
   ss::abort_source& as,
   ctx_log& log,
+  state_machine_manager* parent,
   maybe_checksum_ref checksum_component)
   : _ctx(ctx)
   , _as(as)
   , _log(log)
+  , _parent(parent)
   , _checksum_component(checksum_component) {
     for (auto& m : entries) {
         _machines.push_back(apply_state{.stm_entry = m});
@@ -104,9 +108,17 @@ batch_applicator::batch_applicator(
 
 ss::future<ss::stop_iteration>
 batch_applicator::operator()(model::record_batch batch) {
-    // run the checksum operations
+    // run the checksum operations if foreground
     if (_checksum_component) {
-        co_await _checksum_component->get().apply(batch);
+        auto& component{_checksum_component->get()};
+
+        // start apply, if checksums requested, push them to token and finish
+        // apply
+        auto token = component.start_apply(batch);
+        if (token.should_provide_checksums()) {
+            token.provide_checksums(_parent->get_stm_state_checksums());
+        }
+        co_await component.finish_apply(std::move(token));
     }
 
     const auto last_offset = batch.last_offset();
@@ -188,8 +200,7 @@ state_machine_manager::state_machine_manager(
       std::filesystem::path(_raft->log_config().work_directory()),
       "stm_manager.snapshot")
   , _stm_shutdown_timeout(std::move(stm_shutdown_timeout))
-  , _checksum_component{
-      std::make_unique<stm_checksum_component>(_log, this, _raft)} {
+  , _checksum_component{_log, _raft} {
     for (auto& n_stm : stms) {
         _supports_snapshot_at_offset
           = _supports_snapshot_at_offset
@@ -199,47 +210,6 @@ state_machine_manager::state_machine_manager(
           ss::make_lw_shared<state_machine_entry>(
             n_stm.name, std::move(n_stm.stm)));
     }
-}
-
-state_machine_manager::state_machine_manager(
-  state_machine_manager&& other) noexcept
-  : _raft{other._raft} // trivially movable
-  , _log{std::move(other._log)}
-  , _apply_mutex{std::move(other._apply_mutex)}
-  , _machines{std::move(other._machines)}
-  , _next{other._next} // trivially movable
-  , _gate{std::move(other._gate)}
-  , _as{std::move(other._as)}
-  , _apply_sg{other._apply_sg} // trivially movable
-  , _supports_snapshot_at_offset{other._supports_snapshot_at_offset}
-  , _initial_recovery_snapshot_mgr{std::move(
-      other._initial_recovery_snapshot_mgr)}
-  , _stm_shutdown_timeout(std::move(other._stm_shutdown_timeout))
-  , _checksum_component{std::move(other._checksum_component)} {
-    // _checksum_component bears a back pointer to this object, on move, move it
-    // as well
-    _checksum_component->on_move(this);
-}
-
-state_machine_manager&
-state_machine_manager::operator=(state_machine_manager&& other) noexcept {
-    if (&other != this) {
-        _raft = other._raft;
-        _log = std::move(other._log);
-        _apply_mutex = std::move(other._apply_mutex);
-        _machines = std::move(other._machines);
-        _next = other._next;
-        _gate = std::move(other._gate);
-        _as = std::move(other._as);
-        _apply_sg = other._apply_sg;
-        _supports_snapshot_at_offset = other._supports_snapshot_at_offset;
-        _initial_recovery_snapshot_mgr = std::move(
-          other._initial_recovery_snapshot_mgr);
-        _stm_shutdown_timeout = std::move(other._stm_shutdown_timeout);
-        _checksum_component = std::move(other._checksum_component);
-        _checksum_component->on_move(this);
-    }
-    return *this;
 }
 
 model::offset state_machine_manager::max_next_offset() const {
@@ -605,7 +575,7 @@ ss::future<> state_machine_manager::try_apply_in_foreground() {
 
         auto max_last_applied = co_await std::move(reader).consume(
           batch_applicator(
-            default_ctx, machines, _as, _log, *_checksum_component),
+            default_ctx, machines, _as, _log, this, _checksum_component),
           model::no_timeout);
 
         if (max_last_applied == model::offset{}) {
@@ -736,7 +706,7 @@ ss::future<> state_machine_manager::background_apply_fiber(
               config);
             auto last_applied_before = entry->stm->last_applied_offset();
             auto last_applied_after = co_await std::move(reader).consume(
-              batch_applicator(background_ctx, {entry}, _as, _log),
+              batch_applicator(background_ctx, {entry}, _as, _log, this),
               model::no_timeout);
             if (last_applied_before >= last_applied_after) {
                 error = true;

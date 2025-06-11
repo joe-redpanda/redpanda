@@ -1,3 +1,14 @@
+/*
+ * Copyright 2025 Redpanda Data, Inc.
+ *
+ * Use of this software is governed by the Business Source License
+ * included in the file licenses/BSL.md
+ *
+ * As of the Change Date specified in that file, in accordance with
+ * the Business Source License, use of this software will be governed
+ * by the Apache License, Version 2.0
+ */
+
 #include "raft/stm_checksum_component.h"
 
 #include "base/vassert.h"
@@ -7,31 +18,96 @@
 
 namespace raft {
 stm_checksum_component::stm_checksum_component(
-  ctx_log& log, state_machine_manager* parent, raft::consensus* raft)
+  ctx_log& log, raft::consensus* raft)
   : _log{&log}
-  , _parent{parent}
   , _raft{raft}
   , _checksum_controller{raft, _log} {}
 
-void stm_checksum_component::on_move(state_machine_manager* parent) {
-    this->_parent = parent;
-}
-
-ss::future<>
-stm_checksum_component::apply(const model::record_batch& record_batch) {
-    // update the in memory stm with the latest record batch
+stm_checksum_component::apply_token
+stm_checksum_component::start_apply(const model::record_batch& record_batch) {
+    // update state
     _checksum_controller.on_batch(record_batch);
-    if (_checksum_controller.should_replicate_prepare()) {
-        co_await replicate_prepare();
+
+    if (record_batch.header().type != model::record_batch_type::stm_manager) {
+        return {};
     }
 
-    // is_batch_relevant
-    if (record_batch.header().type != model::record_batch_type::stm_manager) {
+    vassert(
+      record_batch.header().record_count == 1,
+      "checksum record batches should only have one record");
+
+    apply_token out_token{
+      .record_offset = record_batch.base_offset(),
+      .maybe_checksums_at_offset = std::nullopt,
+      .maybe_record_type = std::nullopt};
+
+    record_batch.for_each_record([this, &out_token](model::record record) {
+        auto type = serde::from_iobuf<record_type>(record.release_key());
+        out_token.maybe_record_type = type;
+        switch (type) {
+        case record_type::prepare: {
+            return;
+        }
+        case record_type::execute: {
+            checksums_at_offset remote_checksums_from_offset{};
+            try {
+                remote_checksums_from_offset
+                  = serde::from_iobuf<checksums_at_offset>(
+                    record.release_value());
+            } catch (const serde::serde_exception& e) {
+                vlog(_log->error, "caught serde exception {}", e);
+                _checksum_controller.reset();
+                return;
+            }
+            out_token.maybe_checksums_at_offset = std::move(
+              remote_checksums_from_offset.prepared_checksums);
+            return;
+        }
+        }
+    });
+
+    return out_token;
+}
+
+ss::future<> stm_checksum_component::finish_apply(apply_token&& token) {
+    apply_token from_start{std::move(token)};
+
+    if (_checksum_controller.should_replicate_prepare()) {
+        vassert(
+          !token.maybe_checksums_at_offset.has_value()
+            && !token.maybe_record_type.has_value(),
+          "state violation, stm_checksum component should never simultaneously "
+          "apply a checksum record and intend to prepare");
+        co_await replicate_prepare();
         co_return;
     }
 
-    // apply a relevant batch
-    co_await do_apply(record_batch);
+    // received batch was not relevant
+    if (!from_start.maybe_record_type.has_value()) {
+        co_return;
+    }
+
+    vassert(
+      from_start.maybe_checksums_at_offset.has_value(),
+      "checksums must either have been received on batch or provided by stm_m");
+
+    switch (from_start.maybe_record_type.value()) {
+    case record_type::prepare:
+        co_await do_prepare(
+          from_start.record_offset,
+          std::move(from_start.maybe_checksums_at_offset.value()));
+        co_return;
+    case record_type::execute:
+        vassert(
+          from_start.maybe_checksums_at_offset.has_value(),
+          "execute record found but no checksums found");
+        checksums_at_offset for_checksum_replication{
+          .prepared_at_offset = from_start.record_offset,
+          .prepared_checksums = std::move(
+            from_start.maybe_checksums_at_offset.value())};
+        do_execute(std::move(for_checksum_replication));
+        co_return;
+    }
     co_return;
 }
 
@@ -46,51 +122,8 @@ operator<<(std::ostream& o, stm_checksum_component::record_type t) {
     __builtin_unreachable();
 }
 
-ss::future<>
-stm_checksum_component::do_apply(const model::record_batch& record_batch) {
-    vassert(
-      record_batch.header().record_count == 1,
-      "checksum record batches should only have one record");
-
-    auto record_offset = record_batch.base_offset();
-
-    // container in case the apply is async
-    std::optional<ss::future<>> maybe_awaitable{std::nullopt};
-
-    record_batch.for_each_record(
-      [this, &maybe_awaitable, record_offset](model::record record) {
-          auto type = serde::from_iobuf<record_type>(record.release_key());
-          switch (type) {
-          case record_type::prepare: {
-              maybe_awaitable = this->do_prepare(record_offset);
-              return;
-          }
-          case record_type::execute: {
-              checksums_at_offset remote_checksums_from_offset{};
-              try {
-                  remote_checksums_from_offset
-                    = serde::from_iobuf<checksums_at_offset>(
-                      record.release_value());
-              } catch (const serde::serde_exception& e) {
-                  vlog(_log->error, "caught serde exception {}", e);
-                  _checksum_controller.reset();
-                  return;
-              }
-              this->do_execute(remote_checksums_from_offset);
-              return;
-          }
-          }
-      });
-
-    // if apply yielded an async operation, await it here
-    if (maybe_awaitable.has_value()) {
-        co_await std::move(maybe_awaitable).value();
-    }
-
-    co_return;
-}
-
-ss::future<> stm_checksum_component::do_prepare(model::offset prepare_offset) {
+ss::future<> stm_checksum_component::do_prepare(
+  model::offset prepare_offset, state_machine_checksums checksums) {
     // might happen but should be infrequent
     if (this->maybe_prepared_checksums.has_value()) {
         vlog(
@@ -101,12 +134,15 @@ ss::future<> stm_checksum_component::do_prepare(model::offset prepare_offset) {
           prepare_offset);
     }
 
-    this->maybe_prepared_checksums = {
+    checksums_at_offset prepared_checksums = {
       .prepared_at_offset = prepare_offset,
-      .prepared_checksums = _parent->get_stm_state_checksums()};
+      .prepared_checksums = std::move(checksums)};
+
+    // keep a local copy
+    this->maybe_prepared_checksums = prepared_checksums;
 
     if (_checksum_controller.should_replicate_checksum()) {
-        return replicate_checksum(prepare_offset);
+        return replicate_checksum(std::move(prepared_checksums));
     }
 
     return ss::now();
@@ -179,17 +215,13 @@ model::record_batch stm_checksum_component::make_prepare_checksum_batch() {
 }
 
 model::record_batch stm_checksum_component::make_execute_checksum_batch(
-  model::offset prepare_offset, state_machine_checksums checksums) {
+  checksums_at_offset checksums) {
     storage::record_batch_builder builder{
       model::record_batch_type::stm_manager, model::offset(0)};
 
-    checksums_at_offset at_offset{
-      .prepared_at_offset = prepare_offset,
-      .prepared_checksums = std::move(checksums)};
-
     builder.add_raw_kv(
       serde::to_iobuf(record_type::execute),
-      serde::to_iobuf(std::move(at_offset)));
+      serde::to_iobuf(std::move(std::move(checksums))));
 
     return std::move(builder).build();
 }
@@ -223,11 +255,9 @@ ss::future<> stm_checksum_component::replicate_prepare() {
 }
 
 ss::future<>
-stm_checksum_component::replicate_checksum(model::offset prepare_offset) {
-    // get checksum
-    state_machine_checksums checksums{_parent->get_stm_state_checksums()};
+stm_checksum_component::replicate_checksum(checksums_at_offset checksums) {
     auto replicate_result = co_await _raft->replicate(
-      make_execute_checksum_batch(prepare_offset, std::move(checksums)),
+      make_execute_checksum_batch(std::move(checksums)),
       replicate_options{
         raft::consistency_level::quorum_ack, checksum_replication_timeout});
     if (replicate_result.has_error()) {

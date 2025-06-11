@@ -16,6 +16,7 @@
 #include "raft/fwd.h"
 #include "raft/logger.h"
 #include "raft/state_machine_base.h"
+#include "raft/stm_checksum_component.h"
 #include "raft/types.h"
 #include "serde/envelope.h"
 #include "serde/rw/envelope.h"
@@ -71,13 +72,6 @@ concept StateMachineIterateFunc = requires(
  */
 class state_machine_manager final {
 public:
-    // custom move logic
-    state_machine_manager(state_machine_manager&& other) noexcept;
-    state_machine_manager& operator=(state_machine_manager&& other) noexcept;
-    // disallow copy
-    state_machine_manager(const state_machine_manager&) = delete;
-    state_machine_manager& operator=(const state_machine_manager&) = delete;
-
     /**
      * A result returned after taking a snapshot it contains a serde serialized
      * snapshot data and last offset included into the snapshot.
@@ -281,7 +275,7 @@ private:
     snapshot_at_offset_supported _supports_snapshot_at_offset{true};
     storage::simple_snapshot_manager _initial_recovery_snapshot_mgr;
     config::binding<std::chrono::milliseconds> _stm_shutdown_timeout;
-    std::unique_ptr<stm_checksum_component> _checksum_component;
+    stm_checksum_component _checksum_component;
 };
 
 /**
