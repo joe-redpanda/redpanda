@@ -188,6 +188,14 @@ public:
 
     ss::future<> reload_groups();
 
+    /*
+     * May misbehave if called concurrently for intersecting sets of groups.
+     */
+    ss::future<result<model::offset>> set_blocked_for_groups(
+      const model::ntp& co_ntp,
+      const chunked_vector<kafka::group_id>&,
+      bool to_block);
+
     // Returns the groups being managed by the attached partition of the given
     // NTP, returning an error if the partition is not serving groups on this
     // shard (e.g. not leader, still loading groups, etc).
@@ -204,7 +212,10 @@ public:
 
 public:
     error_code validate_group_status(
-      const model::ntp& ntp, const group_id& group, api_key api);
+      const model::ntp& ntp,
+      const group_id& group,
+      api_key api,
+      bool allow_blocked) const;
 
     static bool valid_group_id(const group_id& group, api_key api);
 
@@ -310,6 +321,7 @@ private:
     ss::sharded<consumer_group_lag_metrics_frontend>& _lag_metrics_frontend;
     config::configuration& _conf;
     absl::node_hash_map<group_id, group_ptr> _groups;
+    chunked_hash_set<kafka::group_id> _blocked_groups;
     absl::node_hash_map<model::ntp, ss::lw_shared_ptr<attached_partition>>
       _partitions;
 
