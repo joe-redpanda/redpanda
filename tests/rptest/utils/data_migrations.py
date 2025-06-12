@@ -230,10 +230,16 @@ class DataMigrationTestMixin:
                for state in states):
             self.assure_not_deletable(id, redpanda=redpanda)
 
-    def migrate_between_clusters(self, topics: list[NamespacedTopic],
-                                 source: RedpandaService,
-                                 dest: RedpandaService) -> None:
+    def migrate_between_clusters(
+            self,
+            topics: list[NamespacedTopic],
+            source: RedpandaService,
+            dest: RedpandaService,
+            aliases: list[NamespacedTopic] | None = None) -> None:
         assert source != dest
+
+        if aliases is not None:
+            assert len(aliases) == len(topics)
 
         out_migration = OutboundDataMigration(topics=topics,
                                               consumer_groups=[])
@@ -253,7 +259,7 @@ class DataMigrationTestMixin:
                                         namespace=out_topic_json.get("ns"))
             in_topic = NamespacedTopic(topic=out_topic_json["remote_location"],
                                        namespace=out_topic.ns)
-            alias = out_topic
+            alias = out_topic if aliases is None else aliases[i]
             in_topics.append(
                 InboundTopic(source_topic_reference=in_topic, alias=alias))
 
