@@ -51,6 +51,9 @@ public:
 
     ss::future<> reset_backoff(model::node_id n);
 
+    // accept checksum rpc location 1628eb
+    //ss::future<> accept_checksum(model::node_id, checksum_envelope, rpc::client_opts)
+
 private:
     model::node_id _self;
     ss::sharded<rpc::connection_cache>& _connection_cache;

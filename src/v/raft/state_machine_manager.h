@@ -263,6 +263,83 @@ private:
     snapshot_at_offset_supported _supports_snapshot_at_offset{true};
     storage::simple_snapshot_manager _initial_recovery_snapshot_mgr;
     config::binding<std::chrono::milliseconds> _stm_shutdown_timeout;
+
+    /*
+      // holds any existing checksum intent
+      std::optional<model::offset> _maybe_checksum_intent{};
+      // hold the implementation for however we want to evaluate the checksum cadence
+      checksum_controller _checksum_controller{};
+
+      // package up the functions and data needed to checksum s.t. we dont need any stm_m backpointers
+      struct checksum_applicator
+      {
+        // functor to actually gather and replicate the checksums
+        std::function<void(state_machine_checksums)> evaluate_and_dispatch_checksums;
+
+        // replicated intent offset
+        // this will be batch aligned, namely this is the final offset of the target batch
+        // where target batch refers to the after which we should evaluate the checksums
+        model::offset checksum_after_offset;
+      }
+      
+      // called by consensus, indicates that its time to checksum immediate after 'intent' offset
+      void signal_checksum_intent(model::offset intent) {
+        _maybe_checksum_intent = intent;
+      }
+
+      // gate on ongoing intent, delegate to a cadence object that does the timespan and offset determination
+      void should_checksum() {
+        // the answer is no if theres an intent
+        if(!_maybe_checksum_intent)
+        {
+          return checksum_controller.decide();
+        }
+      }
+
+      // fetch all the checksums from child stms
+      stm_checksums gather_checksums();
+
+      // execute the rpc to send the checksums to all child nodes
+      ss::future<> dispatch_checksums(stm_checksums checksums);
+      void on_checksum_apply()
+      {
+        // snap checksums, save locally
+        auto checksums = gather_checksums();
+        _maybe_checksums_at_offset = checksums;
+
+        // if leader, dispatch as well
+        if(is_leader()) {
+          std::ignore = dispatch_checksums(std::move(checksums));
+        }
+
+        // reset intent
+        _checksum_after_offset = std::nullopt;
+      }
+
+      checksum_applicator make_applicator(model::offset checksum_after_offset)
+      {
+        return {
+          .on_checksum_apply = std::bind(on_checksum_apply, this);
+          .checksum_after_offset = checksum_after_offset
+        }
+      } 
+    */
+
+    /*
+      // follower info for checksumming
+      struct checksum_at_offset
+      {
+        model::offset prepared_offset;
+        state_machine_checkums;
+      }
+      
+      std::optional<checksums_at_offset> _maybe_checksums_at_offset;
+
+      // called on receipt of a foreign checksum
+      // diff foreign checksum with saved checksum
+      void execute_checksums(state_machine_checksums checksums);
+    */
+    
 };
 
 /**

@@ -808,6 +808,16 @@ private:
     std::optional<model::offset>
       adjust_learner_initial_offset(std::optional<model::offset>);
 
+    /*
+      void maybe_signal_checksum_intent(append_entries_request const& r)
+      {
+        if(r.maybe_checksum_offset().has_value()) {
+        vassert(_stm_manager.has_value(), 'invalid');ß
+        _stm_manager.signal_checksum_intent(*r.maybe_checksum_offset());
+        }
+      }
+    */
+
     const std::vector<vnode>& all_replicas() const;
     // args
     vnode _self;

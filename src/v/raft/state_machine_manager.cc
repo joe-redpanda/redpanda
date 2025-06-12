@@ -54,7 +54,9 @@ public:
       const char* ctx,
       const std::vector<state_machine_manager::entry_ptr>& machines,
       ss::abort_source& as,
-      ctx_log& log);
+      ctx_log& log
+    // optional<checksum_applicator> maybe_checksum_applicator
+     );
 
     ss::future<ss::stop_iteration> operator()(model::record_batch);
 
@@ -75,6 +77,7 @@ private:
     model::offset _max_last_applied;
     ss::abort_source& _as;
     ctx_log& _log;
+    // optional<checksum_applicator> _maybe_checksum_applicator;
 };
 
 batch_applicator::batch_applicator(
@@ -116,6 +119,15 @@ batch_applicator::operator()(model::record_batch batch) {
           std::bind_front(std::equal_to<>(), applied_successfully::yes))) {
         _max_last_applied = last_offset;
     }
+
+    /**
+    // on foreground apply and on time to checksum, snap the checksums and dispatch the rpc 
+    if(_maybe_checksum_applicator && calculate_end_offset(batch) == _maybe_checksum_applicator->checksum_after_offset)
+    {
+      _maybe_checksum_applicator->on_checksum_apply()
+    }
+     */
+
 
     co_return ss::stop_iteration(_as.abort_requested());
 }

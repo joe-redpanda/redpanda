@@ -2193,6 +2193,9 @@ consensus::do_append_entries(append_entries_request&& r) {
         maybe_update_follower_commit_idx(
           model::offset(request_metadata.commit_index));
         reply.last_flushed_log_index = _flushed_offset;
+
+        // 1628eb no reason a checksum intent can't be on an empty batch
+        // maybe_signal_checksum_intent(r);
         reply.result = reply_result::success;
         co_return reply;
     }
@@ -2338,6 +2341,11 @@ consensus::do_append_entries(append_entries_request&& r) {
             // but can inflate the number of recovering partitions
             // statistic a bit).
         }
+
+        // 1628eb also a success state flag stm_m
+        /*
+        maybe_signal_checksum_intent(r);
+        */
         co_return make_append_entries_reply(reply.target_node_id, ofs);
     } catch (...) {
         vlog(
@@ -2811,6 +2819,17 @@ ss::future<result<replicate_result>> consensus::dispatch_replicate(
   absl::flat_hash_map<vnode, follower_req_seq> seqs) {
     auto stm = ss::make_lw_shared<replicate_entries_stm>(
       this, std::move(req), std::move(seqs));
+
+    // 1628eb leader is about to dispatch append entries request, may inject checksum intent here
+    // AFTER the last offset of the append entries request
+    /*
+    if(_stm_m->should_checksum()) {
+      model::offset checksum_after = calculate_final_offset(req);
+      req.maybe_checksum_offset = {checksum_after};
+      _stm_m->signal_checksum_intent(checksum_after);
+    }
+    // continue replication normally
+    */
 
     return stm->apply(std::move(u))
       .then([stm](result<replicate_result> res) {
