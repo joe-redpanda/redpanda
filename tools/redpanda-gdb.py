@@ -1576,9 +1576,6 @@ class redpanda_storage(gdb.Command):
         print(f"# Log segments")
 
         for ntp, log in find_logs():
-
-            if str(model_ntp(ntp).partition()) != "40":
-                continue
             print(f"{ntp} segment count {log.segments().size()}")
             for segment in log.segments():
                 offsets = segment.offsets_tracker()
