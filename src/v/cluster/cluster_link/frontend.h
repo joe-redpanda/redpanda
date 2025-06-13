@@ -11,23 +11,24 @@
 #pragma once
 
 #include "base/seastarx.h"
+#include "cluster/cluster_link/table.h"
 #include "cluster/commands.h"
 #include "cluster/controller_stm.h"
 #include "cluster/fwd.h"
-#include "cluster/panda_link/table.h"
+#include "cluster_link/model/types.h"
 #include "features/feature_table.h"
 #include "features/fwd.h"
 #include "model/timeout_clock.h"
-#include "panda_link/model/types.h"
 #include "rpc/connection_cache.h"
 #include "rpc/fwd.h"
 
 #include <seastar/core/sharded.hh>
 
-namespace cluster::panda_link {
+namespace cluster::cluster_link {
 class frontend : public ss::peering_sharded_service<frontend> {
-    using panda_link_cmd = std::
-      variant<cluster::panda_link_upsert_cmd, cluster::panda_link_remove_cmd>;
+    using cluster_link_cmd = std::variant<
+      cluster::cluster_link_upsert_cmd,
+      cluster::cluster_link_remove_cmd>;
 
 public:
     frontend(
@@ -46,33 +47,33 @@ public:
         cluster::errc ec;
     };
 
-    ss::future<mutation_result> upsert_panda_link(
-      ::panda_link::model::metadata, model::timeout_clock::time_point);
-    ss::future<mutation_result> remove_panda_link(
-      ::panda_link::model::name_t, model::timeout_clock::time_point);
+    ss::future<mutation_result> upsert_cluster_link(
+      ::cluster_link::model::metadata, model::timeout_clock::time_point);
+    ss::future<mutation_result> remove_cluster_link(
+      ::cluster_link::model::name_t, model::timeout_clock::time_point);
 
-    bool panda_link_active(bool check_license) const;
+    bool cluster_link_active(bool check_license) const;
 
     notification_id register_for_updates(notification_callback);
     void unregister_for_updates(notification_id);
 
-    std::optional<std::reference_wrapper<const ::panda_link::model::metadata>>
-    find_link_by_id(::panda_link::model::id_t id) const;
+    std::optional<std::reference_wrapper<const ::cluster_link::model::metadata>>
+    find_link_by_id(::cluster_link::model::id_t id) const;
 
-    std::optional<std::reference_wrapper<const ::panda_link::model::metadata>>
-    find_link_by_name(const ::panda_link::model::name_t& name) const;
+    std::optional<std::reference_wrapper<const ::cluster_link::model::metadata>>
+    find_link_by_name(const ::cluster_link::model::name_t& name) const;
 
-    chunked_vector<::panda_link::model::id_t> get_all_link_ids() const;
+    chunked_vector<::cluster_link::model::id_t> get_all_link_ids() const;
 
 private:
     ss::future<mutation_result>
-      do_mutation(panda_link_cmd, model::timeout_clock::time_point);
+      do_mutation(cluster_link_cmd, model::timeout_clock::time_point);
     ss::future<mutation_result> dispatch_mutation_to_remote(
-      model::node_id, panda_link_cmd, model::timeout_clock::duration);
+      model::node_id, cluster_link_cmd, model::timeout_clock::duration);
     ss::future<mutation_result>
-      do_local_mutation(panda_link_cmd, model::timeout_clock::time_point);
+      do_local_mutation(cluster_link_cmd, model::timeout_clock::time_point);
 
-    cluster::errc validate_mutation(const panda_link_cmd&) const;
+    cluster::errc validate_mutation(const cluster_link_cmd&) const;
 
 public:
     /// Class used to validate the incoming mutation request
@@ -81,7 +82,7 @@ public:
     public:
         explicit validator(table*, size_t max_links);
 
-        cluster::errc validate_mutation(const panda_link_cmd&) const;
+        cluster::errc validate_mutation(const cluster_link_cmd&) const;
 
     private:
         table* _table;
@@ -99,4 +100,4 @@ private:
 
     mutex _mu{"panda-link::frontend::mu"};
 };
-} // namespace cluster::panda_link
+} // namespace cluster::cluster_link

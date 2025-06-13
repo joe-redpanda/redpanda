@@ -8,7 +8,7 @@ redpanda_cc_library(
     hdrs = [
         "types.h",
     ],
-    include_prefix = "panda_link/model",
+    include_prefix = "cluster_link/model",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/serde",

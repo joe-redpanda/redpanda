@@ -9,20 +9,20 @@
  * by the Apache License, Version 2.0
  */
 
-#include "panda_link/service.h"
+#include "cluster_link/service.h"
 
-#include "cluster/panda_link/frontend.h"
+#include "cluster/cluster_link/frontend.h"
 #include "cluster/partition_manager.h"
+#include "cluster_link/link.h"
+#include "cluster_link/logger.h"
+#include "cluster_link/manager.h"
+#include "cluster_link/model/types.h"
 #include "model/namespace.h"
-#include "panda_link/link.h"
-#include "panda_link/logger.h"
-#include "panda_link/manager.h"
-#include "panda_link/model/types.h"
 #include "raft/group_manager.h"
 
-namespace panda_link {
+namespace cluster_link {
 
-using ::cluster::panda_link::frontend;
+using ::cluster::cluster_link::frontend;
 
 class link_registry_adapter : public link_registry {
 public:
@@ -67,7 +67,7 @@ service::service(
 service::~service() = default;
 
 ss::future<> service::start() {
-    vlog(pllog.info, "Starting panda link service");
+    vlog(cllog.info, "Starting panda link service");
     _manager = std::make_unique<manager>(
       _self,
       std::make_unique<link_registry_adapter>(&_plf->local()),
@@ -81,7 +81,7 @@ ss::future<> service::start() {
 }
 
 ss::future<> service::stop() {
-    vlog(pllog.info, "Stopping panda link service");
+    vlog(cllog.info, "Stopping panda link service");
     unregister_notifications();
     co_await _manager->stop();
 }
@@ -134,7 +134,7 @@ void service::on_leadership_change(
   ::model::term_id term,
   std::optional<::model::node_id> leader) {
     vlog(
-      pllog.trace,
+      cllog.trace,
       "on_leadership_change: group_id={}, term={}, leader={}",
       group_id,
       term,
@@ -142,7 +142,7 @@ void service::on_leadership_change(
     auto partition = _partition_manager->local().partition_for(group_id);
     if (!partition) {
         vlog(
-          pllog.debug,
+          cllog.debug,
           "got leadership notification for unknown partition: {}",
           group_id);
         return;
@@ -158,7 +158,7 @@ void service::on_leadership_change(
 
 void service::on_unmanage_notification(::model::topic_partition_view tp) {
     vlog(
-      pllog.trace, "on_unmanage_notification: {}/{}", tp.topic, tp.partition);
+      cllog.trace, "on_unmanage_notification: {}/{}", tp.topic, tp.partition);
     _manager->on_leadership_change(
       ::model::ntp{::model::kafka_namespace, tp.topic, tp.partition},
       ntp_leader::no);
@@ -166,8 +166,8 @@ void service::on_unmanage_notification(::model::topic_partition_view tp) {
 
 void service::on_manage_notification(
   const ss::lw_shared_ptr<cluster::partition>& p) {
-    vlog(pllog.trace, "on_manage_notification: {}", p->ntp());
+    vlog(cllog.trace, "on_manage_notification: {}", p->ntp());
     _manager->on_leadership_change(
       p->ntp(), p->is_elected_leader() ? ntp_leader::yes : ntp_leader::no);
 }
-} // namespace panda_link
+} // namespace cluster_link

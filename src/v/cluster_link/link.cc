@@ -9,28 +9,28 @@
  * by the Apache License, Version 2.0
  */
 
-#include "panda_link/link.h"
+#include "cluster_link/link.h"
 
-#include "panda_link/logger.h"
+#include "cluster_link/logger.h"
 
-namespace panda_link {
+namespace cluster_link {
 
 link::link(model::metadata config)
   : _config(std::move(config)) {}
 
 ss::future<> link::start() {
-    vlog(pllog.info, "Starting panda link {} ({})", _config.name, _config.uuid);
+    vlog(cllog.info, "Starting panda link {} ({})", _config.name, _config.uuid);
     return ss::now();
 }
 
 ss::future<> link::stop() {
-    vlog(pllog.info, "Stopping panda link {} ({})", _config.name, _config.uuid);
+    vlog(cllog.info, "Stopping panda link {} ({})", _config.name, _config.uuid);
     return ss::now();
 }
 
 void link::update_config(model::metadata config) {
     vlog(
-      pllog.debug,
+      cllog.debug,
       "Updating panda link {} ({}): {}",
       _config.name,
       _config.uuid,
@@ -39,4 +39,4 @@ void link::update_config(model::metadata config) {
 }
 
 const model::metadata& link::config() const { return _config; }
-} // namespace panda_link
+} // namespace cluster_link

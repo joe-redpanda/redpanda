@@ -8,7 +8,7 @@
  * https://github.com/redpanda-data/redpanda/blob/master/licenses/rcl.md
  */
 
-#include "cluster/panda_link/frontend.h"
+#include "cluster/cluster_link/frontend.h"
 
 #include "cluster/controller_service.h"
 #include "cluster/controller_stm.h"
@@ -16,11 +16,11 @@
 #include "cluster/partition_leaders_table.h"
 #include "rpc/connection_cache.h"
 
-namespace cluster::panda_link {
+namespace cluster::cluster_link {
 
-using ::panda_link::model::id_t;
-using ::panda_link::model::metadata;
-using ::panda_link::model::name_t;
+using ::cluster_link::model::id_t;
+using ::cluster_link::model::metadata;
+using ::cluster_link::model::name_t;
 
 using mutation_result = frontend::mutation_result;
 
@@ -70,27 +70,28 @@ frontend::frontend(
   , _controller(controller)
   , _features(features) {}
 
-ss::future<mutation_result> frontend::upsert_panda_link(
-  ::panda_link::model::metadata meta,
+ss::future<mutation_result> frontend::upsert_cluster_link(
+  ::cluster_link::model::metadata meta,
   model::timeout_clock::time_point timeout) {
-    if (!panda_link_active(true)) {
+    if (!cluster_link_active(true)) {
         co_return mutation_result{.ec = cluster::errc::feature_disabled};
     }
-    panda_link_cmd c{cluster::panda_link_upsert_cmd{0, std::move(meta)}};
+    cluster_link_cmd c{cluster::cluster_link_upsert_cmd{0, std::move(meta)}};
     co_return co_await do_mutation(std::move(c), timeout);
 }
 
-ss::future<mutation_result> frontend::remove_panda_link(
-  ::panda_link::model::name_t name, model::timeout_clock::time_point timeout) {
-    if (!panda_link_active(false)) {
+ss::future<mutation_result> frontend::remove_cluster_link(
+  ::cluster_link::model::name_t name,
+  model::timeout_clock::time_point timeout) {
+    if (!cluster_link_active(false)) {
         co_return mutation_result{.ec = cluster::errc::feature_disabled};
     }
-    panda_link_cmd c{cluster::panda_link_remove_cmd(std::move(name), 0)};
+    cluster_link_cmd c{cluster::cluster_link_remove_cmd(std::move(name), 0)};
     co_return co_await do_mutation(std::move(c), timeout);
 }
 
-bool frontend::panda_link_active(bool check_license) const {
-    return _features->is_active(features::feature::panda_linking_dr)
+bool frontend::cluster_link_active(bool check_license) const {
+    return _features->is_active(features::feature::cluster_linking_dr)
            && !(check_license && _features->should_sanction());
 }
 
@@ -118,7 +119,7 @@ chunked_vector<id_t> frontend::get_all_link_ids() const {
 }
 
 ss::future<mutation_result> frontend::do_mutation(
-  panda_link_cmd cmd, model::timeout_clock::time_point timeout) {
+  cluster_link_cmd cmd, model::timeout_clock::time_point timeout) {
     auto cluster_leader = _leaders->get_leader(model::controller_ntp);
     if (!cluster_leader) {
         co_return mutation_result{.ec = cluster::errc::not_leader_controller};
@@ -139,7 +140,7 @@ ss::future<mutation_result> frontend::do_mutation(
 
 ss::future<mutation_result> frontend::dispatch_mutation_to_remote(
   model::node_id cluster_leader,
-  panda_link_cmd cmd,
+  cluster_link_cmd cmd,
   model::timeout_clock::duration timeout) {
     return _connections
       ->with_node_client<cluster::controller_client_protocol>(
@@ -151,15 +152,15 @@ ss::future<mutation_result> frontend::dispatch_mutation_to_remote(
           cluster::controller_client_protocol client) mutable {
             return ss::visit(
               std::move(cmd),
-              [client, timeout](cluster::panda_link_upsert_cmd cmd) mutable {
+              [client, timeout](cluster::cluster_link_upsert_cmd cmd) mutable {
                   return client
-                    .upsert_panda_link(
-                      cluster::upsert_panda_link_request{
+                    .upsert_cluster_link(
+                      cluster::upsert_cluster_link_request{
                         .metadata = std::move(cmd.value), .timeout = timeout},
                       rpc::client_opts(timeout))
                     .then(
-                      &rpc::get_ctx_data<cluster::upsert_panda_link_response>)
-                    .then([](result<cluster::upsert_panda_link_response> r) {
+                      &rpc::get_ctx_data<cluster::upsert_cluster_link_response>)
+                    .then([](result<cluster::upsert_cluster_link_response> r) {
                         if (r.has_error()) {
                             return result<mutation_result>(r.error());
                         }
@@ -167,15 +168,15 @@ ss::future<mutation_result> frontend::dispatch_mutation_to_remote(
                           mutation_result{.ec = r.value().ec});
                     });
               },
-              [client, timeout](cluster::panda_link_remove_cmd cmd) mutable {
+              [client, timeout](cluster::cluster_link_remove_cmd cmd) mutable {
                   return client
-                    .remove_panda_link(
-                      cluster::remove_panda_link_request{
+                    .remove_cluster_link(
+                      cluster::remove_cluster_link_request{
                         .name = std::move(cmd.key), .timeout = timeout},
                       rpc::client_opts(timeout))
                     .then(
-                      &rpc::get_ctx_data<cluster::remove_panda_link_response>)
-                    .then([](result<cluster::remove_panda_link_response> r) {
+                      &rpc::get_ctx_data<cluster::remove_cluster_link_response>)
+                    .then([](result<cluster::remove_cluster_link_response> r) {
                         if (r.has_error()) {
                             return result<mutation_result>(r.error());
                         }
@@ -193,7 +194,7 @@ ss::future<mutation_result> frontend::dispatch_mutation_to_remote(
 }
 
 ss::future<mutation_result> frontend::do_local_mutation(
-  panda_link_cmd cmd, model::timeout_clock::time_point timeout) {
+  cluster_link_cmd cmd, model::timeout_clock::time_point timeout) {
     auto u = co_await _mu.get_units();
     auto result = co_await _controller->insert_linearizable_barrier(timeout);
     if (!result) {
@@ -222,7 +223,7 @@ ss::future<mutation_result> frontend::do_local_mutation(
     co_return mutation_result{.ec = map_errc(err_code)};
 }
 
-cluster::errc frontend::validate_mutation(const panda_link_cmd& cmd) const {
+cluster::errc frontend::validate_mutation(const cluster_link_cmd& cmd) const {
     // Initially for DR, we will only support a single cluster link at a time.
     static constexpr size_t max_links = 1;
     validator v{_table, max_links};
@@ -234,10 +235,10 @@ frontend::validator::validator(table* table, size_t max_links)
   , _max_links(max_links) {}
 
 cluster::errc
-frontend::validator::validate_mutation(const panda_link_cmd& cmd) const {
+frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
     return ss::visit(
       cmd,
-      [this](const cluster::panda_link_upsert_cmd& cmd) {
+      [this](const cluster::cluster_link_upsert_cmd& cmd) {
           auto existing = _table->find_link_by_name(cmd.value.name);
           if (existing.has_value()) {
               // upsert
@@ -252,14 +253,14 @@ frontend::validator::validate_mutation(const panda_link_cmd& cmd) const {
                     cmd.value.name,
                     cmd.value.uuid,
                     meta.uuid);
-                  return cluster::errc::panda_link_invalid_update;
+                  return cluster::errc::cluster_link_invalid_update;
               }
               if (cmd.value.connection.bootstrap_servers.empty()) {
                   vlog(
                     cluster::clusterlog.info,
                     "Attempting to update a panda link without bootstrap "
                     "servers");
-                  return cluster::errc::panda_link_invalid_update;
+                  return cluster::errc::cluster_link_invalid_update;
               }
               return cluster::errc::success;
           }
@@ -268,7 +269,7 @@ frontend::validator::validate_mutation(const panda_link_cmd& cmd) const {
               vlog(
                 cluster::clusterlog.info,
                 "Attempting to create a panda link without a name");
-              return cluster::errc::panda_link_invalid_create;
+              return cluster::errc::cluster_link_invalid_create;
           }
           constexpr static size_t max_name_size = 128;
           if (cmd.value.name().size() > max_name_size) {
@@ -278,7 +279,7 @@ frontend::validator::validate_mutation(const panda_link_cmd& cmd) const {
                 "{} > {}",
                 cmd.value.name().size(),
                 max_name_size);
-              return cluster::errc::panda_link_invalid_create;
+              return cluster::errc::cluster_link_invalid_create;
           }
           if (!std::ranges::all_of(cmd.value.name(), [](char c) {
                   return std::isalnum(c) || c == '.' || c == '-' || c == '_';
@@ -287,13 +288,13 @@ frontend::validator::validate_mutation(const panda_link_cmd& cmd) const {
                 cluster::clusterlog.info,
                 "Attempting to create a panda link with a name containing "
                 "invalid characters");
-              return cluster::errc::panda_link_invalid_create;
+              return cluster::errc::cluster_link_invalid_create;
           }
           if (cmd.value.connection.bootstrap_servers.empty()) {
               vlog(
                 cluster::clusterlog.info,
                 "Attempting to create a panda link without bootstrap servers");
-              return cluster::errc::panda_link_invalid_create;
+              return cluster::errc::cluster_link_invalid_create;
           }
           if (_table->size() >= _max_links) {
               vlog(
@@ -301,17 +302,17 @@ frontend::validator::validate_mutation(const panda_link_cmd& cmd) const {
                 "Attempting to create a panda link when the maximum number of "
                 "links ({}) is already reached",
                 _max_links);
-              return cluster::errc::panda_link_limit_exceeded;
+              return cluster::errc::cluster_link_limit_exceeded;
           }
 
           return cluster::errc::success;
       },
-      [this](const cluster::panda_link_remove_cmd& cmd) {
+      [this](const cluster::cluster_link_remove_cmd& cmd) {
           auto meta = _table->find_link_by_name(cmd.key);
           if (!meta.has_value()) {
-              return cluster::errc::panda_link_does_not_exist;
+              return cluster::errc::cluster_link_does_not_exist;
           }
           return cluster::errc::success;
       });
 }
-} // namespace cluster::panda_link
+} // namespace cluster::cluster_link

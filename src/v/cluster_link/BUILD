@@ -8,8 +8,8 @@ redpanda_cc_library(
     hdrs = [
         "logger.h",
     ],
-    include_prefix = "panda_link",
-    visibility = ["//src/v/panda_link:__subpackages__"],
+    include_prefix = "cluster_link",
+    visibility = ["//src/v/cluster_link:__subpackages__"],
     deps = [
         "//src/v/base",
         "@seastar",
@@ -29,13 +29,13 @@ redpanda_cc_library(
     implementation_deps = [
         ":logger",
     ],
-    include_prefix = "panda_link",
-    visibility = ["//src/v/panda_link:__subpackages__"],
+    include_prefix = "cluster_link",
+    visibility = ["//src/v/cluster_link:__subpackages__"],
     deps = [
         "//src/v/cluster",
+        "//src/v/cluster_link/model",
         "//src/v/container:fragmented_vector",
         "//src/v/model",
-        "//src/v/panda_link/model",
         "//src/v/ssx:work_queue",
         "@abseil-cpp//absl/container:flat_hash_map",
     ],
@@ -46,12 +46,12 @@ redpanda_cc_library(
     hdrs = [
         "fwd.h",
     ],
-    include_prefix = "panda_link",
+    include_prefix = "cluster_link",
     visibility = ["//visibility:public"],
 )
 
 redpanda_cc_library(
-    name = "panda_link",
+    name = "cluster_link",
     srcs = [
         "service.cc",
     ],
@@ -61,9 +61,9 @@ redpanda_cc_library(
     implementation_deps = [
         ":impl",
         ":logger",
-        "//src/v/panda_link/model",
+        "//src/v/cluster_link/model",
     ],
-    include_prefix = "panda_link",
+    include_prefix = "cluster_link",
     visibility = ["//visibility:public"],
     deps = [
         ":fwd",

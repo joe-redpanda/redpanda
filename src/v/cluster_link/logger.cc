@@ -9,10 +9,8 @@
  * by the Apache License, Version 2.0
  */
 
-#pragma once
+#include "cluster_link/logger.h"
 
-namespace panda_link {
-class link;
-class manager;
-class service;
-} // namespace panda_link
+namespace cluster_link {
+ss::logger cllog("cluster_link");
+}

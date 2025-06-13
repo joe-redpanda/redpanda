@@ -11,7 +11,10 @@
 
 #pragma once
 
-namespace cluster::panda_link {
-class frontend;
-class table;
-} // namespace cluster::panda_link
+#include "base/seastarx.h"
+
+#include <seastar/util/log.hh>
+
+namespace cluster_link {
+extern ss::logger cllog;
+} // namespace cluster_link

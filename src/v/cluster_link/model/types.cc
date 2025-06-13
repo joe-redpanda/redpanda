@@ -9,12 +9,12 @@
  * by the Apache License, Version 2.0
  */
 
-#include "panda_link/model/types.h"
+#include "cluster_link/model/types.h"
 
 #include <seastar/util/variant_utils.hh>
 
-auto fmt::formatter<panda_link::model::scram_credentials>::format(
-  const panda_link::model::scram_credentials& c, format_context& ctx)
+auto fmt::formatter<cluster_link::model::scram_credentials>::format(
+  const cluster_link::model::scram_credentials& c, format_context& ctx)
   -> decltype(ctx.out()) {
     return fmt::format_to(
       ctx.out(),
@@ -24,9 +24,10 @@ auto fmt::formatter<panda_link::model::scram_credentials>::format(
 }
 
 auto fmt::formatter<
-  std::optional<panda_link::model::connection_config::authn_variant>>::
+  std::optional<cluster_link::model::connection_config::authn_variant>>::
   format(
-    const std::optional<panda_link::model::connection_config::authn_variant>& m,
+    const std::optional<cluster_link::model::connection_config::authn_variant>&
+      m,
     format_context& ctx) -> decltype(ctx.out()) {
     if (!m) {
         return fmt::format_to(ctx.out(), "none");
@@ -36,8 +37,8 @@ auto fmt::formatter<
     });
 }
 
-auto fmt::formatter<panda_link::model::connection_config>::format(
-  const panda_link::model::connection_config& c, format_context& ctx)
+auto fmt::formatter<cluster_link::model::connection_config>::format(
+  const cluster_link::model::connection_config& c, format_context& ctx)
   -> decltype(ctx.out()) {
     return fmt::format_to(
       ctx.out(),
@@ -50,8 +51,8 @@ auto fmt::formatter<panda_link::model::connection_config>::format(
       c.ca_file_path);
 }
 
-auto fmt::formatter<panda_link::model::metadata>::format(
-  const panda_link::model::metadata& m, format_context& ctx)
+auto fmt::formatter<cluster_link::model::metadata>::format(
+  const cluster_link::model::metadata& m, format_context& ctx)
   -> decltype(ctx.out()) {
     return fmt::format_to(
       ctx.out(),

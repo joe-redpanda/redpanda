@@ -8,24 +8,24 @@
  * https://github.com/redpanda-data/redpanda/blob/master/licenses/rcl.md
  */
 
-#include "cluster/panda_link/tests/utils.h"
+#include "cluster/cluster_link/tests/utils.h"
 
 #include "cluster/commands.h"
 
-namespace cluster::panda_link::testing {
+namespace cluster::cluster_link::testing {
 
-using ::panda_link::model::metadata;
-using ::panda_link::model::name_t;
+using ::cluster_link::model::metadata;
+using ::cluster_link::model::name_t;
 
 model::record_batch create_upsert_command(model::offset offset, metadata link) {
-    cluster::panda_link_upsert_cmd cmd(0, std::move(link));
+    cluster::cluster_link_upsert_cmd cmd(0, std::move(link));
     auto batch = cluster::serde_serialize_cmd(std::move(cmd));
     batch.header().base_offset = offset;
     return batch;
 }
 
 model::record_batch create_remove_command(name_t name) {
-    cluster::panda_link_remove_cmd cmd(std::move(name), 0);
+    cluster::cluster_link_remove_cmd cmd(std::move(name), 0);
     return cluster::serde_serialize_cmd(std::move(cmd));
 }
-} // namespace cluster::panda_link::testing
+} // namespace cluster::cluster_link::testing

@@ -11,9 +11,9 @@
 
 #pragma once
 
-#include "panda_link/model/types.h"
+#include "cluster_link/model/types.h"
 
-namespace panda_link {
+namespace cluster_link {
 /**
  * @brief The link class represents a link between two clusters
  */
@@ -36,4 +36,4 @@ public:
 private:
     model::metadata _config;
 };
-} // namespace panda_link
+} // namespace cluster_link

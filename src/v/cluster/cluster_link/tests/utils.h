@@ -10,12 +10,12 @@
 
 #pragma once
 
+#include "cluster_link/model/types.h"
 #include "model/fundamental.h"
 #include "model/record.h"
-#include "panda_link/model/types.h"
 
-namespace cluster::panda_link::testing {
+namespace cluster::cluster_link::testing {
 model::record_batch
-  create_upsert_command(model::offset, ::panda_link::model::metadata);
-model::record_batch create_remove_command(::panda_link::model::name_t);
-} // namespace cluster::panda_link::testing
+  create_upsert_command(model::offset, ::cluster_link::model::metadata);
+model::record_batch create_remove_command(::cluster_link::model::name_t);
+} // namespace cluster::cluster_link::testing

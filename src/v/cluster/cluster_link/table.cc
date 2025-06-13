@@ -8,22 +8,22 @@
  * https://github.com/redpanda-data/redpanda/blob/master/licenses/rcl.md
  */
 
-#include "cluster/panda_link/table.h"
+#include "cluster/cluster_link/table.h"
 
 #include "base/vassert.h"
 #include "cluster/commands.h"
 #include "cluster/logger.h"
 
-namespace cluster::panda_link {
+namespace cluster::cluster_link {
 
-using ::panda_link::model::id_t;
-using ::panda_link::model::metadata;
-using ::panda_link::model::name_t;
+using ::cluster_link::model::id_t;
+using ::cluster_link::model::metadata;
+using ::cluster_link::model::name_t;
 
 namespace {
 static constexpr auto accepted_commands = cluster::make_commands_list<
-  cluster::panda_link_upsert_cmd,
-  cluster::panda_link_remove_cmd>();
+  cluster::cluster_link_upsert_cmd,
+  cluster::cluster_link_remove_cmd>();
 }
 
 table::map_t table::all_links() const { return _link_metadata; }
@@ -115,7 +115,7 @@ chunked_vector<id_t> table::get_all_link_ids() const {
 }
 
 bool table::is_batch_applicable(const model::record_batch& b) const {
-    return b.header().type == model::record_batch_type::panda_link;
+    return b.header().type == model::record_batch_type::cluster_link;
 }
 
 ss::future<std::error_code> table::apply_update(model::record_batch b) {
@@ -124,12 +124,12 @@ ss::future<std::error_code> table::apply_update(model::record_batch b) {
     auto results = co_await container().map([cmd, offset](table& table) {
         return ss::visit(
           cmd,
-          [&table, offset](const cluster::panda_link_upsert_cmd& upsert) {
+          [&table, offset](const cluster::cluster_link_upsert_cmd& upsert) {
               auto existing_id = table.find_id_by_name(upsert.value.name);
               return table.upsert_link(
                 existing_id.value_or(id_t{offset}), std::move(upsert.value));
           },
-          [&table](const cluster::panda_link_remove_cmd& remove) {
+          [&table](const cluster::cluster_link_remove_cmd& remove) {
               return table.remove_link(remove.key);
           });
     });
@@ -148,14 +148,14 @@ ss::future<std::error_code> table::apply_update(model::record_batch b) {
 }
 
 ss::future<> table::fill_snapshot(cluster::controller_snapshot& snap) const {
-    snap.panda_links.links = all_links();
+    snap.cluster_links.links = all_links();
     return ss::now();
 }
 
 ss::future<>
 table::apply_snapshot(model::offset, const cluster::controller_snapshot& snap) {
     return container().invoke_on_all(
-      [&snap](table& table) { table.reset_links(snap.panda_links.links); });
+      [&snap](table& table) { table.reset_links(snap.cluster_links.links); });
 }
 
 table::notification_id table::register_for_updates(notification_callback cb) {
@@ -183,7 +183,7 @@ cluster::errc table::upsert_link(id_t id, metadata meta) {
               id,
               meta.name,
               name_it->second);
-            return cluster::errc::panda_link_service_error;
+            return cluster::errc::cluster_link_service_error;
         }
     } else {
         _name_index.emplace(meta.name, id);
@@ -213,4 +213,4 @@ cluster::errc table::remove_link(const name_t& name) {
     run_callbacks(id);
     return cluster::errc::success;
 }
-} // namespace cluster::panda_link
+} // namespace cluster::cluster_link

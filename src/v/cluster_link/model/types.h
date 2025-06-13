@@ -19,7 +19,7 @@
 
 #include <seastar/util/bool_class.hh>
 
-namespace panda_link::model {
+namespace cluster_link::model {
 /// ID of the panda link - used internally based off of controller offset
 using id_t = named_type<int64_t, struct id_tag>;
 /// UUID of the panda link - used externally
@@ -95,37 +95,37 @@ struct metadata
 
     auto serde_fields() { return std::tie(name, uuid, connection, paused); }
 };
-} // namespace panda_link::model
+} // namespace cluster_link::model
 
 template<>
-struct fmt::formatter<panda_link::model::scram_credentials>
+struct fmt::formatter<cluster_link::model::scram_credentials>
   : fmt::formatter<string_view> {
     auto
-    format(const panda_link::model::scram_credentials& m, format_context& ctx)
+    format(const cluster_link::model::scram_credentials& m, format_context& ctx)
       -> decltype(ctx.out());
 };
 
 template<>
 struct fmt::formatter<
-  std::optional<panda_link::model::connection_config::authn_variant>>
+  std::optional<cluster_link::model::connection_config::authn_variant>>
   : fmt::formatter<string_view> {
     auto format(
-      const std::optional<panda_link::model::connection_config::authn_variant>&
-        m,
+      const std::optional<
+        cluster_link::model::connection_config::authn_variant>& m,
       format_context& ctx) -> decltype(ctx.out());
 };
 
 template<>
-struct fmt::formatter<panda_link::model::connection_config>
+struct fmt::formatter<cluster_link::model::connection_config>
   : fmt::formatter<string_view> {
     auto
-    format(const panda_link::model::connection_config& m, format_context& ctx)
+    format(const cluster_link::model::connection_config& m, format_context& ctx)
       -> decltype(ctx.out());
 };
 
 template<>
-struct fmt::formatter<panda_link::model::metadata>
+struct fmt::formatter<cluster_link::model::metadata>
   : fmt::formatter<string_view> {
-    auto format(const panda_link::model::metadata& m, format_context& ctx)
+    auto format(const cluster_link::model::metadata& m, format_context& ctx)
       -> decltype(ctx.out());
 };

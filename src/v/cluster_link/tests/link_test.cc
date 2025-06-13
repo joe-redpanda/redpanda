@@ -9,10 +9,10 @@
  * by the Apache License, Version 2.0
  */
 
-#include "cluster/panda_link/table.h"
-#include "cluster/panda_link/tests/utils.h"
-#include "panda_link/link.h"
-#include "panda_link/manager.h"
+#include "cluster/cluster_link/table.h"
+#include "cluster/cluster_link/tests/utils.h"
+#include "cluster_link/link.h"
+#include "cluster_link/manager.h"
 #include "test_utils/test.h"
 
 #include <seastar/util/defer.hh>
@@ -22,9 +22,9 @@
 
 using namespace std::chrono_literals;
 
-namespace panda_link {
+namespace cluster_link {
 
-using ::cluster::panda_link::table;
+using ::cluster::cluster_link::table;
 
 class link_test;
 namespace {
@@ -92,7 +92,7 @@ public:
 
     ss::future<> upsert_link(model::id_t id, model::metadata metadata) {
         co_await _table.local().apply_update(
-          ::cluster::panda_link::testing::create_upsert_command(
+          ::cluster::cluster_link::testing::create_upsert_command(
             ::model::offset{id()}, metadata));
         _manager->on_link_change(id);
     }
@@ -100,7 +100,7 @@ public:
     ss::future<> remove_link(const model::name_t& name) {
         auto id = _table.local().find_id_by_name(name);
         co_await _table.local().apply_update(
-          ::cluster::panda_link::testing::create_remove_command(name));
+          ::cluster::cluster_link::testing::create_remove_command(name));
         if (id.has_value()) {
             _manager->on_link_change(id.value());
         }
@@ -269,4 +269,4 @@ TEST_F_CORO(link_test_manager_started, test_remove_non_existant_link) {
     _manager->on_link_change(model::id_t(1));
     return ss::now();
 }
-} // namespace panda_link
+} // namespace cluster_link

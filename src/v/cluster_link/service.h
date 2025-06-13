@@ -12,10 +12,10 @@
 #pragma once
 
 #include "base/seastarx.h"
+#include "cluster/cluster_link/fwd.h"
 #include "cluster/fwd.h"
-#include "cluster/panda_link/fwd.h"
+#include "cluster_link/fwd.h"
 #include "model/fundamental.h"
-#include "panda_link/fwd.h"
 #include "raft/fundamental.h"
 #include "raft/fwd.h"
 
@@ -23,7 +23,7 @@
 #include <seastar/core/sharded.hh>
 #include <seastar/util/defer.hh>
 
-namespace panda_link {
+namespace cluster_link {
 /**
  * @brief API access for panda link service
  */
@@ -31,7 +31,7 @@ class service {
 public:
     service(
       ::model::node_id self,
-      ss::sharded<::cluster::panda_link::frontend>* plf,
+      ss::sharded<::cluster::cluster_link::frontend>* plf,
       ss::sharded<cluster::partition_manager>* partition_manager,
       ss::sharded<raft::group_manager>* group_manager);
 
@@ -59,11 +59,11 @@ private:
 private:
     ss::gate _gate;
     model::node_id _self;
-    ss::sharded<::cluster::panda_link::frontend>* _plf;
+    ss::sharded<::cluster::cluster_link::frontend>* _plf;
     ss::sharded<cluster::partition_manager>* _partition_manager;
     ss::sharded<raft::group_manager>* _group_manager;
     std::unique_ptr<manager> _manager;
     std::vector<ss::deferred_action<ss::noncopyable_function<void()>>>
       _notification_cleanups;
 };
-} // namespace panda_link
+} // namespace cluster_link

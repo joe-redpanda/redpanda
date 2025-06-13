@@ -1,7 +1,7 @@
 load("//bazel:test.bzl", "redpanda_cc_gtest", "redpanda_test_cc_library")
 
 redpanda_test_cc_library(
-    name = "panda_link_test_lib",
+    name = "test_lib",
     srcs = [
         "utils.cc",
     ],
@@ -11,24 +11,24 @@ redpanda_test_cc_library(
     implementation_deps = [
         "//src/v/cluster",
     ],
-    include_prefix = "cluster/panda_link/tests",
+    include_prefix = "cluster/cluster_link/tests",
     visibility = ["//visibility:public"],
     deps = [
+        "//src/v/cluster_link/model",
         "//src/v/model",
-        "//src/v/panda_link/model",
     ],
 )
 
 redpanda_cc_gtest(
-    name = "panda_link_table_test",
+    name = "table_test",
     timeout = "short",
     srcs = [
-        "panda_link_table_test.cc",
+        "table_test.cc",
     ],
     deps = [
-        ":panda_link_test_lib",
+        ":test_lib",
         "//src/v/cluster",
-        "//src/v/panda_link/model",
+        "//src/v/cluster_link/model",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
         "@seastar",
@@ -36,13 +36,13 @@ redpanda_cc_gtest(
 )
 
 redpanda_cc_gtest(
-    name = "panda_link_frontend_validation_test",
+    name = "frontend_validation_test",
     timeout = "short",
     srcs = [
-        "panda_link_frontend_validation_test.cc",
+        "frontend_validation_test.cc",
     ],
     deps = [
-        ":panda_link_test_lib",
+        ":test_lib",
         "//src/v/cluster",
         "//src/v/model",
         "//src/v/raft",

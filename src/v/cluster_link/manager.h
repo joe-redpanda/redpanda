@@ -11,15 +11,15 @@
 
 #pragma once
 
+#include "cluster_link/link.h"
+#include "cluster_link/model/types.h"
 #include "container/fragmented_vector.h"
 #include "model/fundamental.h"
-#include "panda_link/link.h"
-#include "panda_link/model/types.h"
 #include "ssx/work_queue.h"
 
 #include <absl/container/flat_hash_map.h>
 
-namespace panda_link {
+namespace cluster_link {
 
 /// Indicates if the current node is the leader for a given NTP
 using ntp_leader = ss::bool_class<struct is_ntp_leader_tag>;
@@ -98,4 +98,4 @@ private:
 
     absl::flat_hash_map<id_t, std::unique_ptr<link>> _links;
 };
-} // namespace panda_link
+} // namespace cluster_link
