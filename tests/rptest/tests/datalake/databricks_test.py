@@ -319,45 +319,33 @@ class DatabricksTest(RedpandaTest):
                 self.redpanda, self.topic_name,
                 dl.query_engine(QueryEngineType.DATABRICKS_SQL))
 
-    # This test does not work because Iceberg tables in the managed catalog
-    # w/ their databricks sql engine are read only. I.e. there is no support
-    # for DELETE statements. They fail with Read Iceberg with Delta Uniform
-    # has failed. Operation is not supported. Only CREATE and REFRESH are
-    # supported on Uniform Iceberg Ingress Table.
-    #
-    # @cluster(num_nodes=4)
-    # @matrix(cloud_storage_type=supported_storage_types())
-    # def test_upload_after_external_update(self, cloud_storage_type):
-    #     # TODO: Move this in the matrix decorator. Somehow.
-    #     if not DatabricksContext.available(self.test_context):
-    #         self.logger.warning(
-    #             "Skipping test because Databricks context is not available")
-    #         cleanup_on_early_exit(self)
-    #         return
+    @databricks_only_test
+    @cluster(num_nodes=2)
+    @matrix(cloud_storage_type=supported_storage_types())
+    def test_upload_after_external_update(self, cloud_storage_type):
+        table_name = f"redpanda.{self.topic_name}"
+        with DatalakeServices(self.test_context,
+                              redpanda=self.redpanda,
+                              include_query_engines=[
+                                  QueryEngineType.DATABRICKS_SQL,
+                              ],
+                              catalog_type=CatalogType.DATABRICKS_UNITY) as dl:
+            count = 100
+            dl.create_iceberg_enabled_topic(self.topic_name, partitions=1)
+            dl.produce_to_topic(self.topic_name, 1024, count)
+            dl.wait_for_translation(self.topic_name, count)
 
-    #     table_name = f"redpanda.{self.topic_name}"
-    #     with DatalakeServices(self.test_context,
-    #                           redpanda=self.redpanda,
-    #                           include_query_engines=[
-    #                               QueryEngineType.DATABRICKS_SQL,
-    #                           ],
-    #                           catalog_type=CatalogType.DATABRICKS_UNITY) as dl:
-    #         count = 100
-    #         dl.create_iceberg_enabled_topic(self.topic_name, partitions=1)
-    #         dl.produce_to_topic(self.topic_name, 1024, count)
-    #         dl.wait_for_translation(self.topic_name, count)
+            query_engine = dl.query_engine(QueryEngineType.DATABRICKS_SQL)
+            query_engine.make_client().cursor().execute(
+                f"delete from {table_name}")
 
-    #         query_engine = dl.query_engine(QueryEngineType.DATABRICKS_SQL)
-    #         query_engine.make_client().cursor().execute(
-    #             f"delete from {table_name}")
+            count_after_del = query_engine.count_table("redpanda",
+                                                       self.topic_name)
+            assert count_after_del == 0, f"{count_after_del} rows, expected 0"
 
-    #         count_after_del = query_engine.count_table("redpanda",
-    #                                                    self.topic_name)
-    #         assert count_after_del == 0, f"{count_after_del} rows, expected 0"
-
-    #         dl.produce_to_topic(self.topic_name, 1024, count)
-    #         dl.wait_for_translation_until_offset(self.topic_name,
-    #                                              2 * count - 1)
-    #         count_after_produce = query_engine.count_table(
-    #             "redpanda", self.topic_name)
-    #         assert count_after_produce == count, f"{count_after_produce} rows, expected {count}"
+            dl.produce_to_topic(self.topic_name, 1024, count)
+            dl.wait_for_translation_until_offset(self.topic_name,
+                                                 2 * count - 1)
+            count_after_produce = query_engine.count_table(
+                "redpanda", self.topic_name)
+            assert count_after_produce == count, f"{count_after_produce} rows, expected {count}"
