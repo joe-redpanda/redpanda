@@ -680,8 +680,4 @@ ss::future<> service::stop() {
 
 configuration& service::config() { return _config; }
 
-kafka::client::configuration& service::client_config() {
-    return _client.local().config();
-}
-
 } // namespace pandaproxy::schema_registry

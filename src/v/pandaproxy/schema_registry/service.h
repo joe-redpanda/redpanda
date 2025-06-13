@@ -49,7 +49,6 @@ public:
     ss::future<> stop();
 
     configuration& config();
-    kafka::client::configuration& client_config();
     ss::sharded<kafka::client::client>& client() { return _client; }
     seq_writer& writer() { return _writer.local(); }
     sharded_store& schema_store() { return _store; }
