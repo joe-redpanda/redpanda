@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/docker/go-units"
 	"github.com/google/uuid"
@@ -38,6 +39,7 @@ func newStartCommand(fs afero.Fs, p *config.Params) *cobra.Command {
 		noConfirm bool
 		jobID     string
 		opts      remoteBundleOptions
+		wait      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -145,7 +147,28 @@ A debug bundle collection is already in process. To cancel it, run:
   rpk debug remote-bundle cancel
 `)
 			}
-			if anyOK {
+			if wait {
+				fmt.Printf(`
+The debug bundle collection process has started with Job-ID %v.
+Waiting for collection to complete...
+`, jobID)
+
+				for {
+					time.Sleep(10 * time.Second)
+					status, _, _, _ := executeBundleStatus(cmd.Context(), fs, p)
+					ready, errorred := filterCompletedBrokers(status)
+					if len(ready)+len(errorred) == len(status) {
+						if len(ready) == 0 {
+							fmt.Printf(`
+The debug bundle collection process has completed with Job-ID %v, but no bundles were successfully created.
+To check the status, run:
+  rpk debug remote-bundle status
+`, jobID)
+						}
+						break
+					}
+				}
+			} else if anyOK {
 				fmt.Printf(`
 The debug bundle collection process has started with Job-ID %v. To check the 
 status, run:
@@ -157,6 +180,7 @@ status, run:
 	f := cmd.Flags()
 	f.StringVar(&jobID, "job-id", "", "Custom UUID to assign to the job that generates the debug bundle")
 	f.BoolVar(&noConfirm, "no-confirm", false, "Disable confirmation prompt")
+	f.BoolVar(&wait, "wait", false, "Wait for completion of remote bundle before returning")
 	// Debug bundle options:
 	opts.InstallFlags(f)
 
