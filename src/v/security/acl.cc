@@ -286,6 +286,31 @@ acl_store::reset_bindings(const fragmented_vector<acl_binding>& bindings) {
       });
 }
 
+acl_principal acl_principal::from_string(std::string_view principal) {
+    constexpr std::string_view user_prefix{"User:"};
+    constexpr std::string_view role_prefix{"RedpandaRole:"};
+    auto usr = principal.starts_with(user_prefix);
+    auto rol = !usr && principal.starts_with(role_prefix);
+
+    if (unlikely(!usr && !rol)) {
+        throw acl_conversion_error(
+          fmt::format("Invalid principal name: {{{}}}", principal));
+    }
+
+    auto name = principal.substr(usr ? user_prefix.size() : role_prefix.size());
+    if (unlikely(name.empty())) {
+        throw acl_conversion_error(
+          fmt::format("Principal name cannot be empty"));
+    }
+    if (name == "*" && !usr) {
+        throw acl_conversion_error(
+          fmt::format("Illegal wildcard role: {{{}}}", principal));
+    }
+    return {
+      usr ? security::principal_type::user : security::principal_type::role,
+      ss::sstring{name}};
+}
+
 template<>
 std::optional<resource_type>
 from_string_view<resource_type>(std::string_view str) {
@@ -380,8 +405,7 @@ std::ostream& operator<<(std::ostream& os, principal_type type) {
 
 std::ostream&
 operator<<(std::ostream& os, const acl_principal_base& principal) {
-    fmt::print(
-      os, "type {{{}}} name {{{}}}", principal.type(), principal.name_view());
+    fmt::print(os, "{:l}", principal);
     return os;
 }
 

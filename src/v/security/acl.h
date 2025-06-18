@@ -29,10 +29,26 @@
 #include <seastar/core/sstring.hh>
 #include <seastar/net/inet_address.hh>
 
+#include <fmt/core.h>
+
 #include <iosfwd>
 #include <variant>
 
 namespace security {
+
+/*
+ * Conversions throw acl_conversion_error and the exception message via (what())
+ * is generally what should be returned as the error message in kafka responses.
+ *
+ * Using an exception here eliminates the need to write c/go-style error
+ * handling for the large number of fields that need to be converted.
+ */
+struct acl_conversion_error : std::exception {
+    explicit acl_conversion_error(ss::sstring msg)
+      : msg{std::move(msg)} {}
+    const char* what() const noexcept final { return msg.c_str(); }
+    ss::sstring msg;
+};
 
 template<typename E>
 std::enable_if_t<std::is_enum_v<E>, std::optional<E>>
@@ -290,6 +306,8 @@ public:
       : _type(type)
       , _name(std::move(name)) {}
 
+    static acl_principal from_string(std::string_view principal);
+
     /**
      * Get a view to the principal name.
      */
@@ -323,6 +341,60 @@ private:
     principal_type _type;
     ss::sstring _name;
 };
+
+} // namespace security
+
+template<>
+struct fmt::formatter<security::acl_principal_base> {
+    constexpr auto parse(fmt::format_parse_context& ctx)
+      -> decltype(ctx.begin()) {
+        auto it = ctx.begin();
+        auto end = ctx.end();
+
+        // Parse format specifiers:
+        // 'l' - logging and audit logging
+        // 'a' - kafka and schema registry API
+        if (it != end && (*it == 'l' || *it == 'a')) {
+            presentation = *it++;
+        }
+
+        if (it != end && *it != '}') {
+            throw fmt::format_error("invalid format specifier for principal");
+        }
+
+        return it;
+    }
+
+    template<typename FormatContext>
+    auto format(const security::acl_principal_base& p, FormatContext& ctx) const
+      -> decltype(ctx.out()) {
+        switch (presentation) {
+        case 'a': // User:Alice
+            switch (p.type()) {
+            case security::principal_type::user:
+                return fmt::format_to(ctx.out(), "User:{}", p.name_view());
+            case security::principal_type::ephemeral_user:
+                return fmt::format_to(
+                  ctx.out(), "Ephemeral user:{}", p.name_view());
+            case security::principal_type::role:
+                return fmt::format_to(
+                  ctx.out(), "RedpandaRole:{}", p.name_view());
+            }
+        case 'l': // type {user} name {Alice}
+        default:
+            return fmt::format_to(
+              ctx.out(), "type {{{}}} name {{{}}}", p.type(), p.name_view());
+        }
+    }
+
+    char presentation{'l'};
+};
+
+template<>
+struct fmt::formatter<security::acl_principal>
+  : fmt::formatter<security::acl_principal_base> {};
+
+namespace security {
 
 /**
  * Concrete instance of a Kafka principal.
