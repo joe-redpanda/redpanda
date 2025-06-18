@@ -770,7 +770,7 @@ class ManyPartitionsTest(PreallocNodesTest):
             'topic_partitions_per_shard':
             DEFAULT_PARTITIONS_PER_SHARD,
             'topic_memory_per_partition':
-            DEFAULT_MIB_PER_PARTITION * 1024 * 1024,
+            int(DEFAULT_MIB_PER_PARTITION * 1024 * 1024),
             'topic_partitions_memory_allocation_percent':
             DEFAULT_PARTITIONS_MEMORY_ALLOCATION_PERCENT,
         })
@@ -860,7 +860,7 @@ class ManyPartitionsTest(PreallocNodesTest):
             'topic_partitions_per_shard':
             topic_partitions_per_shard,
             'topic_memory_per_partition':
-            mib_per_partition * 1024 * 1024,
+            int(mib_per_partition * 1024 * 1024),
             'topic_partitions_memory_allocation_percent':
             DEFAULT_PARTITIONS_MEMORY_ALLOCATION_PERCENT,
         })
