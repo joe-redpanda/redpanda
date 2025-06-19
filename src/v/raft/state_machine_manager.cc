@@ -720,7 +720,8 @@ state_machine_manager::take_snapshot(model::offset last_included_offset) {
     managed_snapshot snapshot;
     co_await ss::coroutine::parallel_for_each(
       _machines, [last_included_offset, &snapshot](auto entry_pair) {
-          return entry_pair.second->stm->take_snapshot(last_included_offset)
+          return entry_pair.second->stm
+            ->take_raft_snapshot(last_included_offset)
             .then([&snapshot, key = entry_pair.first](auto snapshot_part) {
                 snapshot.snapshot_map.try_emplace(
                   key, std::move(snapshot_part));
@@ -753,7 +754,7 @@ state_machine_manager::take_snapshot() {
     managed_snapshot snapshot;
     co_await ss::coroutine::parallel_for_each(
       _machines, [snapshot_offset, &snapshot](auto entry_pair) {
-          return entry_pair.second->stm->take_snapshot(snapshot_offset)
+          return entry_pair.second->stm->take_raft_snapshot(snapshot_offset)
             .then([&snapshot, key = entry_pair.first](auto snapshot_part) {
                 snapshot.snapshot_map.try_emplace(
                   key, std::move(snapshot_part));
