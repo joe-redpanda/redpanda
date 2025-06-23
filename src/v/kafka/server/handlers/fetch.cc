@@ -550,7 +550,7 @@ static void fill_fetch_responses(
     }
 }
 
-static ss::future<std::vector<read_result>> fetch_ntps_in_parallel(
+static ss::future<std::vector<read_result>> fetch_ntps(
   cluster::partition_manager& cluster_pm,
   const replica_selector& replica_selector,
   chunked_vector<ntp_fetch_config> ntp_fetch_configs,
@@ -560,68 +560,55 @@ static ss::future<std::vector<read_result>> fetch_ntps_in_parallel(
   const size_t bytes_left,
   ssx::semaphore& memory_sem,
   ssx::semaphore& memory_fetch_sem) {
-    size_t total_max_bytes = 0;
-    for (const auto& c : ntp_fetch_configs) {
-        total_max_bytes += c.cfg.max_bytes;
-    }
+    size_t total_read_size = 0;
 
     // bytes_left comes from the fetch plan and also accounts for the max_bytes
     // field in the fetch request
     const size_t max_bytes_per_fetch = std::min<size_t>(
       config::shard_local_cfg().kafka_max_bytes_per_fetch(), bytes_left);
-    if (total_max_bytes > max_bytes_per_fetch) {
-        auto per_partition = max_bytes_per_fetch / ntp_fetch_configs.size();
-        vlog(
-          klog.debug,
-          "Fetch requested very large response ({}), clamping each partition's "
-          "max_bytes to {} bytes",
-          total_max_bytes,
-          per_partition);
 
-        for (auto& c : ntp_fetch_configs) {
-            c.cfg.max_bytes = per_partition;
+    std::vector<read_result> results;
+    results.reserve(ntp_fetch_configs.size());
+
+    for (auto& ntp_cfg : ntp_fetch_configs) {
+        // Strict checking/enforcing of max bytes per fetch occurs in
+        // `fill_fetch_responses`. This check only exists to avoid unneeded
+        // partition reads.
+        if (total_read_size >= max_bytes_per_fetch) {
+            ntp_cfg.cfg.skip_read = true;
         }
-    }
 
-    const auto first_p_id = ntp_fetch_configs.front().ktp().get_partition();
-    auto results = co_await ssx::parallel_transform(
-      std::move(ntp_fetch_configs),
-      [&cluster_pm,
-       &replica_selector,
-       deadline,
-       foreign_read,
-       first_p_id,
-       &memory_sem,
-       &memory_fetch_sem](const ntp_fetch_config& ntp_cfg) {
-          auto p_id = ntp_cfg.ktp().get_partition();
-          return do_read_from_ntp(
-                   cluster_pm,
-                   replica_selector,
-                   ntp_cfg,
-                   foreign_read,
-                   deadline,
-                   first_p_id == p_id,
-                   memory_sem,
-                   memory_fetch_sem)
-            .then([p_id](read_result res) {
-                res.partition = p_id;
-                return res;
-            });
-      });
+        auto&& res = co_await do_read_from_ntp(
+          cluster_pm,
+          replica_selector,
+          ntp_cfg,
+          foreign_read,
+          deadline,
+          // In Kafka first non-empty partition in a request or session
+          // is considered the `obligatory` batch read. The logic below
+          // is designed to approximate this behavior.
+          total_read_size == 0,
+          memory_sem,
+          memory_fetch_sem);
 
-    size_t total_size = 0;
-    for (const auto& r : results) {
-        total_size += r.data_size_bytes();
-        if (r.delta_from_tip_ms.has_value()) {
+        res.partition = ntp_cfg.ktp().get_partition();
+
+        auto read_size = res.data_size_bytes();
+        total_read_size += read_size;
+
+        if (res.delta_from_tip_ms.has_value()) {
             read_probe.add_read_event_delta_from_tip(
-              r.delta_from_tip_ms.value());
+              res.delta_from_tip_ms.value());
         }
+
+        results.push_back(std::move(res));
     }
+
     vlog(
       klog.trace,
-      "fetch_ntps_in_parallel: for {} partitions returning {} total bytes",
+      "fetch_ntps: for {} partitions returning {} total bytes",
       results.size(),
-      total_size);
+      total_read_size);
     co_return results;
 }
 
@@ -667,7 +654,7 @@ handle_shard_fetch(ss::shard_id shard, op_context& octx, shard_fetch fetch) {
             // &octx is captured only to immediately use its accessors here so
             // that there is a list of all objects accessed next to `invoke_on`.
             // This is meant to help avoiding unintended cross shard access
-            return fetch_ntps_in_parallel(
+            return fetch_ntps(
               mgr,
               octx.rctx.server().local().get_replica_selector(),
               std::move(configs),
@@ -737,7 +724,7 @@ public:
         std::vector<read_result> read_results;
         // The total amount of bytes read across all results in `read_results`.
         size_t total_size;
-        // The time it took for the first `fetch_ntps_in_parallel` to complete
+        // The time it took for the first `fetch_ntps` to complete
         std::chrono::microseconds first_run_latency_result;
     };
 
@@ -823,8 +810,8 @@ private:
 
         // A read_result needs to be returned for every partition. Hence,
         // the function can't return before calling
-        // `fetch_ntps_in_parallel`.
-        std::vector<read_result> results = co_await fetch_ntps_in_parallel(
+        // `fetch_ntps`.
+        std::vector<read_result> results = co_await fetch_ntps(
           _ctx.mgr,
           _ctx.srv.get_replica_selector(),
           std::move(requests),
