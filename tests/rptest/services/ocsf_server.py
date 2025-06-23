@@ -63,7 +63,7 @@ class OcsfServer(Service):
         hostname = node.account.hostname
         return f'http://{hostname}:{HTTP_PORT}/api/{path}'
 
-    def get_api_version(self, node=None):
+    def get_api_version(self, node=None, timeout_sec=5):
         """Returns current verison of OCSF server
         
         Parameters
@@ -79,19 +79,13 @@ class OcsfServer(Service):
 
         def _wait_for_api_version():
             r = requests.get(uri)
-            if r.status_code != 200:
-                return (False, None)
-            return (True, r)
+            return (r.status_code == 200, r)
 
         r = wait_until_result(_wait_for_api_version,
-                              timeout_sec=5,
+                              timeout_sec=timeout_sec,
                               backoff_sec=1,
                               retry_on_exc=True,
                               err_msg=f'Could not get API version from {uri}')
-
-        r = requests.get(uri)
-        if r.status_code != 200:
-            raise Exception(f'Unexepected status code: {r.status_code}')
         return r.json()['version']
 
     def validate_schema(self, schema, node=None):
