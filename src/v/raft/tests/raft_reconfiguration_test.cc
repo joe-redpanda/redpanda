@@ -502,17 +502,23 @@ TEST_F_CORO(raft_fixture, test_force_reconfiguration) {
               if (!raft) {
                   return ss::sleep(100ms);
               }
-              return raft
-                ->replicate(
-                  make_batches(10, 10, 128),
-                  replicate_options(raft::consistency_level::quorum_ack))
-                .then([this](result<replicate_result> result) {
-                    if (result.has_error()) {
-                        vlog(
-                          logger().info,
-                          "error(replicating): {}",
-                          result.error().message());
-                    }
+              auto replicate_f
+                = raft
+                    ->replicate(
+                      make_batches(10, 10, 128),
+                      replicate_options(raft::consistency_level::quorum_ack))
+                    .then([this](result<replicate_result> result) {
+                        if (result.has_error()) {
+                            vlog(
+                              logger().info,
+                              "error(replicating): {}",
+                              result.error().message());
+                        }
+                    });
+              return ss::with_timeout(
+                       ss::lowres_clock::now() + 10s, std::move(replicate_f))
+                .handle_exception_type([this](const ss::timed_out_error&) {
+                    vlog(logger().info, "error(replicating): timedout");
                 });
           })
           .finally([wd = make_watchdog("replicate")] {});
