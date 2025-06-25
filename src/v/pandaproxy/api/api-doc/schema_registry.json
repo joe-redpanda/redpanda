@@ -1252,7 +1252,7 @@
             "name": "resource_type",
             "in": "query",
             "type": "string",
-            "enum": ["GLOBAL", "SUBJECT"],
+            "enum": ["REGISTRY", "SUBJECT"],
             "description": "Type of the resource being secured."
           },
           {

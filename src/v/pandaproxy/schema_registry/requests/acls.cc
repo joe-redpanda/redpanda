@@ -55,7 +55,7 @@ security::resource_type to_resource_type(std::string_view type) {
       type, "resource type");
     if (
       res != security::resource_type::sr_subject
-      && res != security::resource_type::sr_global) {
+      && res != security::resource_type::sr_registry) {
         throw exception(
           error_code::acl_invalid,
           fmt::format("Invalid resource type: {}", res));

@@ -5771,7 +5771,7 @@ class SchemaRegistryACLTest(SchemaRegistryEndpoints):
                                   operation="READ"),
             self._create_test_acl(principal="User:bob",
                                   resource="*",
-                                  resource_type="GLOBAL",
+                                  resource_type="REGISTRY",
                                   operation="WRITE",
                                   permission="DENY")
         ]
@@ -5855,13 +5855,13 @@ class SchemaRegistryACLTest(SchemaRegistryEndpoints):
         resp = self._post_security_acls(invalid_host_acl)
         self.assert_equal(resp.status_code, 400)
 
-        # Test PREFIXED pattern type not allowed for GLOBAL resource
-        invalid_global_acl = [
+        # Test PREFIXED pattern type not allowed for REGISTRY resource
+        invalid_registry_acl = [
             self._create_test_acl(resource="*",
-                                  resource_type="GLOBAL",
+                                  resource_type="REGISTRY",
                                   pattern_type="PREFIXED")
         ]
-        resp = self._post_security_acls(invalid_global_acl)
+        resp = self._post_security_acls(invalid_registry_acl)
         self.assert_equal(resp.status_code, 400)
 
         # Wildcard is only valid for users, not roles
@@ -5990,13 +5990,13 @@ class SchemaRegistryACLTest(SchemaRegistryEndpoints):
                                                   host="192.168.1.1",
                                                   operation="WRITE",
                                                   permission="DENY")
-        global_admin_acl = self._create_test_acl(
+        registry_admin_acl = self._create_test_acl(
             principal="RedpandaRole:admin",
             resource="*",
-            resource_type="GLOBAL",
+            resource_type="REGISTRY",
             operation="ALL")
 
-        test_acls = [subject_read_acl, subject_write_acl, global_admin_acl]
+        test_acls = [subject_read_acl, subject_write_acl, registry_admin_acl]
         resp = self._post_security_acls(test_acls)
         self.assert_equal(resp.status_code, 201)
 
@@ -6008,21 +6008,21 @@ class SchemaRegistryACLTest(SchemaRegistryEndpoints):
         self._check_filtered_acls({"principal": "User:user1"},
                                   [subject_read_acl])
         self._check_filtered_acls({"principal": "RedpandaRole:admin"},
-                                  [global_admin_acl])
+                                  [registry_admin_acl])
         self._check_filtered_acls({"resource": "test-subject-1"},
                                   [subject_read_acl])
-        self._check_filtered_acls({"resource_type": "GLOBAL"},
-                                  [global_admin_acl])
+        self._check_filtered_acls({"resource_type": "REGISTRY"},
+                                  [registry_admin_acl])
         self._check_filtered_acls({"pattern_type": "PREFIXED"},
                                   [subject_write_acl])
         self._check_filtered_acls({"host": "192.168.1.1"}, [subject_write_acl])
-        self._check_filtered_acls({"operation": "ALL"}, [global_admin_acl])
+        self._check_filtered_acls({"operation": "ALL"}, [registry_admin_acl])
         self._check_filtered_acls({"permission": "DENY"}, [subject_write_acl])
 
         # Test wildcard matches
         self._check_filtered_acls({"host": "*"},
-                                  [subject_read_acl, global_admin_acl])
-        self._check_filtered_acls({"resource": "*"}, [global_admin_acl])
+                                  [subject_read_acl, registry_admin_acl])
+        self._check_filtered_acls({"resource": "*"}, [registry_admin_acl])
 
         # Test combination of filters
         self._check_filtered_acls(
@@ -6050,9 +6050,9 @@ class SchemaRegistryACLTest(SchemaRegistryEndpoints):
 
         # Test case sensitivity
         response_upper = self._check_filtered_acls(
-            {"permission": "ALLOW"}, [subject_read_acl, global_admin_acl])
+            {"permission": "ALLOW"}, [subject_read_acl, registry_admin_acl])
         response_lower = self._check_filtered_acls(
-            {"permission": "allow"}, [subject_read_acl, global_admin_acl])
+            {"permission": "allow"}, [subject_read_acl, registry_admin_acl])
         self.assert_equal(
             response_upper, response_lower,
             f"Case-insensitive filtering should return same results. {response_upper} != {response_lower}"

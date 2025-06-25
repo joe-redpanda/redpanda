@@ -75,7 +75,7 @@ enum class resource_type : int8_t {
     cluster = 2,
     transactional_id = 3,
     sr_subject = 4,
-    sr_global = 5,
+    sr_registry = 5,
 };
 
 constexpr std::string_view to_string_view(resource_type type) {
@@ -90,8 +90,8 @@ constexpr std::string_view to_string_view(resource_type type) {
         return "transactional_id";
     case resource_type::sr_subject:
         return "subject";
-    case resource_type::sr_global:
-        return "global";
+    case resource_type::sr_registry:
+        return "registry";
     }
     __builtin_unreachable();
 }
@@ -113,8 +113,8 @@ consteval resource_type get_resource_type() {
         return resource_type::transactional_id;
     } else if constexpr (std::is_same_v<T, ppsr::subject>) {
         return resource_type::sr_subject;
-    } else if constexpr (std::is_same_v<T, ppsr::global_resource>) {
-        return resource_type::sr_global;
+    } else if constexpr (std::is_same_v<T, ppsr::registry_resource>) {
+        return resource_type::sr_registry;
     } else {
         static_assert(base::unsupported_type<T>::value, "Unsupported type");
     }

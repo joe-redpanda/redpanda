@@ -323,7 +323,8 @@ from_string_view<resource_type>(std::string_view str) {
         resource_type::transactional_id)
       .match(
         to_string_view(resource_type::sr_subject), resource_type::sr_subject)
-      .match(to_string_view(resource_type::sr_global), resource_type::sr_global)
+      .match(
+        to_string_view(resource_type::sr_registry), resource_type::sr_registry)
       .default_match(std::nullopt);
 }
 

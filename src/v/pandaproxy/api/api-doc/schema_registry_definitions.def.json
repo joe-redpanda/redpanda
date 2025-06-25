@@ -140,7 +140,7 @@
         "resource_type": {
           "type": "string",
           "enum": [
-            "GLOBAL",
+            "REGISTRY",
             "SUBJECT"
           ],
           "description": "Type of the resource being secured."

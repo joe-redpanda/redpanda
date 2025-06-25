@@ -233,7 +233,7 @@ inline int8_t to_kafka_resource_type(security::resource_type type) {
     case security::resource_type::transactional_id:
         return 5;
     case security::resource_type::sr_subject:
-    case security::resource_type::sr_global:
+    case security::resource_type::sr_registry:
         vassert(
           false, "Schema Registry resources are not supported in kafka ACLs");
     }
@@ -375,7 +375,7 @@ const std::vector<security::acl_operation>& get_allowed_operations() {
       security::acl_operation::describe_configs,
     };
 
-    static const std::vector<security::acl_operation> sr_global_resource_ops{
+    static const std::vector<security::acl_operation> sr_registry_resource_ops{
       security::acl_operation::read,
       security::acl_operation::describe,
       security::acl_operation::alter_configs,
@@ -395,8 +395,8 @@ const std::vector<security::acl_operation>& get_allowed_operations() {
         return transactional_id_resource_ops;
     case security::resource_type::sr_subject:
         return sr_subject_resource_ops;
-    case security::resource_type::sr_global:
-        return sr_global_resource_ops;
+    case security::resource_type::sr_registry:
+        return sr_registry_resource_ops;
     };
 
     __builtin_unreachable();
