@@ -3,6 +3,22 @@ load("//bazel:build.bzl", "redpanda_cc_library")
 package(default_visibility = ["//src/v/cloud_topics/l1:__subpackages__"])
 
 redpanda_cc_library(
+    name = "metastore",
+    hdrs = [
+        "metastore.h",
+    ],
+    include_prefix = "cloud_topics/l1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/v/base",
+        "//src/v/cloud_topics:types",
+        "//src/v/container:fragmented_vector",
+        "//src/v/model",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "state",
     srcs = [
         "state.cc",
