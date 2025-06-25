@@ -26,3 +26,22 @@ redpanda_cc_library(
         "@seastar",
     ],
 )
+
+redpanda_cc_library(
+    name = "state_update",
+    srcs = [
+        "state_update.cc",
+    ],
+    hdrs = [
+        "state_update.h",
+    ],
+    include_prefix = "cloud_topics/l1",
+    deps = [
+        "//src/v/base",
+        "//src/v/cloud_topics/l1:state",
+        "//src/v/container:chunked_hash_map",
+        "//src/v/container:fragmented_vector",
+        "//src/v/model",
+        "@abseil-cpp//absl/container:btree",
+    ],
+)
