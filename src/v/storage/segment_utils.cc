@@ -9,6 +9,8 @@
 
 #include "storage/segment_utils.h"
 
+#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "base/likely.h"
 #include "base/units.h"
 #include "base/vassert.h"
@@ -56,8 +58,6 @@
 #include <seastar/coroutine/as_future.hh>
 #include <seastar/util/defer.hh>
 
-#include <absl/container/btree_map.h>
-#include <absl/container/flat_hash_map.h>
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <roaring/roaring.hh>

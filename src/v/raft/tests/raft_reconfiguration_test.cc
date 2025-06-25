@@ -7,6 +7,7 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0
 
+#include "absl/container/flat_hash_set.h"
 #include "base/outcome.h"
 #include "bytes/bytes.h"
 #include "gtest/gtest.h"
@@ -33,7 +34,6 @@
 #include <seastar/coroutine/parallel_for_each.hh>
 #include <seastar/util/bool_class.hh>
 
-#include <absl/container/flat_hash_set.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <gmock/gmock-matchers.h>
