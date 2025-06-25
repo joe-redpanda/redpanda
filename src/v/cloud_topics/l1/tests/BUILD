@@ -1,6 +1,20 @@
 load("//bazel:test.bzl", "redpanda_cc_gtest")
 
 redpanda_cc_gtest(
+    name = "simple_metastore_test",
+    timeout = "short",
+    srcs = [
+        "simple_metastore_test.cc",
+    ],
+    deps = [
+        "//src/v/cloud_topics:types",
+        "//src/v/cloud_topics/l1:simple_metastore",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+    ],
+)
+
+redpanda_cc_gtest(
     name = "state_test",
     timeout = "short",
     srcs = [

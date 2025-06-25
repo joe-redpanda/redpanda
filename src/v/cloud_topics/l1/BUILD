@@ -19,6 +19,27 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "simple_metastore",
+    srcs = [
+        "simple_metastore.cc",
+    ],
+    hdrs = [
+        "simple_metastore.h",
+    ],
+    implementation_deps = [
+        "//src/v/cloud_topics/l1:state_update",
+    ],
+    include_prefix = "cloud_topics/l1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/v/base",
+        "//src/v/cloud_topics/l1:metastore",
+        "//src/v/cloud_topics/l1:state",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "state",
     srcs = [
         "state.cc",
