@@ -111,26 +111,15 @@ object_index object_index::copy() const {
 
 std::variant<object_index, size_t> object_index::read_footer(iobuf buf) {
     if (buf.size_bytes() < sizeof(uint32_t)) {
-        throw std::runtime_error(fmt::format(
-          "expected at least {} bytes in footer, got: {}",
-          sizeof(uint32_t),
-          buf.size_bytes()));
+        throw std::runtime_error(
+          fmt::format(
+            "expected at least {} bytes in footer, got: {}",
+            sizeof(uint32_t),
+            buf.size_bytes()));
     }
     iobuf_const_parser parser(buf);
-    std::array<char, sizeof(uint32_t)> footer_size_bytes{};
-    size_t remaining = footer_size_bytes.size();
-    for (auto it = buf.rbegin(); it != buf.rend() && remaining > 0; ++it) {
-        const iobuf::fragment& frag = *it;
-        size_t amt = std::min(remaining, frag.size());
-        remaining -= amt;
-        char* write_at = footer_size_bytes.data();
-        std::advance(write_at, remaining);
-        const char* read_from = frag.get();
-        std::advance(read_from, frag.size() - amt);
-        std::copy_n(read_from, amt, write_at);
-    }
-    auto footer_size = std::bit_cast<uint32_t, decltype(footer_size_bytes)>(
-      footer_size_bytes);
+    auto footer_size
+      = iobuf_parser(buf.tail(sizeof(uint32_t))).consume_type<uint32_t>();
     if (buf.size_bytes() >= (footer_size + sizeof(uint32_t))) {
         iobuf_parser p(buf.share(
           buf.size_bytes() - sizeof(uint32_t) - footer_size, footer_size));
@@ -138,21 +127,24 @@ std::variant<object_index, size_t> object_index::read_footer(iobuf buf) {
         if (
           footer_batch.header().type
           != model::record_batch_type::cloud_topics_l1_metadata) {
-            throw std::runtime_error(fmt::format(
-              "expected cloud_topics_l1_metadata batch, got: {}",
-              footer_batch.header().type));
+            throw std::runtime_error(
+              fmt::format(
+                "expected cloud_topics_l1_metadata batch, got: {}",
+                footer_batch.header().type));
         }
         if (footer_batch.record_count() != 1) {
-            throw std::runtime_error(fmt::format(
-              "expected 1 record in footer, got: {}",
-              footer_batch.record_count()));
+            throw std::runtime_error(
+              fmt::format(
+                "expected 1 record in footer, got: {}",
+                footer_batch.record_count()));
         }
         auto footer_record = std::move(footer_batch.copy_records().front());
         if (footer_record.key() != footer_key) {
-            throw std::runtime_error(fmt::format(
-              "expected footer key to be '{}', got: {}",
-              footer_key,
-              footer_record.key().hexdump(32)));
+            throw std::runtime_error(
+              fmt::format(
+                "expected footer key to be '{}', got: {}",
+                footer_key,
+                footer_record.key().hexdump(32)));
         }
         return serde::from_iobuf<object_index>(footer_record.release_value());
     }
@@ -305,9 +297,10 @@ public:
             co_return serde::read<object_index>(parser);
         } else {
             constexpr static size_t max_key_size = 32;
-            throw std::runtime_error(fmt::format(
-              "unexpected key in l1 metadata batch: {}",
-              r.key().hexdump(max_key_size)));
+            throw std::runtime_error(
+              fmt::format(
+                "unexpected key in l1 metadata batch: {}",
+                r.key().hexdump(max_key_size)));
         }
     }
 
@@ -318,10 +311,11 @@ private:
         ss::temporary_buffer<char> size_prefix_buf
           = co_await _input.read_exactly(sizeof(uint32_t));
         if (size_prefix_buf.size() != sizeof(uint32_t)) {
-            throw std::runtime_error(fmt::format(
-              "expected {} bytes, got {}",
-              sizeof(uint32_t),
-              size_prefix_buf.size()));
+            throw std::runtime_error(
+              fmt::format(
+                "expected {} bytes, got {}",
+                sizeof(uint32_t),
+                size_prefix_buf.size()));
         }
         uint32_t size = 0;
         std::memcpy(&size, size_prefix_buf.get(), size_prefix_buf.size());
