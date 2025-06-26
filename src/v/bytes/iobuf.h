@@ -229,6 +229,14 @@ public:
      */
     void append(std::unique_ptr<fragment>);
 
+    /**
+     * Share the last `size` bytes from the iobuf to create a new iobuf.
+     *
+     * This is an optimized version of:
+     * `iobuf::share(iobuf.size_bytes() - size, size)`
+     */
+    iobuf tail(size_t size);
+
     /// prepends the _the buffer_ as iobuf::details::io_fragment::full{}
     void prepend(ss::temporary_buffer<char>);
     /// prepends the arg to this as iobuf::details::io_fragment::full{}
