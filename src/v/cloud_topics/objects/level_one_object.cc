@@ -367,12 +367,14 @@ public:
       : _input(std::move(input)) {}
 
     ss::future<result> read_next() final {
-        auto dt_buf = co_await _input.read_exactly(1);
-        if (dt_buf.empty()) {
+        auto dt_buf = co_await _input.read_exactly(sizeof(data_type));
+        if (dt_buf.size() != sizeof(data_type)) {
             throw std::runtime_error(fmt::format(
-              "expected 1 byte for data type, got: {}", dt_buf.size()));
+              "expected {} bytes for data type, got: {}",
+              sizeof(data_type),
+              dt_buf.size()));
         }
-        switch (static_cast<data_type>(dt_buf[0])) {
+        switch (from_bytes<data_type>(dt_buf.get())) {
         case data_type::kafka_batch:
             co_return co_await read_next_batch();
         case data_type::partition_marker:
