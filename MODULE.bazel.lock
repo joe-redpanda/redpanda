@@ -216,7 +216,7 @@
   "moduleExtensions": {
     "//bazel:extensions.bzl%non_module_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "WosF9Ru51cY+gqRu7m8CItaUw9Cmi++m4+Kc8dE8atg=",
+        "bzlTransitiveDigest": "NLQmzB6XYTUGlEnihuJwLyEAHj6yXZCZ1OXZJu+hQBE=",
         "usagesDigest": "FEiDyZe9eAU6yEqnarZf0XMEUk+prUyYClvq1RU1J98=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
@@ -351,9 +351,9 @@
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
               "build_file": "@@//bazel/thirdparty:openssl.BUILD",
-              "sha256": "57e03c50feab5d31b152af2b764f10379aecd8ee92f16c985983ce4a99f7ef86",
-              "strip_prefix": "openssl-3.0.16",
-              "url": "https://github.com/openssl/openssl/releases/download/openssl-3.0.16/openssl-3.0.16.tar.gz"
+              "sha256": "dfdd77e4ea1b57ff3a6dbde6b0bdc3f31db5ac99e7fdd4eaf9e1fbb6ec2db8ce",
+              "strip_prefix": "openssl-3.0.17",
+              "url": "https://github.com/openssl/openssl/releases/download/openssl-3.0.17/openssl-3.0.17.tar.gz"
             }
           },
           "openssl-fips": {
