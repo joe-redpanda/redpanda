@@ -105,4 +105,48 @@ void handle_authz(
     }
 }
 
+void handle_get_schemas_ids_id_authz(
+  const server::request_t& rq,
+  std::optional<request_auth_result>& auth_result,
+  const chunked_vector<subject>& subjects) {
+    if (!auth_result.has_value()) {
+        // ACLs or authentication is disabled
+        return;
+    }
+
+    check_authenticated(*auth_result);
+
+    if (subjects.empty()) {
+        // If there are no subjects associated with the schema id, it does
+        // not exist.
+        // Throw unauthorized here to avoid leaking information about whether a
+        // schema id exists or not.
+        // TODO(CORE-12275): audit failure with [] (empty list of auth_result)
+        throw_unauthorized();
+    }
+
+    auto params = detail::auth_params{rq};
+
+    auto authorizing_result = std::optional<security::auth_result>{};
+    auto all_results = chunked_vector<security::auth_result>{};
+    for (const auto& sub : subjects) {
+        auto res = rq.service().authorizor().authorized(
+          sub, security::acl_operation::read, params.principal, params.host);
+
+        if (res.is_authorized()) {
+            authorizing_result = std::move(res);
+            break;
+        } else {
+            all_results.push_back(std::move(res));
+        }
+    }
+
+    if (authorizing_result.has_value()) {
+        // TODO(CORE-12275): audit success with *authorizing_result
+    } else {
+        // TODO(CORE-12275): audit failure with all_results
+        throw_unauthorized();
+    }
+}
+
 } // namespace pandaproxy::schema_registry::enterprise

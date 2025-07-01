@@ -347,22 +347,16 @@ get_schemas_types(server::request_t rq, server::reply_t rp) {
 ss::future<server::reply_t> get_schemas_ids_id(
   server::request_t rq,
   server::reply_t rp,
-  auth auth,
+  auth,
   std::optional<request_auth_result> auth_result) {
     parse_accept_header(rq, rp);
     auto id = parse::request_param<schema_id>(*rq.req, "id");
     const auto format = parse_output_format(*rq.req);
 
-    // Check if we need to validate the auth result
-    // Note: we may not need to if ACLs or authentication are disabled
-    if (auth_result.has_value()) {
-        // TODO(CORE-12276): Authorization check
-        // if auth::op::read for any subject that references this is satisfied
-        //    create an auth with the resource, pass it below
-        // else
-        //    fail
-        enterprise::handle_authz(rq, auth, *auth_result);
-    }
+    auto subjects = co_await rq.service().schema_store().get_schema_subjects(
+      id, include_deleted::yes);
+
+    enterprise::handle_get_schemas_ids_id_authz(rq, auth_result, subjects);
 
     // With deferred schema validation, there might be a schema that
     // had invalid references. These might have already been posted, so
