@@ -34,7 +34,7 @@ struct dl_snapshot_id
 
 struct dl_snapshot_payload
   : serde::checksum_envelope<
-      dl_snapshot_id,
+      dl_snapshot_payload,
       serde::version<0>,
       serde::compat_version<0>> {
     /// Version for which the snapshot is created.
