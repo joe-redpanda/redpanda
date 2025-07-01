@@ -165,3 +165,18 @@ redpanda_cc_gtest(
         "@seastar",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "time_rfc3339_tests",
+    timeout = "short",
+    srcs = [
+        "time_rfc3339_tests.cc",
+    ],
+    deps = [
+        "//src/v/iceberg:values",
+        "//src/v/iceberg/conversion:conversion_outcome",
+        "//src/v/iceberg/conversion:time_rfc3339",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+    ],
+)

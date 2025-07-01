@@ -184,3 +184,23 @@ redpanda_cc_library(
         "//src/v/iceberg:datatypes",
     ],
 )
+
+redpanda_cc_library(
+    name = "time_rfc3339",
+    srcs = [
+        "time_rfc3339.cc",
+    ],
+    hdrs = [
+        "time_rfc3339.h",
+    ],
+    implementation_deps = [
+        "@abseil-cpp//absl/time",
+    ],
+    include_prefix = "iceberg/conversion",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":conversion_outcome",
+        "//src/v/iceberg:values",
+        "@seastar",
+    ],
+)
