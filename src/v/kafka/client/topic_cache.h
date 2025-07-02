@@ -11,9 +11,8 @@
 
 #pragma once
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/node_hash_map.h"
 #include "base/seastarx.h"
+#include "container/chunked_hash_map.h"
 #include "container/fragmented_vector.h"
 #include "kafka/protocol/metadata.h"
 #include "model/fundamental.h"
@@ -28,10 +27,10 @@ class topic_cache {
     };
 
     struct topic_data {
-        absl::flat_hash_map<model::partition_id, partition_data> partitions;
+        chunked_hash_map<model::partition_id, partition_data> partitions;
     };
 
-    using topics_t = absl::node_hash_map<model::topic, topic_data>;
+    using topics_t = chunked_hash_map<model::topic, topic_data>;
 
 public:
     topic_cache() = default;
@@ -45,7 +44,7 @@ public:
     void apply(const small_fragment_vector<metadata_response::topic>& topics);
 
     /// \brief Obtain the leader for the given topic-partition
-    model::node_id leader(model::topic_partition tp) const;
+    std::optional<model::node_id> leader(const model::topic_partition&) const;
 
 private:
     /// \brief Cache of topic information.
