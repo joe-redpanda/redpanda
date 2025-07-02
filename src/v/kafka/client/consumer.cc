@@ -15,6 +15,7 @@
 #include "kafka/client/configuration.h"
 #include "kafka/client/exceptions.h"
 #include "kafka/client/logger.h"
+#include "kafka/client/types.h"
 #include "kafka/client/utils.h"
 #include "kafka/protocol/describe_groups.h"
 #include "kafka/protocol/errors.h"

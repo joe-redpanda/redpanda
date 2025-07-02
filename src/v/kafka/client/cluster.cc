@@ -11,6 +11,7 @@
 
 #include "kafka/client/cluster.h"
 
+#include "kafka/client/types.h"
 #include "random/generators.h"
 
 #include <seastar/coroutine/as_future.hh>

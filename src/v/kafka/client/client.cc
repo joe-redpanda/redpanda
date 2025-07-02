@@ -65,6 +65,8 @@ client::client(
       _cluster.get_brokers(),
       _logger,
       [this](std::exception_ptr ex) { return mitigate_error(std::move(ex)); }) {
+    _metadata_callback_id = _cluster.register_metadata_cb(
+      [this](const metadata_response_data& res) { on_metadata_update(res); });
 }
 
 ss::future<> client::connect() {
@@ -89,6 +91,7 @@ ss::future<> catch_and_log(const prefix_logger& logger, Func&& f) noexcept {
 ss::future<> client::stop() noexcept {
     _as.request_abort();
     co_await catch_and_log(_logger, [this]() { return _producer.stop(); });
+    _cluster.unregister_metadata_cb(_metadata_callback_id);
     co_await _gate.close();
     for (auto& [id, group] : _consumers) {
         while (!group.empty()) {
@@ -101,6 +104,10 @@ ss::future<> client::stop() noexcept {
         }
     }
     co_await catch_and_log(_logger, [this]() { return _cluster.stop(); });
+}
+
+void client::on_metadata_update(const metadata_response_data& res) {
+    _partitioners.apply_metadata(res);
 }
 
 void client::set_credentials(std::optional<sasl_configuration> creds) {
@@ -231,7 +238,7 @@ ss::future<produce_response> client::produce_records(
         if (!p_id) {
             p_id = co_await gated_retry_with_mitigation([&, this]() {
                        return ss::make_ready_future<model::partition_id>(
-                         _cluster.get_topics().partition_for(topic, record));
+                         _partitioners.partition_for(topic, record));
                    }).handle_exception([](std::exception_ptr) {
                 // Assume auto topic creation is on and assign to first
                 // partition
