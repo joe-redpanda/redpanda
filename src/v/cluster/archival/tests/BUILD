@@ -103,14 +103,13 @@ redpanda_cc_gtest(
     ],
 )
 
-redpanda_cc_btest(
+redpanda_cc_gtest(
     name = "segment_reupload_test",
     timeout = "short",
     srcs = [
         "segment_reupload_test.cc",
     ],
     deps = [
-        ":service_fixture",
         "//src/v/cloud_storage",
         "//src/v/cloud_storage:types",
         "//src/v/cluster",
@@ -120,8 +119,9 @@ redpanda_cc_btest(
         "//src/v/storage:record_batch_utils",
         "//src/v/storage/tests:disk_log_builder",
         "//src/v/test_utils:archival",
-        "//src/v/test_utils:seastar_boost",
-        "@boost//:test",
+        "//src/v/test_utils:gtest",
+        "//src/v/test_utils:scoped_config",
+        "@googletest//:gtest",
         "@seastar",
         "@seastar//:testing",
     ],
