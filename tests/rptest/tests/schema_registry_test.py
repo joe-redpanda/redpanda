@@ -6587,16 +6587,26 @@ class SchemaRegistryAclAuthzTest(SchemaRegistryEndpoints):
         self.assert_equal(result.status_code, 200)
 
     @cluster(num_nodes=1)
-    def test_public_endpoints(self):
-        """Test the endpoints that don't require any ACLs for access"""
+    def test_unauthenticated(self):
+        """Test the behaviour of endpoints when they are requested unauthenticated"""
 
-        # GET_SCHEMAS_TYPES
+        # Test public endpoints - GET_SCHEMAS_TYPES and SCHEMA_REGISTRY_STATUS_READY
         result = self._get_schemas_types()
         self.assert_equal(result.status_code, 200)
 
-        # SCHEMA_REGISTRY_STATUS_READY
         result = self._get_status_ready()
         self.assert_equal(result.status_code, 200)
+
+        # Test non-public endpoints - should return 401
+        result = self._get_config()
+        self.assert_equal(result.status_code, 401)
+
+        result = self._post_subjects_subject_versions("test-subject",
+                                                      data=self.schema_data_1)
+        self.assert_equal(result.status_code, 401)
+
+        result = self._get_security_acls()
+        self.assert_equal(result.status_code, 401)
 
     @cluster(num_nodes=1)
     def test_acl_endpoints(self):

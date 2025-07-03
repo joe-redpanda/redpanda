@@ -60,18 +60,30 @@ void throw_unauthorized() {
       ss::http::reply::status_type::forbidden);
 }
 
+void check_authenticated(request_auth_result& auth_result) {
+    try {
+        auth_result.require_authenticated();
+    } catch (...) {
+        // TODO(CORE-12275): audit failure
+        throw;
+    }
+}
+
 } // namespace
 
 void handle_authz(
   const server::request_t& rq,
   const auth& auth,
   request_auth_result& auth_result) {
-    auth_result.pass();
-
     auto params = detail::auth_params{rq};
     auto op = auth.get_op().value_or(security::acl_operation::all);
 
     auto resource = extract_resource_from_request(rq, auth);
+
+    ss::visit(
+      resource,
+      [&](const auth::none&) { auth_result.pass(); },
+      [&](const auto&) { check_authenticated(auth_result); });
 
     // Check Authorization
     auto authz_result = ss::visit(
