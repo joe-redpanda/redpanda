@@ -24,6 +24,7 @@
 #include <gtest/gtest.h>
 #include <rapidjson/error/en.h>
 
+#include <string_view>
 #include <utility>
 #include <variant>
 
@@ -1157,4 +1158,90 @@ TEST_CORO(IcebergValues, Empty) {
     auto result = co_await to_iceberg_value(schema, value);
 
     ASSERT_TRUE_CORO(result.has_error());
+}
+
+TEST_CORO(IcebergValues, MismatchedTypes) {
+    const auto schema = R"({
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "array",
+      "items": {"type": "string"}
+    })";
+    auto value = R"([42])";
+
+    co_await ss::async([&] {
+        EXPECT_THAT(
+          [&]() { to_iceberg_value(schema, value).get(); },
+          ThrowsMessage<value_conversion_exception>(
+            StrEq("Mismatch json between json integer value and schema type: "
+                  "string")));
+    });
+}
+
+TEST_CORO(IcebergValues, TruncatedInputs) {
+    constexpr std::string_view schema = R"({
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "comment": { "type": "string" },
+        " s p a c e d ": { "type": "array", "items": { "type": "integer" } }
+      }
+    })";
+
+    // Inspired by json_checker_pass1.json.
+    constexpr std::string_view input = R"({
+      "integer": 1234567890,
+      "real": -9876.543210,
+      "e": 0.123456789e-12,
+      "E": 1.234567890E+34,
+      "":  23456789012E66,
+      "zero": 0,
+      "one": 1,
+      "space": " ",
+      "quote": "\"",
+      "backslash": "\\",
+      "controls": "\b\f\n\r\t",
+      "slash": "/ & \/",
+      "alpha": "abcdefghijklmnopqrstuvwyz",
+      "ALPHA": "ABCDEFGHIJKLMNOPQRSTUVWYZ",
+      "digit": "0123456789",
+      "0123456789": "digit",
+      "special": "`1~!@#$%^&*()_+-={':[,]}|;.</>?",
+      "hex": "\u0123\u4567\u89AB\uCDEF\uabcd\uef4A",
+      "true": true,
+      "false": false,
+      "null": null,
+      "array":[  ],
+      "object":{  },
+      "address": "50 St. James Street",
+      "url": "http://www.JSON.org/",
+      "comment": "// /* <!-- --",
+      "# -- --> */": " ",
+      " s p a c e d " :[1,2 , 3
+
+,
+
+4 , 5        ,          6           ,7        ],"compact":[1,2,3,4,5,6,7],
+      "jsontext": "{\"object with 1 member\":[\"array with 1 element\"]}",
+      "quotes": "&#34; \u0022 %22 0x22 034 &#x22;",
+      "\/\\\"\uCAFE\uBABE\uAB98\uFCDE\ubcda\uef4A\b\f\n\r\t`1~!@#$%^&*()_+-=[]{}|;:',./<>?"
+: "A key can be any string"
+    })";
+
+    for (size_t i = 0; i < input.size(); ++i) {
+        SCOPED_TRACE(fmt::format(
+          "Testing truncated input at position {} of {}", i, input.size()));
+
+        // Truncate the input string
+        auto truncated_input = input.substr(0, i);
+
+        co_await ss::async([&] {
+            EXPECT_THROW(
+              to_iceberg_value(schema, truncated_input).get(),
+              value_conversion_exception);
+        });
+    }
+
+    SCOPED_TRACE("Testing full input");
+    auto result = co_await to_iceberg_value(schema, input);
+    ASSERT_TRUE_CORO(result.has_value()) << result.error().what();
 }
