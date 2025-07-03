@@ -373,6 +373,11 @@ public:
           = detail::string_parser::result::need_more_data;
         while (string_parse_result
                == detail::string_parser::result::need_more_data) {
+            if (_buf.empty()) {
+                TRACE("parse_string: empty buffer, need more data\n");
+                co_return fuse_with_failure();
+            }
+
             auto tmpbuf = _buf.peek_buf();
             auto pos = string_parser.advance(tmpbuf, string_parse_result);
             switch (string_parse_result) {
@@ -417,6 +422,11 @@ public:
           = detail::numeric_parser::result::need_more_data;
         while (numeric_parse_result
                == detail::numeric_parser::result::need_more_data) {
+            if (_buf.empty()) {
+                TRACE("parse_number: empty buffer, need more data\n");
+                co_return fuse_with_failure();
+            }
+
             auto tmpbuf = _buf.peek_buf();
             auto pos = numeric_parser.advance(tmpbuf, numeric_parse_result);
             switch (numeric_parse_result) {
