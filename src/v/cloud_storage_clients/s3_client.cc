@@ -588,6 +588,15 @@ s3_client::self_configure() {
     // ListObjects request used for self configuration still manages to succeed,
     // leading to a similarily bad state as Oracle. Override for this case as
     // well.
+    auto backend = config::shard_local_cfg().cloud_storage_backend();
+    if (
+      backend == model::cloud_storage_backend::oracle_s3_compat
+      || backend == model::cloud_storage_backend::minio) {
+        result.url_style = s3_url_style::path;
+        co_return result;
+    }
+
+    // Also handle possibly inferred backend.
     auto inferred_backend = infer_backend_from_uri(_requestor._ap);
     if (
       inferred_backend == model::cloud_storage_backend::oracle_s3_compat
