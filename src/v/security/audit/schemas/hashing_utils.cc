@@ -144,6 +144,39 @@ size_t api_activity::hash(
     return hash::combine(h, http_request_hash(req));
 }
 
+size_t api_activity::hash(
+  std::string_view svc_name,
+  ss::httpd::const_req req,
+  std::string_view operation_name,
+  const request_auth_result& auth_result,
+  bool is_authorized,
+  security::acl_operation operation,
+  const chunked_vector<resource_detail>& resources) {
+    auto crud = api_activity::op_to_crud(operation);
+    size_t h = audit_type_base_hash(
+      category_uid::application_activity,
+      class_uid::api_activity,
+      severity_id::informational,
+      crud);
+
+    h = hash::combine(
+      h,
+      auth_result.is_auth_required(),
+      auth_result.get_username(),
+      auth_result.is_superuser(),
+      req.get_server_address().addr(),
+      req.get_client_address().addr(),
+      is_authorized,
+      operation_name,
+      svc_name);
+
+    for (const auto& v : resources) {
+        hash::combine(h, v.name, v.type);
+    }
+
+    return hash::combine(h, http_request_hash(req));
+}
+
 size_t application_lifecycle::hash(
   application_lifecycle::activity_id activity_id,
   const std::optional<ss::sstring>& feature_name) {

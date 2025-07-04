@@ -11,6 +11,7 @@
 #pragma once
 
 #include "hashing/combine.h"
+#include "security/acl.h"
 #include "security/audit/schemas/hashing_utils.h"
 #include "security/audit/schemas/schemas.h"
 #include "security/audit/schemas/types.h"
@@ -120,6 +121,15 @@ public:
       std::string_view operation_name,
       const auth_result& auth_result);
 
+    static size_t hash(
+      std::string_view svc_name,
+      ss::httpd::const_req req,
+      std::string_view operation_name,
+      const request_auth_result& auth_result,
+      bool is_authorized,
+      security::acl_operation operation,
+      const chunked_vector<resource_detail>& resources);
+
     template<typename T>
     static api_activity construct(
       std::string_view operation_name,
@@ -178,6 +188,15 @@ public:
       ss::httpd::const_req req,
       std::string_view operation_name,
       const auth_result& auth_result);
+
+    static api_activity construct(
+      std::string_view svc_name,
+      ss::httpd::const_req req,
+      std::string_view operation_name,
+      const request_auth_result& auth_result,
+      bool is_authorized,
+      security::acl_operation operation,
+      chunked_vector<resource_detail>&& resources);
 
     static constexpr api_activity::activity_id
     op_to_crud(security::acl_operation op) {
