@@ -10,12 +10,15 @@
 
 #include "pandaproxy/schema_registry/authorization.h"
 
+#include "pandaproxy/api/api-doc/schema_registry.json.hh"
 #include "pandaproxy/parsing/httpd.h"
 #include "pandaproxy/schema_registry/service.h"
 #include "pandaproxy/schema_registry/types.h"
 #include "security/acl.h"
 #include "security/audit/audit_log_manager.h"
+#include "security/audit/schemas/types.h"
 #include "security/authorizer.h"
+#include "security/request_auth.h"
 
 #include <seastar/util/variant_utils.hh>
 
@@ -30,12 +33,16 @@ concept no_auth = std::is_same_v<T, auth::none>
 template<typename T>
 concept requires_auth = !no_auth<T>;
 
+security::acl_principal get_principal(const server::request_t& rq) {
+    return security::acl_principal{
+      security::principal_type::user, rq.user.name};
+}
 struct auth_params {
     security::acl_principal principal;
     security::acl_host host;
 
     explicit auth_params(const server::request_t& rq)
-      : principal{security::principal_type::user, rq.user.name}
+      : principal{get_principal(rq)}
       , host{rq.req->get_client_address().addr()} {}
 };
 
@@ -87,6 +94,11 @@ void check_authenticated(request_auth_result& auth_result) {
     }
 }
 
+const auto subject_resource_type = ssx::sformat(
+  "{}", security::resource_type::sr_subject);
+
+using audit_resources = chunked_vector<security::audit::resource_detail>;
+
 } // namespace
 
 void handle_authz(
@@ -129,6 +141,8 @@ void handle_get_schemas_ids_id_authz(
   const server::request_t& rq,
   std::optional<request_auth_result>& auth_result,
   const chunked_vector<subject>& subjects) {
+    const auto& operation_name
+      = ss::httpd::schema_registry_json::get_schemas_ids_id.operations.nickname;
     if (!auth_result.has_value()) {
         // ACLs or authentication is disabled
         return;
@@ -136,19 +150,25 @@ void handle_get_schemas_ids_id_authz(
 
     check_authenticated(*auth_result);
 
+    auto params = detail::auth_params{rq};
+
     if (subjects.empty()) {
         // If there are no subjects associated with the schema id, it does
         // not exist.
         // Throw unauthorized here to avoid leaking information about whether a
         // schema id exists or not.
-        // TODO(CORE-12275): audit failure with [] (empty list of auth_result)
+        audit_authz(
+          rq,
+          operation_name,
+          auth_result.value(),
+          false,
+          security::acl_operation::read,
+          audit_resources{});
         throw_unauthorized();
     }
 
-    auto params = detail::auth_params{rq};
-
     auto authorizing_result = std::optional<security::auth_result>{};
-    auto all_results = chunked_vector<security::auth_result>{};
+    auto all_results = audit_resources{};
     for (const auto& sub : subjects) {
         auto res = rq.service().authorizor().authorized(
           sub, security::acl_operation::read, params.principal, params.host);
@@ -157,14 +177,20 @@ void handle_get_schemas_ids_id_authz(
             authorizing_result = std::move(res);
             break;
         } else {
-            all_results.push_back(std::move(res));
+            all_results.emplace_back(sub(), subject_resource_type);
         }
     }
 
     if (authorizing_result.has_value()) {
-        // TODO(CORE-12275): audit success with *authorizing_result
+        audit_authz(rq, operation_name, std::move(*authorizing_result));
     } else {
-        // TODO(CORE-12275): audit failure with all_results
+        audit_authz(
+          rq,
+          operation_name,
+          auth_result.value(),
+          false,
+          security::acl_operation::read,
+          std::move(all_results));
         throw_unauthorized();
     }
 }
@@ -173,6 +199,9 @@ void handle_get_subjects_authz(
   const server::request_t& rq,
   std::optional<request_auth_result>& auth_result,
   chunked_vector<subject>& subjects) {
+    const auto& operation_name
+      = ss::httpd::schema_registry_json::get_subjects.operations.nickname;
+
     if (!auth_result.has_value()) {
         // ACLs or authentication is disabled
         return;
@@ -182,8 +211,8 @@ void handle_get_subjects_authz(
 
     auto params = detail::auth_params{rq};
 
-    auto passing_results = chunked_vector<security::auth_result>{};
-    auto failing_results = chunked_vector<security::auth_result>{};
+    auto passing_results = audit_resources{};
+    auto failing_results = audit_resources{};
 
     auto new_end = std::ranges::remove_if(subjects, [&](const auto& subject) {
         auto res = rq.service().authorizor().authorized(
@@ -192,20 +221,36 @@ void handle_get_subjects_authz(
           params.principal,
           params.host);
         if (res.is_authorized()) {
-            passing_results.push_back(std::move(res));
+            passing_results.emplace_back(subject(), subject_resource_type);
             return false; // keep
         } else {
-            failing_results.push_back(std::move(res));
+            failing_results.emplace_back(subject(), subject_resource_type);
             return true; // remove
         }
     });
     subjects.erase_to_end(new_end.begin());
 
-    // TODO(CORE-12275): audit success with passing_results (since we always
-    // return a successful response)
+    // This endpoint always returns a successful response.
+    // Generate a successful audit event with the (possibly empty) list of
+    // authorized subjects.
+    // If there are any unauthorized subjects, generate failed audit event with
+    // them.
+    audit_authz(
+      rq,
+      operation_name,
+      auth_result.value(),
+      true,
+      security::acl_operation::read,
+      std::move(passing_results));
 
     if (!failing_results.empty()) {
-        // TODO(CORE-12275): audit failure with failing_results
+        audit_authz(
+          rq,
+          operation_name,
+          auth_result.value(),
+          false,
+          security::acl_operation::read,
+          std::move(failing_results));
     }
 }
 
