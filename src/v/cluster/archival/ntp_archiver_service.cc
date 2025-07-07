@@ -263,9 +263,7 @@ namespace {
 std::unique_ptr<adjacent_segment_merger> maybe_make_adjacent_segment_merger(
   ntp_archiver& self, const storage::ntp_config& cfg) {
     std::unique_ptr<adjacent_segment_merger> result = nullptr;
-    if (
-      cfg.is_archival_enabled() && !cfg.is_compacted()
-      && !cfg.is_read_replica_mode_enabled()) {
+    if (cfg.is_archival_enabled() && !cfg.is_read_replica_mode_enabled()) {
         result = std::make_unique<adjacent_segment_merger>(
           self,
           true,
@@ -557,11 +555,15 @@ ss::future<> ntp_archiver::upload_until_abort() {
         }
 
         if (_local_segment_merger) {
-            vlog(
-              _rtclog.debug,
-              "Enable adjacent segment merger in term {}",
-              _start_term);
-            _local_segment_merger->set_enabled(true);
+            auto is_compacted = _parent.log()->config().is_compacted();
+            if (!is_compacted) {
+                vlog(
+                  _rtclog.debug,
+                  "Enable adjacent segment merger in term {}, log config: {}",
+                  _start_term,
+                  _parent.log()->config());
+                _local_segment_merger->set_enabled(true);
+            }
         }
         if (_scrubber) {
             vlog(_rtclog.debug, "Enable scrubber in term {}", _start_term);
@@ -1836,7 +1838,8 @@ ntp_archiver::schedule_uploads(model::offset max_offset_exclusive) {
 
     if (
       config::shard_local_cfg().cloud_storage_enable_compacted_topic_reupload()
-      && _parent.get_ntp_config().is_compacted()) {
+      && _parent.get_ntp_config().is_compacted()
+      && compacted_segments_upload_start < start_upload_offset) {
         params.push_back({
           .upload_kind = segment_upload_kind::compacted,
           .start_offset = compacted_segments_upload_start,
