@@ -389,6 +389,7 @@ struct configuration final : public config_store {
     property<std::vector<ss::sstring>> audit_enabled_event_types;
     property<std::vector<ss::sstring>> audit_excluded_topics;
     property<std::vector<ss::sstring>> audit_excluded_principals;
+    enum_property<audit_failure_policy> audit_failure_policy;
 
     // Archival storage
     enterprise<property<bool>> cloud_storage_enabled;

@@ -93,6 +93,11 @@ class ClassUID(int, Enum):
     WEB_RESOURCE_ACCESS_ACTIVITY = 6004
 
 
+class AuditFailurePolicy(str, Enum):
+    PERMIT = 'permit'
+    REJECT = 'reject'
+
+
 class MTLSProvider(TLSProvider):
     """
     Defines an mTLS provider
@@ -237,10 +242,12 @@ class RangeTestItem(BaseTestItem):
 
 class AuditLogConfig:
     """Configuration for the audit log system"""
-    def __init__(self,
-                 enabled: bool = True,
-                 num_partitions: int = 8,
-                 event_types=['management', 'admin']):
+    def __init__(
+            self,
+            enabled: bool = True,
+            num_partitions: int = 8,
+            event_types=['management', 'admin'],
+            failure_policy: AuditFailurePolicy = AuditFailurePolicy.REJECT):
         """Initializes the config
 
         Parameters
@@ -257,6 +264,7 @@ class AuditLogConfig:
         self.enabled = enabled
         self.num_partitions = num_partitions
         self.event_types = event_types
+        self.failure_policy = failure_policy
 
     def to_conf(self) -> {str, str}:
         """Converts conf to dict
@@ -269,7 +277,8 @@ class AuditLogConfig:
         return {
             'audit_enabled': self.enabled,
             'audit_log_num_partitions': self.num_partitions,
-            'audit_enabled_event_types': self.event_types
+            'audit_enabled_event_types': self.event_types,
+            'audit_failure_policy': self.failure_policy.value
         }
 
 
@@ -339,9 +348,10 @@ class AuditLogTestBase(RedpandaTest):
         default_credentials(),
             audit_log_client_config: Optional[redpanda.AuditLogConfig] = None,
             extra_rp_conf=None,
+            permit_no_auth: bool = False,
             **kwargs):
-        assert (security.check_configuration()
-                ), "No auth enabled, test harness misconfigured"
+        assert (security.check_configuration() or
+                permit_no_auth), "No auth enabled, test harness misconfigured"
         self.audit_log_config = audit_log_config
 
         self.extra_rp_conf = self.audit_log_config.to_conf()
@@ -356,13 +366,13 @@ class AuditLogTestBase(RedpandaTest):
                 self.security.principal_mapping_rules
             ]
 
-        super(AuditLogTestBase,
-              self).__init__(test_context=test_context,
-                             extra_rp_conf=self.extra_rp_conf,
-                             log_config=self.log_config,
-                             security=self.security,
-                             audit_log_config=self.audit_log_client_config,
-                             **kwargs)
+        super(AuditLogTestBase, self).__init__(
+            test_context=test_context,
+            extra_rp_conf=self.extra_rp_conf,
+            log_config=self.log_config,
+            security=self.security if self.security else SecurityConfig(),
+            audit_log_config=self.audit_log_client_config,
+            **kwargs)
 
         self.rpk = self.get_rpk()
         self.super_rpk = self.get_super_rpk()
@@ -409,7 +419,7 @@ class AuditLogTestBase(RedpandaTest):
         else:
             return RpkTool(self.redpanda)
 
-    def setUp(self):
+    def setUp(self, wait_for_audit_log: bool = True):
         """Initializes the Redpanda node and waits for audit log to be present
         """
         super().setUp()
@@ -421,7 +431,8 @@ class AuditLogTestBase(RedpandaTest):
         self.logger.debug(
             f'Running OCSF Server Version {self.ocsf_server.get_api_version(None)}'
         )
-        self.wait_for_audit_log()
+        if wait_for_audit_log:
+            self.wait_for_audit_log()
 
     def wait_for_audit_log(self):
         """Waits for audit log to appear in the list of topics
@@ -2364,3 +2375,84 @@ class AuditLogTestEscapeHatch(RedpandaTest):
 
         # Ensure that this doesn't throw
         rpk.add_partitions(test_topic, 1)
+
+
+class AuditLogTestBypassBase(AuditLogTestBase):
+    """
+    Base test class that sets up the auditing tests with bad configuration.
+    """
+    def __init__(
+            self,
+            test_context,
+            security: AuditLogTestSecurityConfig = AuditLogTestSecurityConfig(
+            ),
+            extra_rp_conf=None,
+            expect_topic: bool = True,
+            permit_no_auth: bool = True,
+            **kwargs):
+
+        self.extra_rp_conf = AuditLogConfig(
+            enabled=True,
+            failure_policy=AuditFailurePolicy.PERMIT,
+            event_types=[
+                'management', 'produce', 'consume', 'describe', 'heartbeat',
+                'authenticate', 'admin', 'schema_registry'
+            ]).to_conf()
+        if extra_rp_conf is not None:
+            self.extra_rp_conf = self.extra_rp_conf | extra_rp_conf
+
+        self.expect_topic = expect_topic
+        super(AuditLogTestBypassBase, self).__init__(
+            test_context=test_context,
+            log_config=LoggingConfig('info',
+                                     logger_levels={'auditing': 'trace'}),
+            security=security,
+            permit_no_auth=permit_no_auth,
+            extra_rp_conf=self.extra_rp_conf,
+            **kwargs)
+
+    def setUp(self):
+        super().setUp(wait_for_audit_log=self.expect_topic)
+
+    @cluster(
+        num_nodes=4,
+        log_allow_list=[
+            'Failed to produce application lifecycle event: Semaphore timed out: audit_log_producer_semaphore'
+        ])
+    def test_bypass(self):
+        """
+        Validates that the Redpanda cluster is able to operate even with a misconfigured
+        audit log client
+        """
+
+        # Below is a simple set of actions that are performed to validate that Kafka commands function even when the audit log is not functioning
+        self.super_rpk.create_topic('test')
+        self.super_rpk.produce('test', key='test key', msg='test message')
+        self.super_rpk.consume('test', n=1)
+
+
+class AuditLogTestNoSecurityConfigured(AuditLogTestBypassBase):
+    """
+    Validates that the 'drop' configuration works when security credentials are not properly configured.
+    """
+    def __init__(self, test_context):
+        super(AuditLogTestNoSecurityConfigured,
+              self).__init__(test_context=test_context,
+                             expect_topic=False,
+                             permit_no_auth=True)
+
+
+class AuditLogTestSmallBuffers(AuditLogTestBypassBase):
+    """
+    Validates that the 'drop' configuraiton works when the audit log buffers are too small
+    """
+    def __init__(self, test_context):
+        super(AuditLogTestSmallBuffers, self).__init__(
+            test_context=test_context,
+            expect_topic=True,
+            security=AuditLogTestSecurityConfig.default_credentials(),
+            extra_rp_conf={
+                'audit_client_max_buffer_size': 1,
+                'audit_queue_max_buffer_size_per_shard': 1
+            },
+            permit_no_auth=False)

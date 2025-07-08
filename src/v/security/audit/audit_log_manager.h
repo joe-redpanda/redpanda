@@ -243,6 +243,8 @@ private:
 
     template<InheritsFromOCSFBase T, typename... Args>
     bool do_enqueue_audit_event(Args&&... args) {
+        static constexpr auto rate_limit = std::chrono::seconds(5);
+        static thread_local ss::logger::rate_limit rate(rate_limit);
         auto& map = _queue.get<underlying_unordered_map>();
         const auto hash_key = T::hash(args...);
         auto it = map.find(hash_key);
@@ -260,6 +262,17 @@ private:
                   msg_size,
                   _queue_bytes_sem.available_units());
                 probe().audit_error();
+                if (
+                  _audit_log_reject_policy()
+                  == config::audit_failure_policy::permit) {
+                    vloglr(
+                      adtlog,
+                      ss::log_level::warn,
+                      rate,
+                      "Audit event {} dropped due to full queue",
+                      *msg);
+                    return true;
+                }
                 return false;
             }
             auto& list = _queue.get<underlying_list>();
@@ -354,6 +367,7 @@ private:
 
     /// configuration options
     config::binding<bool> _audit_enabled;
+    config::binding<config::audit_failure_policy> _audit_log_reject_policy;
     config::binding<std::chrono::milliseconds> _queue_drain_interval_ms;
     config::binding<std::vector<ss::sstring>> _audit_event_types;
     size_t _max_queue_size_bytes;
