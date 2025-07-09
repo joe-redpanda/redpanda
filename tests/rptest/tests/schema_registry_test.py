@@ -6796,10 +6796,36 @@ class SchemaRegistryAclAuthzTest(SchemaRegistryEndpoints):
                                          operation, permission)
 
     def _post_acl(self, acl):
-        """Grant an ACL to the regular user."""
-        resp = self.sr_client.post_security_acls([acl], auth=self.super_auth)
+        """Grant one or more ACLs to the regular user."""
+        acl_list = [acl] if isinstance(acl, dict) else acl
+
+        resp = self.sr_client.post_security_acls(acl_list,
+                                                 auth=self.super_auth)
         self.assert_equal(resp.status_code, 201,
                           f"Failed to create ACL: {acl=}")
+
+        # Wait until the ACLs are propagated to all nodes
+        def acl_all_observable():
+            for node in self.redpanda.nodes:
+                resp = self.sr_client.get_security_acls(
+                    hostname=node.account.hostname, auth=self.super_auth)
+                self.assert_equal(resp.status_code, 200)
+
+                response_acls = resp.json()
+                for a in acl_list:
+                    self.redpanda.logger.debug(
+                        f"Checking if {a} in response from {node.account.hostname}: {response_acls}"
+                    )
+                    self.assert_in(a, response_acls)
+
+            return True
+
+        wait_until(
+            acl_all_observable,
+            timeout_sec=30,
+            backoff_sec=1,
+            retry_on_exc=True,
+            err_msg=f"Failed to propagate ACLs to all nodes: {acl_list}")
 
     def _create_schema(self, subject: str) -> int:
         response = self.sr_client.post_subjects_subject_versions(
@@ -7119,3 +7145,62 @@ class SchemaRegistryAclAuthzTest(SchemaRegistryEndpoints):
         result = self.sr_client.get_subjects(auth=self.user_auth)
         self.assert_equal(result.status_code, 200)
         self.assert_equal(result.json(), [])
+
+    @cluster(num_nodes=3)
+    def test_enterprise_sanctions(self):
+        """
+        Test sanctions when the license is invalid.
+
+        1. schema_registry_enable_authorization cannot be enabled
+        2. ACLs cannot be modified via POST/DELETE /security/acls
+        3. Existing ACLs are honoured
+        """
+        get_config_sub = GetConfigSubjectEndpoint(self)
+
+        # Setup GetConfigSubject
+        get_config_sub.setup()
+        get_config_sub_acl = get_config_sub.create_acl()
+        self._post_acl(get_config_sub_acl)
+
+        result = get_config_sub.make_request(self.user_auth)
+        self.assert_equal(result.status_code, 200,
+                          f"Failed to licensed get_config_sub: {result.text}")
+
+        # Disable the license and restart
+        self.redpanda.set_environment(
+            {'__REDPANDA_DISABLE_BUILTIN_TRIAL_LICENSE': True})
+        self.redpanda.restart_nodes(self.redpanda.nodes)
+
+        # Verify ACLs still work
+        result = get_config_sub.make_request(self.user_auth)
+        self.assert_equal(
+            result.status_code, 200,
+            f"Failed to unlicensed get_config_sub: {result.text}")
+
+        # Verify ACLs can be requested
+        result = self.sr_client.get_security_acls(auth=self.super_auth)
+        self.assert_equal(
+            result.status_code, 200,
+            f"Failed to unlicensed get_security_acls: {result.text}")
+
+        # Verify ACLs cannot be created or deleted
+        post_config_sub = PutConfigSubjectEndpoint(self)
+        post_config_sub_acl = post_config_sub.create_acl()
+        for endpoint, acl in [
+            (self.sr_client.post_security_acls, [post_config_sub_acl]),
+            (self.sr_client.delete_security_acls, [get_config_sub_acl])
+        ]:
+            resp = endpoint(acl, auth=self.super_auth)
+            self.assert_equal(
+                resp.status_code, 403,
+                f"ACL action {endpoint.__name__} should be forbidden after sanctions"
+            )
+
+        # Verify schema registry authorization can be disabled
+        self.redpanda.set_cluster_config(
+            {"schema_registry_enable_authorization": False})
+
+        # Verify schema registry authorization cannot be enabled
+        with expect_exception(requests.exceptions.HTTPError, lambda e: True):
+            self.redpanda.set_cluster_config(
+                {"schema_registry_enable_authorization": True})
