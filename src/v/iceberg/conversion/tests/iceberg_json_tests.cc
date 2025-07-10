@@ -1143,9 +1143,6 @@ TEST_CORO(IcebergValues, FormatValueTooLong) {
 }
 
 TEST_CORO(IcebergValues, Empty) {
-    GTEST_SKIP_CORO()
-      << "waiting for empty document handling to be merged in json parser";
-
     const auto schema = R"({
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "array",
