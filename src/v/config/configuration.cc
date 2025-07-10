@@ -4124,7 +4124,9 @@ configuration::configuration()
       "aws_sigv4 authentication mode. Accepted values: config_file, "
       "aws_instance_metadata, sts, gcp_instance_metadata, "
       "azure_vm_instance_metadata, azure_aks_oidc_federation.",
-      {.needs_restart = needs_restart::yes, .visibility = visibility::user},
+      {.needs_restart = needs_restart::yes,
+       .example = "config_file",
+       .visibility = visibility::user},
       std::nullopt,
       {
         model::cloud_credentials_source::config_file,
