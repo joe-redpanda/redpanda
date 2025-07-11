@@ -5816,14 +5816,16 @@ class SchemaRegistryACLTest(SchemaRegistryEndpoints):
         return sorted_response
 
     @cluster(num_nodes=3)
-    def test_basic_acl_operations(self):
+    @matrix(scale=[1, 1000])
+    def test_basic_acl_operations(self, scale: int):
         """Test basic CRUD operations for ACLs"""
         # Define the ACLs
         acls = [
             self._create_test_acl(principal="User:alice",
-                                  resource="test-subject",
+                                  resource=f"test-subject{i}",
                                   resource_type="SUBJECT",
-                                  operation="READ"),
+                                  operation="READ") for i in range(scale)
+        ] + [
             self._create_test_acl(principal="User:bob",
                                   resource="*",
                                   resource_type="REGISTRY",
@@ -5840,7 +5842,7 @@ class SchemaRegistryACLTest(SchemaRegistryEndpoints):
             resp = self.sr_client.get_security_acls()
             self.assert_equal(resp.status_code, 200)
             created_acls = resp.json()
-            self.assert_equal(len(created_acls), 2)
+            self.assert_equal(len(created_acls), scale + 1)
             return True
 
         wait_until(acls_exist,
@@ -5853,7 +5855,7 @@ class SchemaRegistryACLTest(SchemaRegistryEndpoints):
         resp = self.sr_client.delete_security_acls(acls)
         self.assert_equal(resp.status_code, 200)
         deleted_acls = resp.json()
-        self.assert_equal(len(deleted_acls), 2)
+        self.assert_equal(len(deleted_acls), scale + 1)
 
         # Verify ACLs are gone
         def acls_removed():
