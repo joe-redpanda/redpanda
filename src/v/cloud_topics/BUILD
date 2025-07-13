@@ -16,6 +16,7 @@ package(default_visibility = [
     "//src/v/cloud_topics/throttler:__pkg__",
     "//src/v/cloud_topics/throttler/tests:__pkg__",
     "//src/v/kafka/data:__pkg__",
+    "//src/v/cloud_topics/frontend:__pkg__",
 ])
 
 redpanda_cc_library(
@@ -103,6 +104,7 @@ redpanda_cc_library(
     visibility = [
         "//src/v/kafka/data:__pkg__",
         "//src/v/redpanda:__pkg__",
+        "//src/v/cloud_topics/frontend:__pkg__",
     ],
     deps = [
         "//src/v/base",
@@ -127,6 +129,7 @@ redpanda_cc_library(
         "//src/v/cloud_topics/reconciler:__pkg__",
         "//src/v/kafka/data:__pkg__",
         "//src/v/redpanda:__pkg__",
+        "//src/v/cloud_topics/frontend:__pkg__",
     ],
     deps = [
         "//src/v/base",
