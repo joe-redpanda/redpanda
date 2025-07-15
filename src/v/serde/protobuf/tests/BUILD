@@ -1,6 +1,8 @@
 load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("//bazel:golden.bzl", "redpanda_golden_test")
 load("//bazel:test.bzl", "redpanda_cc_gtest", "redpanda_test_cc_library")
+load("//bazel/pbgen:pbgen.bzl", "redpanda_proto_library")
 
 proto_library(
     name = "two_proto",
@@ -25,11 +27,19 @@ cc_proto_library(
 proto_library(
     name = "test_messages_edition2023_proto",
     srcs = ["test_messages_edition2023.proto"],
+    deps = [
+        "//proto/redpanda/pbgen:options_proto",
+    ],
 )
 
 cc_proto_library(
     name = "test_messages_edition2023_cc_proto",
     deps = [":test_messages_edition2023_proto"],
+)
+
+redpanda_proto_library(
+    name = "test_messages_edition2023_redpanda_proto",
+    protos = [":test_messages_edition2023_proto"],
 )
 
 redpanda_cc_gtest(
@@ -94,4 +104,12 @@ redpanda_cc_gtest(
         "@fmt",
         "@googletest//:gtest",
     ],
+)
+
+redpanda_golden_test(
+    name = "protogen_golden_conformance_test",
+    srcs = {
+        "test_messages_edition2023.proto.cc": ":test_messages_edition2023_redpanda_proto_generated_srcs",
+        "test_messages_edition2023.proto.h": ":test_messages_edition2023_redpanda_proto_generated_hdrs",
+    },
 )
