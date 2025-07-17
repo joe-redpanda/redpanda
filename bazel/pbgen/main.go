@@ -408,6 +408,7 @@ func (g *headerGenerator) generateService(service protoreflect.ServiceDescriptor
 	w.Println("public:")
 	w.Indent()
 	defer w.Dedent()
+	w.Printf("%s() = default;\n", cppName)
 	w.Printf("%s& operator=(const %s&) noexcept = delete;\n", cppName, cppName)
 	w.Printf("%s(const %s&) noexcept = delete;\n", cppName, cppName)
 	w.Printf("%s& operator=(%s&&) noexcept = delete;\n", cppName, cppName)
@@ -660,7 +661,8 @@ func (g *implGenerator) generateServiceRoutes(service protoreflect.ServiceDescri
 	defer w.Dedent()
 	for i := range service.Methods().Len() {
 		method := service.Methods().Get(i)
-		paths := []string{filepath.Join(string(service.FullName()), string(method.Name()))}
+		path := fmt.Sprintf("/%s", filepath.Join(string(service.FullName()), string(method.Name())))
+		paths := []string{path}
 		if alt := rpcAlternativeRoute(method); alt != "" {
 			paths = append(paths, alt)
 		}
