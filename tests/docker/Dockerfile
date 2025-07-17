@@ -133,6 +133,14 @@ ENV PATH="${PATH}:/usr/local/go/bin"
 
 #################################
 
+FROM base AS nodejs
+
+COPY --chown=0:0 --chmod=0755 tests/docker/ducktape-deps/nodejs /
+RUN /nodejs && rm /nodejs
+ENV PATH="${PATH}:/opt/nodejs/bin"
+
+#################################
+
 FROM golang AS kaf
 
 COPY --chown=0:0 --chmod=0755 tests/docker/ducktape-deps/kaf /
@@ -439,6 +447,7 @@ COPY --from=iceberg-rest /opt/iceberg-rest-catalog /opt/iceberg-rest-catalog
 COPY --from=trino /opt/trino /opt/trino
 COPY --from=spark /opt/spark /opt/spark
 COPY --from=m2-collector /root/.m2 /root/.m2
+COPY --from=nodejs /opt/nodejs/ /opt/nodejs/
 
 RUN ldconfig
 
