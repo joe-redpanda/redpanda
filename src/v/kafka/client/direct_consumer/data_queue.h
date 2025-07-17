@@ -11,6 +11,8 @@
 #pragma once
 #include "kafka/client/direct_consumer/api_types.h"
 
+#include <seastar/core/condition-variable.hh>
+
 namespace kafka::client {
 /**
  * Very simple blocking queue that is used in

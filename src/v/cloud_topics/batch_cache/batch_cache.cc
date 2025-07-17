@@ -10,6 +10,7 @@
 
 #include "cloud_topics/batch_cache/batch_cache.h"
 
+#include "ssx/future-util.h"
 #include "storage/batch_cache.h"
 #include "storage/log_manager.h"
 #include "storage/ntp_config.h"

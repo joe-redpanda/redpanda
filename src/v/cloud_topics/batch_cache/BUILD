@@ -24,6 +24,7 @@ redpanda_cc_library(
         "//src/v/cloud_topics:types",
         "//src/v/config",
         "//src/v/model",
+        "//src/v/ssx:future_util",
         "//src/v/ssx:sformat",
         "//src/v/storage",
         "//src/v/storage:batch_cache",

@@ -13,6 +13,7 @@
 #include "kafka/client/direct_consumer/data_queue.h"
 #include "kafka/client/direct_consumer/fetcher.h"
 #include "model/validation.h"
+#include "ssx/future-util.h"
 
 namespace kafka::client {
 

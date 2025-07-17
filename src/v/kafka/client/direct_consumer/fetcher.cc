@@ -14,6 +14,9 @@
 #include "kafka/client/direct_consumer/direct_consumer.h"
 #include "kafka/client/errors.h"
 #include "ssx/async_algorithm.h"
+#include "ssx/future-util.h"
+
+#include <seastar/core/sleep.hh>
 
 namespace kafka::client {
 static constexpr model::node_id client_replica_id{-1};

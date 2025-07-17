@@ -32,6 +32,7 @@ redpanda_cc_library(
         "//src/v/kafka/protocol/schemata:fetch_response",
         "//src/v/model",
         "//src/v/ssx:async_algorithm",
+        "//src/v/ssx:future_util",
         "//src/v/utils:mutex",
         "//src/v/utils:prefix_logger",
         "@fmt",
