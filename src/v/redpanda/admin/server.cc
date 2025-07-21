@@ -83,6 +83,7 @@
 #include "redpanda/admin/api-doc/shadow_indexing.json.hh"
 #include "redpanda/admin/api-doc/status.json.hh"
 #include "redpanda/admin/cluster_config_schema_util.h"
+#include "redpanda/admin/services/admin.h"
 #include "redpanda/admin/util.h"
 #include "resource_mgmt/memory_sampling.h"
 #include "rpc/errc.h"
@@ -339,6 +340,9 @@ admin_server::admin_server(
   , _default_blocked_reactor_notify(
       ss::engine().get_blocked_reactor_notify_ms()) {
     _server.set_content_streaming(true);
+    // NOTE: This isn't normally where services should be registered
+    // but this service is special as it has some reflection based methods.
+    add_service(std::make_unique<admin::admin_service_impl>(&_services));
 }
 
 void admin_server::add_service(
