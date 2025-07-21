@@ -37,7 +37,8 @@ public:
     get_first_ge(const model::topic_id_partition&, model::timestamp) override;
 
     ss::future<std::expected<void, errc>> compact_objects(
-      const chunked_vector<object_metadata>&, const compaction_map_t&) override {
+      const chunked_vector<object_metadata>&,
+      const compaction_map_t&) override {
         // TODO: implement me!
         co_return std::unexpected(errc::invalid_request);
     }
