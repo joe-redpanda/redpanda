@@ -16,7 +16,6 @@ syntax = "proto3";
 
 package redpanda.core.admin;
 
-import "proto/redpanda/core/version.proto";
 import "proto/redpanda/pbgen/options.proto";
 import "proto/redpanda/pbgen/rpc.proto";
 
@@ -24,7 +23,26 @@ option (redpanda.pbgen.cpp_namespace) = "proto::admin";
 
 message GetVersionRequest {}
 message GetVersionResponse {
-    redpanda.core.Version version = 1;
+    // A version string of Redpanda like "v25.2.1"
+    string version = 1;
+    // The git commit SHA of the build.
+    string build_sha = 2;
+}
+
+message GetRoutesRequest {}
+message GetRoutesResponse {
+  message Route {
+    // The name of the RPC method.
+    //
+    // For example `redpanda.core.admin.AdminService.GetVersion`
+    string name = 1;
+    // The HTTP route for this RPC method.
+    //
+    // For example `/v2/redpanda.core.admin.AdminService/GetVersion`
+    string http_route = 2;
+  }
+  // All the routes available in the Admin API.
+  repeated Route routes = 1;
 }
 
 // The AdminService is used to get information about the Redpanda cluster.
@@ -32,9 +50,16 @@ message GetVersionResponse {
 // NOTE: This should be very small and only hold a few RPCs that are core to the
 // Admin API, other APIs should be split out into seperate services.
 service AdminService {
+    // Return the build version and git commit SHA of the Redpanda cluster.
     rpc GetVersion(GetVersionRequest) returns (GetVersionResponse) {
         option (redpanda.pbgen.rpc) = {
-            version: V25_2_0,
+            authz: SUPERUSER,
+        };
+    }
+    // Return the supported routes for the Admin API. This RPC can be used to determine
+    // what RPCs are available in the Admin API.
+    rpc GetRoutes(GetRoutesRequest) returns (GetRoutesResponse) {
+        option (redpanda.pbgen.rpc) = {
             authz: SUPERUSER,
         };
     }

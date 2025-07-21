@@ -6,7 +6,6 @@ go_library(
     importpath = "github.com/redpanda-data/redpanda/bazel/pbgen",
     visibility = ["//visibility:private"],
     deps = [
-        "//proto/redpanda/core:version_go_proto",
         "//proto/redpanda/pbgen:options_go_proto",
         "//proto/redpanda/pbgen:rpc_go_proto",
         "@org_golang_google_protobuf//proto",

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/redpanda-data/redpanda/proto/redpanda/core"
 	pbgen "github.com/redpanda-data/redpanda/proto/redpanda/pbgen/options"
 	rpcgen "github.com/redpanda-data/redpanda/proto/redpanda/pbgen/rpc"
 	"google.golang.org/protobuf/proto"
@@ -210,15 +209,6 @@ func rpcAlternativeRoute(f protoreflect.MethodDescriptor) string {
 	}
 	rpcOpts := proto.GetExtension(opts, rpcgen.E_Rpc).(*rpcgen.RPCOptions)
 	return rpcOpts.HttpRoute
-}
-
-func hasRPCVersion(f protoreflect.MethodDescriptor) bool {
-	opts := f.Options().(*descriptorpb.MethodOptions)
-	if !proto.HasExtension(opts, rpcgen.E_Rpc) {
-		return false
-	}
-	rpcOpts := proto.GetExtension(opts, rpcgen.E_Rpc).(*rpcgen.RPCOptions)
-	return rpcOpts.Version != core.Version_VERSION_UNSPECIFIED
 }
 
 // ----------------------------------------------------------
@@ -422,9 +412,6 @@ func (g *headerGenerator) generateService(service protoreflect.ServiceDescriptor
 	w.Println()
 	for i := range service.Methods().Len() {
 		method := service.Methods().Get(i)
-		if !hasRPCVersion(method) {
-			g.emitError(fmt.Errorf("method %s does not have a version, please add one.", method.FullName()))
-		}
 		g.leadingComments(method, w)
 		w.Printf(
 			"virtual seastar::future<%s> %s(%s) = 0;\n",
