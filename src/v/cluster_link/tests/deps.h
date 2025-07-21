@@ -249,6 +249,14 @@ public:
 
     link_factory* get_link_factory() { return _lf; }
 
+    ss::future<std::optional<model::cluster_link_task_status_report>>
+    await_status_report(
+      ss::lowres_clock::duration timeout,
+      ss::lowres_clock::duration backoff,
+      std::function<bool(const model::cluster_link_task_status_report&)>
+        predicate,
+      std::optional<ss::abort_source> as = std::nullopt);
+
 private:
     void setup_cluster_mock();
 
