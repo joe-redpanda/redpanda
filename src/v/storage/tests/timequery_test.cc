@@ -7,7 +7,6 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0
 
-#include "config/configuration.h"
 #include "model/fundamental.h"
 #include "model/tests/random_batch.h"
 #include "model/timestamp.h"
@@ -86,9 +85,10 @@ TEST_F(log_builder_fixture, timequery) {
               std::nullopt);
 
             auto res = log->timequery(config).get();
-            EXPECT_TRUE(res);
-            EXPECT_EQ(res->time, model::timestamp(start_offset));
-            EXPECT_EQ(res->offset, start_offset);
+            EXPECT_EQ(
+              res,
+              storage::timequery_result(
+                start_offset, model::timestamp(start_offset)));
         }
     }
 
@@ -103,9 +103,9 @@ TEST_F(log_builder_fixture, timequery) {
           std::nullopt);
 
         auto res = log->timequery(config).get();
-        EXPECT_TRUE(res);
-        EXPECT_EQ(res->time, model::timestamp(ts));
-        EXPECT_EQ(res->offset, model::offset(ts));
+        EXPECT_EQ(
+          res,
+          storage::timequery_result(model::offset(ts), model::timestamp(ts)));
     }
 
     // in the second segment
@@ -127,9 +127,10 @@ TEST_F(log_builder_fixture, timequery) {
         auto offset = (ts - 100) * 5 + 100;
 
         auto res = log->timequery(config).get();
-        EXPECT_TRUE(res);
-        EXPECT_EQ(res->time, model::timestamp(ts));
-        EXPECT_EQ(res->offset, model::offset(offset));
+        EXPECT_EQ(
+          res,
+          storage::timequery_result(
+            model::offset(offset), model::timestamp(ts)));
     }
 
     b | stop();
@@ -186,9 +187,10 @@ TEST_F(log_builder_fixture, timequery_multiple_messages_per_batch) {
           std::nullopt);
 
         auto res = log->timequery(config).get();
-        EXPECT_TRUE(res);
-        EXPECT_EQ(res->time, model::timestamp(start_offset));
-        EXPECT_EQ(res->offset, start_offset);
+        EXPECT_EQ(
+          res,
+          storage::timequery_result(
+            start_offset, model::timestamp(start_offset)));
     }
 
     b | stop();
@@ -222,9 +224,8 @@ TEST_F(log_builder_fixture, timequery_single_value) {
     config.time = model::timestamp(999);
 
     auto res = log->timequery(config).get();
-    EXPECT_TRUE(res);
-    EXPECT_EQ(res->time, model::timestamp(1000));
-    EXPECT_EQ(res->offset, model::offset(0));
+    EXPECT_EQ(
+      res, storage::timequery_result(model::offset(0), model::timestamp(1000)));
     b | stop();
 }
 
@@ -257,9 +258,8 @@ TEST_F(log_builder_fixture, timequery_sparse_index) {
       std::nullopt);
 
     auto res = log->timequery(config).get();
-    EXPECT_TRUE(res);
-    EXPECT_EQ(res->time, model::timestamp(1600));
-    EXPECT_EQ(res->offset, model::offset(1));
+    EXPECT_EQ(
+      res, storage::timequery_result(model::offset(1), model::timestamp(1600)));
 
     b | stop();
 }
@@ -289,9 +289,8 @@ TEST_F(log_builder_fixture, timequery_one_element_index) {
       std::nullopt);
 
     auto res = log->timequery(config).get();
-    EXPECT_TRUE(res);
-    EXPECT_EQ(res->time, model::timestamp(1000));
-    EXPECT_EQ(res->offset, model::offset(0));
+    EXPECT_EQ(
+      res, storage::timequery_result(model::offset(0), model::timestamp(1000)));
 
     b | stop();
 }
@@ -342,13 +341,12 @@ TEST_F(log_builder_fixture, timequery_non_monotonic_segment) {
             // first batch that satifies: `batch_max_timestamp >= needle`.
             // So, in this case we pick the first batch with timestamp
             // greater or equal to 1002.
-            EXPECT_TRUE(res);
-            EXPECT_EQ(res->time, model::timestamp(1002));
-            EXPECT_EQ(res->offset, model::offset(2));
+            EXPECT_EQ(
+              res,
+              storage::timequery_result(
+                model::offset(2), model::timestamp(1002)));
         } else {
-            EXPECT_TRUE(res);
-            EXPECT_EQ(res->time, ts);
-            EXPECT_EQ(res->offset, offset);
+            EXPECT_EQ(res, storage::timequery_result(offset, ts));
         }
     }
 
@@ -361,9 +359,8 @@ TEST_F(log_builder_fixture, timequery_non_monotonic_segment) {
       std::nullopt);
 
     auto res = log->timequery(config).get();
-
-    EXPECT_TRUE(res);
-    EXPECT_EQ(res->offset, model::offset(0));
+    EXPECT_EQ(
+      res, storage::timequery_result(model::offset(0), model::timestamp(1000)));
 
     b | stop();
 }
@@ -421,9 +418,7 @@ TEST_F(log_builder_fixture, timequery_non_monotonic_log) {
           std::nullopt);
 
         auto res = log->timequery(config).get();
-        ASSERT_TRUE(res);
-        ASSERT_EQ(res->time, ts);
-        ASSERT_EQ(res->offset, offset);
+        ASSERT_EQ(res, storage::timequery_result(offset, ts));
     }
 
     // From KIP-33:
@@ -443,9 +438,9 @@ TEST_F(log_builder_fixture, timequery_non_monotonic_log) {
           std::nullopt);
 
         auto res = log->timequery(config).get();
-        ASSERT_TRUE(res);
-        ASSERT_EQ(res->time, model::timestamp{1000});
-        ASSERT_EQ(res->offset, model::offset{0});
+        ASSERT_EQ(
+          res,
+          storage::timequery_result(model::offset(0), model::timestamp(1000)));
     }
 
     // Query for a bogus, really small timestamp.
@@ -457,9 +452,8 @@ TEST_F(log_builder_fixture, timequery_non_monotonic_log) {
       std::nullopt);
 
     auto res = log->timequery(config).get();
-
-    ASSERT_TRUE(res);
-    ASSERT_EQ(res->offset, model::offset(0));
+    ASSERT_EQ(
+      res, storage::timequery_result(model::offset(0), model::timestamp(1000)));
 
     b | stop();
 }
@@ -536,9 +530,9 @@ TEST_F(log_builder_fixture, timequery_non_monotonic_log_many_segments) {
           std::nullopt);
 
         auto res = log->timequery(config).get();
-        ASSERT_TRUE(res);
-        ASSERT_EQ(res->time, model::timestamp{1000});
-        ASSERT_EQ(res->offset, model::offset{0});
+        ASSERT_EQ(
+          res,
+          storage::timequery_result(model::offset(0), model::timestamp(1000)));
     }
 
     {
@@ -550,9 +544,9 @@ TEST_F(log_builder_fixture, timequery_non_monotonic_log_many_segments) {
           std::nullopt);
 
         auto res = log->timequery(config).get();
-        ASSERT_TRUE(res);
-        ASSERT_EQ(res->time, model::timestamp{1200});
-        ASSERT_EQ(res->offset, model::offset{11});
+        ASSERT_EQ(
+          res,
+          storage::timequery_result(model::offset(11), model::timestamp(1200)));
     }
     {
         // Query should land in seg3.
@@ -563,9 +557,9 @@ TEST_F(log_builder_fixture, timequery_non_monotonic_log_many_segments) {
           std::nullopt);
 
         auto res = log->timequery(config).get();
-        ASSERT_TRUE(res);
-        ASSERT_EQ(res->time, model::timestamp{1500});
-        ASSERT_EQ(res->offset, model::offset{12});
+        ASSERT_EQ(
+          res,
+          storage::timequery_result(model::offset(12), model::timestamp(1500)));
     }
     {
         // Query should land in seg3.
@@ -576,9 +570,9 @@ TEST_F(log_builder_fixture, timequery_non_monotonic_log_many_segments) {
           std::nullopt);
 
         auto res = log->timequery(config).get();
-        ASSERT_TRUE(res);
-        ASSERT_EQ(res->time, model::timestamp{1500});
-        ASSERT_EQ(res->offset, model::offset{12});
+        ASSERT_EQ(
+          res,
+          storage::timequery_result(model::offset(12), model::timestamp(1500)));
     }
     {
         // Query should land outside log.
@@ -629,9 +623,7 @@ TEST_F(log_builder_fixture, timequery_clamp) {
 
     const auto& [expected_offset, expected_ts] = batch_spec.back();
     auto res = log->timequery(config).get();
-    EXPECT_TRUE(res);
-    EXPECT_EQ(res->time, expected_ts);
-    EXPECT_EQ(res->offset, expected_offset);
+    EXPECT_EQ(res, storage::timequery_result(expected_offset, expected_ts));
 
     b | stop();
 }

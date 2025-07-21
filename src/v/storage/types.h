@@ -291,6 +291,8 @@ struct timequery_result {
     model::offset offset;
     model::timestamp time;
 
+    bool operator==(const timequery_result& other) const = default;
+
     friend std::ostream& operator<<(std::ostream& o, const timequery_result&);
 };
 
