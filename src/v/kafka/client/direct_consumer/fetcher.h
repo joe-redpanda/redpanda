@@ -205,6 +205,7 @@ private:
         chunked_vector<fetched_topic_data> topics;
         size_t total_bytes{0};
         bool needs_metadata_update{false};
+        kafka::fetch_session_id session_id{0};
     };
 
     static assignment_epoch find_assignment_epoch(

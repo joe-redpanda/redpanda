@@ -291,6 +291,7 @@ ss::future<> fetcher::do_fetch() {
         }
 
         auto fetch_result_value = std::move(fetch_result.value());
+        _session_state.update_fetch_session(fetch_result_value.session_id);
         if (fetch_result_value.needs_metadata_update) {
             // if we need to update metadata, we should do it
             // so that we can retry fetching the partitions later
@@ -351,6 +352,7 @@ fetcher::process_fetch_response(
     auto lock = co_await _state_lock.get_units();
 
     fetch_response_content result;
+    result.session_id = kafka::fetch_session_id{resp.data.session_id};
     result.topics.reserve(resp.data.responses.size());
     for (auto& topic_response : resp.data.responses) {
         if (topic_response.partitions.empty()) {
