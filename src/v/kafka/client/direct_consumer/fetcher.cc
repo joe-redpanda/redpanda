@@ -154,9 +154,8 @@ fetcher::make_fetch_request(chunked_vector<partitions_to_process> to_process) {
     req.data.max_bytes = _parent->_config.max_fetch_size;
     req.data.min_bytes = _parent->_config.min_bytes;
 
-    // TODO: support incremental fetches, for now we always use full fetch
-    req.data.session_id = invalid_fetch_session_id;
-    req.data.session_epoch = final_fetch_session_epoch;
+    req.data.session_id = _session_state.session_id;
+    req.data.session_epoch = _session_state.session_epoch;
 
     ssx::async_counter cnt;
 

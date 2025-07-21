@@ -12,14 +12,16 @@
 #include "cluster/tests/cluster_test_fixture.h"
 #include "container/chunked_vector.h"
 #include "kafka/client/direct_consumer/direct_consumer.h"
+#include "kafka/client/direct_consumer/fetcher.h"
 #include "kafka/server/tests/produce_consume_utils.h"
 #include "redpanda/tests/fixture.h"
 
 #include <seastar/util/defer.hh>
+
+#include <fmt/format.h>
+
 using namespace kafka::client;
-class consumer_fixture
-  : public cluster_test_fixture
-  , public ::testing::Test {
+class consumer_fixture : public cluster_test_fixture {
 public:
     kafka::client::connection_configuration make_connection_config() {
         kafka::client::connection_configuration config;
@@ -126,7 +128,23 @@ public:
     }
 };
 
-TEST_F(consumer_fixture, TestBasicConsumption) {
+namespace {
+
+enum class session_config : uint8_t {
+    with_sessions,
+    without_sessions,
+    toggle_sessions,
+};
+
+[[maybe_unused]] auto format_as(session_config c) { return fmt::underlying(c); }
+
+class basic_consume_fixture
+  : public consumer_fixture
+  , public testing::TestWithParam<session_config> {};
+
+} // namespace
+
+TEST_P(basic_consume_fixture, TestBasicConsumption) {
     create_node_application(model::node_id{0});
     create_node_application(model::node_id{1});
     create_node_application(model::node_id{2});
@@ -148,6 +166,11 @@ TEST_F(consumer_fixture, TestBasicConsumption) {
       .assign_partitions(chunked_vector<topic_assignment>::single(
         make_assignment(topic, {0, 1, 2})))
       .get();
+
+    consumer.update_configuration(direct_consumer::configuration{
+      .with_sessions = fetch_sessions_enabled{
+        GetParam() == session_config::with_sessions}});
+
     // no data should be available immediately, as the topic is empty
     for (int i = 0; i < 10; ++i) {
         auto fetched = consumer.fetch_next(100ms).get();
@@ -158,6 +181,7 @@ TEST_F(consumer_fixture, TestBasicConsumption) {
     produce_to_partition(topic, 0, 1000);
     produce_to_partition(topic, 1, 400);
     produce_to_partition(topic, 2, 20);
+
     auto fetched = fetch_until_empty(consumer);
 
     ASSERT_EQ(fetched.size(), 3);
@@ -176,6 +200,12 @@ TEST_F(consumer_fixture, TestBasicConsumption) {
         .back()
         .last_offset(),
       model::offset(19));
+
+    if (GetParam() == session_config::toggle_sessions) {
+        consumer.update_configuration(direct_consumer::configuration{
+          .with_sessions = fetch_sessions_enabled::yes});
+    }
+
     // produce again
     produce_to_partition(topic, 2, 1000);
     produce_to_partition(topic, 1, 400);
@@ -198,3 +228,11 @@ TEST_F(consumer_fixture, TestBasicConsumption) {
         .last_offset(),
       model::offset(1019));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+  test_with_basic_consume_fixture,
+  basic_consume_fixture,
+  testing::Values(
+    session_config::with_sessions,
+    session_config::without_sessions,
+    session_config::toggle_sessions));

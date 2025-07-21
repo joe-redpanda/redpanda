@@ -41,6 +41,7 @@ redpanda_cc_gtest(
         "direct_consumer_fixture_test.cc",
     ],
     deps = [
+        "//src/v/base",
         "//src/v/cluster/tests:cluster_test_fixture",
         "//src/v/container:chunked_vector",
         "//src/v/kafka/client:brokers",
@@ -51,6 +52,7 @@ redpanda_cc_gtest(
         "//src/v/model",
         "//src/v/redpanda/tests:fixture",
         "//src/v/test_utils:gtest",
+        "@fmt",
         "@googletest//:gtest",
         "@seastar",
         "@seastar//:testing",
