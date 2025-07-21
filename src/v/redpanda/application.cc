@@ -132,6 +132,7 @@
 #include "raft/group_manager.h"
 #include "raft/service.h"
 #include "redpanda/admin/server.h"
+#include "redpanda/admin/services/internal/debug.h"
 #include "resource_mgmt/memory_groups.h"
 #include "resource_mgmt/memory_sampling.h"
 #include "resource_mgmt/scheduling_groups_probe.h"
@@ -1113,6 +1114,13 @@ void application::configure_admin_server() {
       std::ref(_kafka_server.ref()),
       std::ref(tx_gateway_frontend),
       std::ref(_debug_bundle_service))
+      .get();
+    _admin
+      .invoke_on_all([this](admin_server& s) {
+          // Add RPC services
+          s.add_service(
+            std::make_unique<admin::debug_service_impl>(stress_fiber_manager));
+      })
       .get();
 }
 
