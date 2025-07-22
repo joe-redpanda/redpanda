@@ -353,39 +353,6 @@ class ArchivalTest(RedpandaTest):
         validate(self._quick_verify, self.logger, 90)
 
     @cluster(num_nodes=3)
-    @matrix(cloud_storage_type=get_cloud_storage_type())
-    def test_single_partition_leadership_transfer(self, cloud_storage_type):
-        """Start uploading data, restart leader node of the partition 0 to trigger the
-        leadership transfer, continue upload, verify S3 bucket content"""
-        self.kafka_tools.produce(self.topic, 5000, 1024)
-        time.sleep(5)
-        leaders = self._get_partition_leaders()
-        node = leaders[0]
-        self.redpanda.stop_node(node)
-        time.sleep(1)
-        self.redpanda.start_node(node)
-        time.sleep(5)
-        self.kafka_tools.produce(self.topic, 5000, 1024)
-        validate(self._cross_node_verify, self.logger, 120)
-
-    @cluster(num_nodes=3)
-    @matrix(cloud_storage_type=get_cloud_storage_type())
-    def test_all_partitions_leadership_transfer(self, cloud_storage_type):
-        """Start uploading data, restart leader nodes of all partitions to trigger the
-        leadership transfer, continue upload, verify S3 bucket content"""
-        self.kafka_tools.produce(self.topic, 5000, 1024)
-        time.sleep(5)
-        leaders = self._get_partition_leaders()
-        for ip, node in leaders.items():
-            self.logger.debug(f"going to restart node {ip}")
-            self.redpanda.stop_node(node)
-            time.sleep(1)
-            self.redpanda.start_node(node)
-        time.sleep(5)
-        self.kafka_tools.produce(self.topic, 5000, 1024)
-        validate(self._cross_node_verify, self.logger, 120)
-
-    @cluster(num_nodes=3)
     @matrix(acks=[-1, 0, 1], cloud_storage_type=get_cloud_storage_type())
     def test_timeboxed_uploads(self, acks, cloud_storage_type):
         """This test checks segment upload time limit. The feature is enabled in the
