@@ -876,6 +876,37 @@ ss::future<result<s3_client::no_response, error_outcome>> s3_client::put_object(
       key);
 }
 
+ss::future<> s3_client::do_put_object_inner(
+  ss::input_stream<char>& body,
+  const object_key& id,
+  http::client::request_header header,
+  ss::lowres_clock::duration timeout,
+  bool accept_no_content) {
+    http::client::response_stream_ref response_stream_ref
+      = co_await _client.request(std::move(header), body, timeout);
+    iobuf response_buffer = co_await util::drain_response_stream(
+      response_stream_ref);
+
+    const auto status = response_stream_ref->get_headers().result();
+
+    using boost::beast::http::status;
+
+    const bool is_no_content_and_accepted = (status == status::no_content)
+                                            && accept_no_content;
+    if (status != status::ok && !is_no_content_and_accepted) {
+        vlog(
+          s3_log.warn,
+          "S3 PUT request failed for key {}: {} {:l}",
+          id,
+          status,
+          response_stream_ref->get_headers());
+        const auto content_type = util::get_response_content_type(
+          response_stream_ref->get_headers());
+        co_return co_await parse_rest_error_response<>(
+          content_type, status, std::move(response_buffer));
+    }
+}
+
 ss::future<> s3_client::do_put_object(
   const bucket_name& name,
   const object_key& id,
@@ -883,73 +914,37 @@ ss::future<> s3_client::do_put_object(
   ss::input_stream<char> body,
   ss::lowres_clock::duration timeout,
   bool accept_no_content) {
-    auto header = _requestor.make_unsigned_put_object_request(
+    auto maybe_header = _requestor.make_unsigned_put_object_request(
       name, id, payload_size);
-    if (!header) {
-        return body.close().then([header] {
-            return ss::make_exception_future<>(
-              std::system_error(header.error()));
-        });
+    if (!maybe_header) {
+        co_await body.close();
+        throw maybe_header.error();
     }
-    vlog(s3_log.trace, "send https request:\n{}", header.value());
-    return ss::do_with(
-      std::move(body),
-      [this, timeout, header = std::move(header), id, accept_no_content](
-        ss::input_stream<char>& body) mutable {
-          auto make_request = [this, &header, &body, &timeout]() {
-              return _client.request(std::move(header.value()), body, timeout);
-          };
+    auto& header = maybe_header.value();
+    vlog(s3_log.trace, "send https request:\n{}", header);
 
-          return ss::futurize_invoke(make_request)
-            .then([id, accept_no_content](
-                    const http::client::response_stream_ref& ref) {
-                return util::drain_response_stream(ref).then(
-                  [ref, id, accept_no_content](iobuf&& res) {
-                      auto status = ref->get_headers().result();
-                      using enum boost::beast::http::status;
-                      if (const auto is_no_content_and_accepted
-                          = status == no_content && accept_no_content;
-                          status != ok && !is_no_content_and_accepted) {
-                          vlog(
-                            s3_log.warn,
-                            "S3 PUT request failed for key {}: {} {:l}",
-                            id,
-                            status,
-                            ref->get_headers());
-                          const auto content_type
-                            = util::get_response_content_type(
-                              ref->get_headers());
-                          return parse_rest_error_response<>(
-                            content_type, status, std::move(res));
-                      }
-                      return ss::now();
-                  });
-            })
-            .handle_exception_type(
-              [](const ss::abort_requested_exception& err) {
-                  return ss::make_exception_future<>(err);
-              })
-            .handle_exception_type([this, id](const rest_error_response& err) {
-                _probe->register_failure(err.code(), op_type_tag::upload);
-                if (err.code() == s3_error_code::_unknown) {
-                    vlog(
-                      s3_log.error,
-                      "S3 PUT request failed with error for key {}: {}",
-                      id,
-                      err);
-                }
-                return ss::make_exception_future<>(err);
-            })
-            .handle_exception([id](std::exception_ptr eptr) {
-                vlog(
-                  s3_log.warn,
-                  "S3 PUT request failed with error for key {}: {}",
-                  id,
-                  eptr);
-                return ss::make_exception_future<>(eptr);
-            })
-            .finally([&body]() { return body.close(); });
-      });
+    // body.close is async and throwing, best to let seastar manage it in a
+    // 'finally' continuation
+    co_await do_put_object_inner(
+      body, id, std::move(header), timeout, accept_no_content)
+      .handle_exception_type([](const ss::abort_requested_exception& err) {
+          return ss::make_exception_future<>(err);
+      })
+      .handle_exception_type([this](const rest_error_response& err) {
+          _probe->register_failure(err.code(), op_type_tag::upload);
+          return ss::make_exception_future<>(err);
+      })
+      .handle_exception([id](std::exception_ptr eptr) {
+          vlog(
+            s3_log.warn,
+            "S3 PUT request failed with error for key {}: {}",
+            id,
+            eptr);
+          return ss::make_exception_future<>(eptr);
+      })
+      .finally([&body]() { return body.close(); });
+
+    co_return;
 }
 
 ss::future<result<s3_client::list_bucket_result, error_outcome>>

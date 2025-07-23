@@ -207,7 +207,7 @@ public:
     class request_stream final
       : public ss::enable_shared_from_this<request_stream> {
     public:
-        explicit request_stream(client* client, request_header&& hdr);
+        explicit request_stream(client* client, request_header hdr);
 
         request_stream(request_stream&&) = delete;
         request_stream(const request_stream&) = delete;
@@ -218,8 +218,8 @@ public:
         /// Send data, if heders weren't sent they should be sent first
         /// followed by the data. BufferSeq is supposed to be an iobuf
         /// or temporary_buffer<char>.
-        ss::future<> send_some(iobuf&& seq);
-        ss::future<> send_some(ss::temporary_buffer<char>&& buf);
+        ss::future<> send_some(iobuf seq);
+        ss::future<> send_some(ss::temporary_buffer<char> buf);
 
         // True if done, false otherwise
         bool is_done();
@@ -257,11 +257,11 @@ public:
     /// \param limits is a set of limitation for a query
     /// \returns response stream future
     ss::future<response_stream_ref> request(
-      request_header&& header,
+      request_header header,
       ss::input_stream<char>& input,
       ss::lowres_clock::duration timeout = default_connect_timeout);
     ss::future<response_stream_ref> request(
-      request_header&& header,
+      request_header header,
       ss::lowres_clock::duration timeout = default_connect_timeout);
 
     ss::future<downloaded_response> request_and_collect_response(
@@ -300,7 +300,7 @@ private:
     // Make http_request, if the transport is not yet connected it will connect
     // first otherwise the future will resolve immediately.
     ss::future<request_response_t>
-    make_request(request_header&& header, ss::lowres_clock::duration timeout);
+    make_request(request_header header, ss::lowres_clock::duration timeout);
 
     /// Receive bytes from the remote endpoint
     ss::future<ss::temporary_buffer<char>> receive();

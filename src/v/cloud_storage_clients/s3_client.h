@@ -222,6 +222,13 @@ private:
       ss::lowres_clock::duration timeout,
       bool accept_no_content = false);
 
+    ss::future<> do_put_object_inner(
+      ss::input_stream<char>& body,
+      const object_key& id,
+      http::client::request_header header,
+      ss::lowres_clock::duration timeout,
+      bool accept_no_content);
+
     ss::future<list_bucket_result> do_list_objects_v2(
       const bucket_name& name,
       std::optional<object_key> prefix = std::nullopt,

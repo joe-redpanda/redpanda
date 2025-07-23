@@ -104,7 +104,7 @@ void client::check() const {
 }
 
 ss::future<client::request_response_t> client::make_request(
-  client::request_header&& header, ss::lowres_clock::duration timeout) {
+  client::request_header header, ss::lowres_clock::duration timeout) {
     if (unlikely(_stopped)) {
         std::runtime_error err("client is stopped");
         return ss::make_exception_future<client::request_response_t>(err);
@@ -461,7 +461,7 @@ ss::future<iobuf> client::response_stream::recv_some() {
 
 // request_stream implementation //
 
-client::request_stream::request_stream(client* client, request_header&& hdr)
+client::request_stream::request_stream(client* client, request_header hdr)
   : _client(client)
   , _ctxlog(http_log, ssx::sformat("{}", hdr.target()))
   , _request(std::move(hdr))
@@ -490,60 +490,60 @@ struct parser_visitor {
     http_serializer& serializer;
 };
 
-ss::future<>
-client::request_stream::send_some(ss::temporary_buffer<char>&& buf) {
+ss::future<> client::request_stream::send_some(ss::temporary_buffer<char> buf) {
     iobuf tmp;
     tmp.append(std::move(buf));
     return send_some(std::move(tmp));
 }
 
-ss::future<> client::request_stream::send_some(iobuf&& seq) {
-    try {
-        _client->check();
-    } catch (...) {
-        return ss::current_exception_as_future();
-    }
+ss::future<> client::request_stream::send_some(iobuf seq) {
+    // throws if abort is requested
+    _client->check();
+
     vlog(_ctxlog.trace, "request_stream.send_some {}", seq.size_bytes());
+
+    // Fast path
     if (_serializer.is_header_done()) {
-        // Fast path
-        return ss::with_gate(_gate, [this, seq = std::move(seq)]() mutable {
-            vlog(_ctxlog.trace, "header is done, bypass protocol serializer");
-            return forward(_client, _chunk_encode(std::move(seq)));
-        });
+        auto gate_holder = _gate.hold();
+        vlog(_ctxlog.trace, "header is done, bypass protocol serializer");
+        co_await forward(_client, _chunk_encode(std::move(seq)));
+        co_return;
     }
-    // Deal with the header first
-    boost::beast::error_code error_code = {};
-    iobuf outbuf;
-    parser_visitor visitor{outbuf, _serializer};
+
+    boost::beast::error_code error_code{};
+    iobuf outbuf{};
+    parser_visitor visitor{.outbuf = outbuf, .serializer = _serializer};
     _serializer.next(error_code, visitor);
     if (error_code) {
         vlog(_ctxlog.error, "serialization error {}", error_code);
-        boost::system::system_error except(error_code);
-        return ss::make_exception_future<>(except);
+        throw boost::system::system_error{error_code};
     }
+
+    vassert(
+      _serializer.is_header_done(),
+      "header serialization must complete before sending message");
+
     auto scattered = iobuf_as_scattered(std::move(outbuf));
-    return ss::with_gate(
-      _gate,
-      [this, seq = std::move(seq), scattered = std::move(scattered)]() mutable {
-          return _client->send(std::move(scattered))
-            .then([this, seq = std::move(seq)]() mutable {
-                return forward(_client, _chunk_encode(std::move(seq)));
-            })
-            .handle_exception_type(
-              [this](const ss::tls::verification_error& err) {
-                  vlog(_ctxlog.warn, "send tls verification error {}", err);
-                  _client->shutdown();
-                  return ss::make_exception_future<>(err);
-              })
-            .handle_exception_type([this](const std::system_error& ec) {
-                // Things like EPIPE, ERESET.  This happens routinely
-                // when talking to AWS S3, even if we are not doing
-                // anything wrong.
-                vlog(_ctxlog.warn, "send error {}", ec);
-                _client->shutdown();
-                return ss::make_exception_future<>(ec);
-            });
-      });
+
+    auto gate_holder = _gate.hold();
+    auto shutdown_client = ss::defer(
+      [client = this->_client]() { client->shutdown(); });
+    try {
+        co_await _client->send(std::move(scattered));
+        co_await forward(_client, _chunk_encode(std::move(seq)));
+    } catch (const ss::tls::verification_error& err) {
+        vlog(_ctxlog.warn, "send tls verification error {}", err);
+        throw err;
+    } catch (const std::system_error& ec) {
+        // Things like EPIPE, ERESET.  This happens routinely
+        // when talking to AWS S3, even if we are not doing
+        // anything wrong.
+        vlog(_ctxlog.warn, "send error {}", ec);
+        throw ec;
+    }
+
+    // no errors occurred, so we can cancel the shutdown of the client
+    shutdown_client.cancel();
 }
 
 bool client::request_stream::is_done() { return _serializer.is_done(); }
@@ -619,7 +619,9 @@ struct response_data_source final : ss::data_source_impl {
 struct request_data_sink final : ss::data_sink_impl {
     explicit request_data_sink(client::request_stream_ref req)
       : _io(std::move(req)) {}
+
     ss::future<> put(ss::net::packet data) final { return put(data.release()); }
+
     ss::future<> put(std::vector<ss::temporary_buffer<char>> all) final {
         return ss::do_with(
           std::move(all), [this](std::vector<ss::temporary_buffer<char>>& all) {
@@ -638,7 +640,7 @@ struct request_data_sink final : ss::data_sink_impl {
 };
 
 ss::future<client::response_stream_ref> client::request(
-  client::request_header&& header,
+  client::request_header header,
   ss::input_stream<char>& input,
   ss::lowres_clock::duration timeout) {
     bool empty_input_stream = false;
@@ -646,34 +648,30 @@ ss::future<client::response_stream_ref> client::request(
     if (plen != header.cend()) {
         empty_input_stream = plen->value() == "0";
     }
-    return make_request(std::move(header), timeout)
-      .then([&input, empty_input_stream](request_response_t reqresp) mutable {
-          auto [request, response] = std::move(reqresp);
-          auto fsend = ss::now();
-          if (empty_input_stream) {
-              // special case - empty input stream, don't use ss::copy
-              // since it won't invoke the underlying implementation
-              fsend = request->send_some(iobuf()).then(
-                [request = request]() { return request->send_eof(); });
-          } else {
-              // since the input stream has some data we can use
-              // output_stream interace of the request
-              fsend = ss::do_with(
-                request->as_output_stream(),
-                [&input](ss::output_stream<char>& output) {
-                    return ss::copy(input, output).finally([&output] {
-                        return output.close();
-                    });
-                });
-          }
-          return fsend.then([response = response]() {
-              return ss::make_ready_future<response_stream_ref>(response);
-          });
-      });
+
+    auto [request_stream_sptr, response_stream_stpr] = co_await make_request(
+      std::move(header), timeout);
+
+    if (empty_input_stream) {
+        co_await request_stream_sptr->send_some(iobuf{});
+        co_await request_stream_sptr->send_eof();
+        co_return response_stream_stpr;
+    }
+
+    ss::output_stream<char> stream_to_request{
+      request_stream_sptr->as_output_stream()};
+
+    // copy can throw, attatch output_stream::close to the future s.t. it cannot
+    // be forgotten
+    co_await ss::copy(input, stream_to_request).finally([&stream_to_request]() {
+        return stream_to_request.close();
+    });
+
+    co_return response_stream_stpr;
 }
 
 ss::future<client::response_stream_ref> client::request(
-  client::request_header&& header, ss::lowres_clock::duration timeout) {
+  client::request_header header, ss::lowres_clock::duration timeout) {
     return request(std::move(header), iobuf(), timeout);
 }
 
