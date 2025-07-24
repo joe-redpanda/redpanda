@@ -232,6 +232,29 @@ public:
         /// the body. Can be used instead of 'send_some' and 'send_eof'.
         ss::output_stream<char> as_output_stream();
 
+        inline void assert_valid(const uint8_t instance) {
+            vassert(
+              !_client->_stopped,
+              "client was stopped at the time({}) of request dispatch, "
+              "connection_id: {}, header: {}",
+              instance,
+              _client->connection_id,
+              this->_request);
+            vassert(
+              _client->is_valid(),
+              "client was invalid at the time({}) of request dispatch. "
+              "connection_id: {}, header: {}",
+              instance,
+              _client->connection_id,
+              this->_request);
+            try {
+                _client->check();
+            } catch (...) {
+                _ctxlog.info(
+                  "abort was requested concurrently with ongoing request");
+            }
+        }
+
     private:
         client* _client;
         prefix_logger _ctxlog;

@@ -182,7 +182,7 @@ ss::future<reconnect_result_t> client::get_connected(
         throw std::runtime_error("client is stopped");
     }
     vlog(
-      ctxlog.debug,
+      ctxlog.info,
       "about to start connecting, is_valid: {}, connect gate closed: {}, "
       "dispatch gate closed: {}",
       is_valid(),
@@ -220,8 +220,7 @@ ss::future<reconnect_result_t> client::get_connected(
         // through the http client pool / storage client interfaces.
         if (_shutdown_now) {
             vlog(
-              ctxlog.debug,
-              "Stopping connect attempts due to shutdown request");
+              ctxlog.info, "Stopping connect attempts due to shutdown request");
             if (is_valid()) {
                 // We might have established connection at this point
                 // which has to be closed.
@@ -233,19 +232,24 @@ ss::future<reconnect_result_t> client::get_connected(
         // Any TLS error have to be propagated because it's not
         // transient. It won't help to try once again.
     }
-    vlog(ctxlog.debug, "connected, {}", is_valid());
+    vlog(ctxlog.info, "connected, {}", is_valid());
     co_return is_valid() ? reconnect_result_t::connected
                          : reconnect_result_t::timed_out;
 }
 
 ss::future<> client::stop() {
     if (_stopped) {
+        vlog(
+          http_log.info,
+          "connection_id: {} attempted to stop already stopped connection",
+          connection_id);
         // Prevent double call to stop() as constructs such as with_client()
         // will unconditionally call stop(), while exception handlers in this
         // file may also call stop()
         co_return;
     }
     _stopped = true;
+    vlog(http_log.info, "connection_id: {} stopping connection", connection_id);
     co_await _connect_gate.close();
     // Can safely stop base_transport
     co_return co_await base_transport::stop();
@@ -503,6 +507,8 @@ ss::future<> client::request_stream::send_some(ss::temporary_buffer<char> buf) {
 ss::future<> client::request_stream::send_some(iobuf seq) {
     // throws if abort is requested
     _client->check();
+    uint8_t validity_check_counter{0};
+    assert_valid(validity_check_counter++); // 0
 
     vlog(_ctxlog.trace, "request_stream.send_some {}", seq.size_bytes());
 
@@ -513,6 +519,8 @@ ss::future<> client::request_stream::send_some(iobuf seq) {
         co_await forward(_client, _chunk_encode(std::move(seq)));
         co_return;
     }
+
+    assert_valid(validity_check_counter++); // 1
 
     boost::beast::error_code error_code{};
     iobuf outbuf{};
@@ -529,12 +537,18 @@ ss::future<> client::request_stream::send_some(iobuf seq) {
 
     auto scattered = iobuf_as_scattered(std::move(outbuf));
 
+    // hold gate and set the connection to be shutdown. will release shutdown on
+    // success
     auto gate_holder = _gate.hold();
     auto shutdown_client = ss::defer(
       [client = this->_client]() { client->shutdown(); });
+
     try {
+        assert_valid(validity_check_counter++); // 2
         co_await _client->send(std::move(scattered));
+        assert_valid(validity_check_counter++); // 3
         co_await forward(_client, _chunk_encode(std::move(seq)));
+        assert_valid(validity_check_counter++); // 4
     } catch (const ss::tls::verification_error& err) {
         vlog(_ctxlog.warn, "send tls verification error {}", err);
         throw err;
