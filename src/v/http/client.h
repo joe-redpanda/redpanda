@@ -18,6 +18,7 @@
 #include "http/probe.h"
 #include "net/transport.h"
 #include "utils/prefix_logger.h"
+#include "utils/uuid.h"
 
 #include <seastar/core/abort_source.hh>
 #include <seastar/core/future.hh>
@@ -321,6 +322,10 @@ private:
     ss::lowres_clock::time_point _last_response{
       ss::lowres_clock::time_point::min()};
     ss::lowres_clock::duration _max_idle_time;
+
+    // assign each connection an id to help correlate occurences on this
+    // connection
+    uuid_t connection_id = uuid_t::create();
 };
 
 /// Utility function for producing a copy of the request header with some

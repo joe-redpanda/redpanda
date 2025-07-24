@@ -121,7 +121,8 @@ ss::future<client::request_response_t> client::make_request(
     auto verb = header.method();
     auto target = header.target();
     ss::sstring target_str(target.data(), target.size());
-    prefix_logger ctxlog(http_log, ssx::sformat("[{}]", target_str));
+    prefix_logger ctxlog(
+      http_log, ssx::sformat("{}: [{}]", this->connection_id, target_str));
     vlog(ctxlog.trace, "client.make_request {}", header);
 
     auto req = ss::make_shared<request_stream>(this, std::move(header));
@@ -292,7 +293,9 @@ static client_probe::verb convert_to_pverb(client::response_stream::verb v) {
 client::response_stream::response_stream(
   client* client, client::response_stream::verb v, ss::sstring target)
   : _client(client)
-  , _ctxlog(http_log, ssx::sformat("{}", std::move(target)))
+  , _ctxlog(
+      http_log,
+      ssx::sformat("{} {}", _client->connection_id, std::move(target)))
   , _parser()
   , _buffer()
   , _sprobe(client->_probe->create_request_subprobe(convert_to_pverb(v))) {
@@ -463,7 +466,8 @@ ss::future<iobuf> client::response_stream::recv_some() {
 
 client::request_stream::request_stream(client* client, request_header hdr)
   : _client(client)
-  , _ctxlog(http_log, ssx::sformat("{}", hdr.target()))
+  , _ctxlog(
+      http_log, ssx::sformat("{} {}", client->connection_id, hdr.target()))
   , _request(std::move(hdr))
   , _serializer{_request}
   , _chunk_encode(true, max_chunk_size) {

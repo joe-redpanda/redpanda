@@ -45,6 +45,7 @@ redpanda_cc_library(
         "//src/v/bytes:scattered_message",
         "//src/v/config",
         "//src/v/net",
+        "//src/v/utils:uuid",
         "//src/v/ssx:sformat",
         "//src/v/utils:prefix_logger",
         "@boost//:asio",
