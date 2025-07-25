@@ -26,6 +26,17 @@
 #include <seastar/coroutine/as_future.hh>
 #include <seastar/testing/perf_tests.hh>
 
+namespace {
+
+constexpr auto version_with_rack{kafka::api_version{11}};
+constexpr auto version_max_supported{kafka::fetch_handler::max_supported};
+
+static_assert(
+  version_max_supported == version_with_rack,
+  "Consider adding a test for next supported version");
+
+} // namespace
+
 struct fetch_bench_config {
     int num_fetches;
 
@@ -64,7 +75,10 @@ struct fetch_topic {
     std::vector<fetch_part> partitions;
 };
 
-using fetch_request_config = std::vector<fetch_topic>;
+struct fetch_request_config {
+    std::vector<fetch_topic> topics;
+    kafka::api_version api_version;
+};
 
 template<fetch_bench_config cfg>
 struct fetch_bench_fixture : redpanda_thread_fixture {
@@ -84,7 +98,7 @@ struct fetch_bench_fixture : redpanda_thread_fixture {
             size_t total_batches = 0;
 
             chunked_vector<kafka::fetch_topic> fetch_topics;
-            for (auto& topic_fetch : req_config) {
+            for (auto& topic_fetch : req_config.topics) {
                 kafka::fetch_topic ft;
                 ft.topic = topic_fetch.name;
 
@@ -125,7 +139,7 @@ struct fetch_bench_fixture : redpanda_thread_fixture {
 
             kafka::request_header header{
               .key = kafka::fetch_handler::api::key,
-              .version = kafka::fetch_handler::max_supported};
+              .version = req_config.api_version};
 
             return make_request_context(
               std::move(request), header, conn_context);
@@ -291,33 +305,39 @@ struct fetch_bench_fixture : redpanda_thread_fixture {
 using large_fetch_t = fetch_bench_fixture<large_fetch_config>;
 using small_fetch_t = fetch_bench_fixture<small_fetch_config>;
 
-fetch_request_config single_partition_req_config(model::topic t) {
-    return fetch_request_config{fetch_topic{
-      .name = std::move(t),
-      .partitions = {fetch_part{model::partition_id(0), model::offset(0), 1}}}};
+fetch_request_config single_partition_req_config(
+  model::topic t, kafka::api_version v = version_max_supported) {
+    return fetch_request_config{
+      .topics = {fetch_topic{
+        .name = std::move(t),
+        .partitions = {fetch_part{
+          model::partition_id(0), model::offset(0), 1}}}},
+      .api_version = v};
 }
 
-fetch_request_config multi_partition_req_config(model::topic t) {
-    return fetch_request_config{fetch_topic{
-      .name = std::move(t),
-      .partitions = {
-        fetch_part{model::partition_id(0), model::offset(0), 1},
-        fetch_part{model::partition_id(1), model::offset(0), 1}}}};
+fetch_request_config multi_partition_req_config(
+  model::topic t, kafka::api_version v = version_max_supported) {
+    return fetch_request_config{
+      .topics = {fetch_topic{
+        .name = std::move(t),
+        .partitions
+        = {fetch_part{model::partition_id(0), model::offset(0), 1}, fetch_part{model::partition_id(1), model::offset(0), 1}}}},
+      .api_version = v};
 }
 
-PERF_TEST_CN(large_fetch_t, single_partition_fetch) {
+PERF_TEST_CN(large_fetch_t, single_partition_fetch_version_max) {
     static model::topic t = co_await initialize_single_partition_topic();
 
     co_return co_await fetch_from(single_partition_req_config(t));
 }
 
-PERF_TEST_CN(small_fetch_t, single_partition_fetch) {
+PERF_TEST_CN(small_fetch_t, single_partition_fetch_version_max) {
     static model::topic t = co_await initialize_single_partition_topic();
 
     co_return co_await fetch_from(single_partition_req_config(t));
 }
 
-PERF_TEST_CN(large_fetch_t, multi_partition_fetch) {
+PERF_TEST_CN(large_fetch_t, multi_partition_fetch_version_max) {
     static model::topic t = co_await initialize_multi_partition_topic();
 
     // One partition will be from the same shard, while the other will be
@@ -326,7 +346,7 @@ PERF_TEST_CN(large_fetch_t, multi_partition_fetch) {
     co_return co_await fetch_from(multi_partition_req_config(t));
 }
 
-PERF_TEST_CN(small_fetch_t, multi_partition_fetch) {
+PERF_TEST_CN(small_fetch_t, multi_partition_fetch_version_max) {
     static model::topic t = co_await initialize_multi_partition_topic();
 
     // One partition will be from the same shard, while the other will be
