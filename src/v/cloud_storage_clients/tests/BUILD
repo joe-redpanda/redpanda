@@ -128,3 +128,32 @@ redpanda_cc_btest(
         "@seastar//:testing",
     ],
 )
+
+redpanda_cc_btest(
+    name = "s3_serializer_test",
+    timeout = "short",
+    srcs = [
+        "s3_serializer_test.cc",
+    ],
+    deps = [
+        "//src/v/base",
+        "//src/v/bytes:iobuf",
+        "//src/v/bytes:iobuf_parser",
+        "//src/v/bytes:iostream",
+        "//src/v/bytes:scattered_message",
+        "//src/v/cloud_storage_clients",
+        "//src/v/hashing:secure",
+        "//src/v/http/tests:utils",
+        "//src/v/http",
+        "//src/v/net",
+        "//src/v/test_utils:seastar_boost",
+        "//src/v/utils:base64",
+        "//src/v/utils:unresolved_address",
+        "@boost//:algorithm",
+        "@boost//:beast",
+        "@boost//:property_tree",
+        "@boost//:test",
+        "@seastar",
+        "@seastar//:testing",
+    ],
+)

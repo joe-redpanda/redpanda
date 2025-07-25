@@ -37,6 +37,7 @@ redpanda_cc_library(
     deps = [
         "//src/v/base",
         "//src/v/bytes",
+        "//src/v/bytes:scattered_message",
         "//src/v/config",
         "//src/v/hashing:crc32c",
         "//src/v/hashing:xx",

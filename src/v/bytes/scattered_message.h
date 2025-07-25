@@ -17,3 +17,6 @@
 /// and wraps each details::io_fragment as a scattered_message<char>::static()
 /// const char*
 ss::scattered_message<char> iobuf_as_scattered(iobuf b);
+
+ss::scattered_message<char>
+print_scattered(const char* prefix, ss::scattered_message<char> msg);

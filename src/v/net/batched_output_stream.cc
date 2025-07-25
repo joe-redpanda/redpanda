@@ -11,6 +11,7 @@
 
 #include "base/likely.h"
 #include "base/vassert.h"
+#include "bytes/scattered_message.h"
 #include "ssx/semaphore.h"
 
 #include <seastar/core/future.hh>
@@ -36,12 +37,19 @@ already_closed_error(ss::scattered_message<char>& msg) {
       batched_output_stream_closed(msg.size()));
 }
 
-ss::future<bool> batched_output_stream::write(ss::scattered_message<char> msg) {
+ss::future<bool>
+batched_output_stream::write(ss::scattered_message<char> scattered) {
     if (unlikely(_closed)) {
-        return already_closed_error(msg);
+        return already_closed_error(scattered);
     }
+
+    auto msg = print_scattered(
+      "batched_output_stream::write", std::move(scattered));
+
     return ss::with_semaphore(
-      *_write_sem, 1, [this, v = std::move(msg)]() mutable {
+      *_write_sem, 1, [this, msg = std::move(msg)]() mutable {
+          auto v = print_scattered(
+            "batched_output_stream::write w/t semaphore", std::move(msg));
           if (unlikely(_closed)) {
               return already_closed_error(v);
           }

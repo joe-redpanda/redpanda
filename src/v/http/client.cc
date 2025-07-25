@@ -270,7 +270,9 @@ ss::future<ss::temporary_buffer<char>> client::receive() {
       .finally([this] { _last_response = ss::lowres_clock::now(); });
 }
 
-ss::future<> client::send(ss::scattered_message<char> msg) {
+ss::future<> client::send(ss::scattered_message<char> scattered) {
+    auto msg = print_scattered("in client::send", std::move(scattered));
+
     _probe->add_outbound_bytes(msg.size());
     return _out.write(std::move(msg))
       .discard_result()
@@ -537,6 +539,9 @@ ss::future<> client::request_stream::send_some(iobuf seq) {
 
     auto scattered = iobuf_as_scattered(std::move(outbuf));
 
+    auto scattered_replacement = print_scattered(
+      "send some just created", std::move(scattered));
+
     // hold gate and set the connection to be shutdown. will release shutdown on
     // success
     auto gate_holder = _gate.hold();
@@ -545,7 +550,7 @@ ss::future<> client::request_stream::send_some(iobuf seq) {
 
     try {
         assert_valid(validity_check_counter++); // 2
-        co_await _client->send(std::move(scattered));
+        co_await _client->send(std::move(scattered_replacement));
         assert_valid(validity_check_counter++); // 3
         co_await forward(_client, _chunk_encode(std::move(seq)));
         assert_valid(validity_check_counter++); // 4
