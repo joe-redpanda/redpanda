@@ -83,6 +83,7 @@ machine Storage {
     }
 
     on put_group_request_event do (request: put_group_request) {
+      assert request.group >= 0;
       put(request.source, request.request_id, request.group, request.object);
     }
 
