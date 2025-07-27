@@ -8,7 +8,7 @@
 # by the Apache License, Version 2.0
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from logging import Logger
 import random
 import json
@@ -158,7 +158,7 @@ class RolesList:
 
 
 class RoleMember(NamedTuple):
-    class PrincipalType(str, Enum):
+    class PrincipalType(StrEnum):
         USER = 'User'
 
     principal_type: PrincipalType
@@ -365,14 +365,14 @@ class InboundDataMigration:
         }
 
 
-class MigrationAction(Enum):
+class MigrationAction(StrEnum):
     prepare = "prepare"
     execute = "execute"
     finish = "finish"
     cancel = "cancel"
 
 
-class EnterpriseLicenseStatus(Enum):
+class EnterpriseLicenseStatus(StrEnum):
     valid = "valid"
     expired = "expired"
     not_present = "not_present"
