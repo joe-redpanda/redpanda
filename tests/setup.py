@@ -40,7 +40,7 @@ setup(
         'google-cloud-storage==3.1.0',
         'proto-plus==1.26.1',
         'rsa==4.9',
-        'python-keycloak@git+https://github.com/redpanda-data/python-keycloak.git@10b822cb0320c54dbf5bf4fd00435afb1487415d',
+        'python-keycloak==3.12.0',
         'z3-solver==4.12.2',
         'hypothesis==6.82',
         'jsonschema==4.10.0',
