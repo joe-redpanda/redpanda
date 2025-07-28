@@ -43,6 +43,7 @@
 #include "model/timeout_clock.h"
 #include "net/connection.h"
 #include "raft/fundamental.h"
+#include "ssx/abort_source.h"
 #include "ssx/checkpoint_mutex.h"
 #include "ssx/future-util.h"
 #include "storage/disk_log_impl.h"
@@ -3428,14 +3429,7 @@ ntp_archiver::find_reupload_candidate(
   manifest_scanner_t scanner, ss::abort_source& caller_as) {
     ss::gate::holder holder(_gate);
 
-    caller_as.check();
-    _as.check();
-
-    ss::abort_source local_as{};
-    auto archival_as_sub = _as.subscribe(
-      [&local_as] noexcept { local_as.request_abort(); });
-    auto caller_as_sub = caller_as.subscribe(
-      [&local_as] noexcept { local_as.request_abort(); });
+    ssx::composite_abort_source cas{caller_as, _as};
 
     archival_stm_fence rw_fence{
       .read_write_fence
@@ -3454,7 +3448,7 @@ ntp_archiver::find_reupload_candidate(
     } else {
         vlog(_rtclog.debug, "Scan result: {}", run);
     }
-    auto units = co_await _mutex.get_units(local_as);
+    auto units = co_await _mutex.get_units(cas.as());
     if (run->meta.base_offset >= _parent.raft_start_offset()) {
         auto log_generic = _parent.log();
         auto& log = *log_generic;
