@@ -17,6 +17,7 @@
 #include "config/node_config.h"
 #include "container/fragmented_vector.h"
 #include "kafka/protocol/schemata/metadata_response.h"
+#include "kafka/protocol/types.h"
 #include "kafka/server/errors.h"
 #include "kafka/server/fwd.h"
 #include "kafka/server/handlers/describe_cluster.h"
@@ -257,8 +258,9 @@ static metadata_response::topic make_topic_response(
      * if requested include topic authorized operations
      */
     if (rq.data.include_topic_authorized_operations) {
-        res.topic_authorized_operations = details::to_bit_field(
-          details::authorized_operations(ctx, md.get_configuration().tp_ns.tp));
+        res.topic_authorized_operations = kafka::topic_authorized_operations{
+          details::to_bit_field(details::authorized_operations(
+            ctx, md.get_configuration().tp_ns.tp))};
     }
 
     return res;
@@ -591,8 +593,10 @@ ss::future<typename T::api::response_type> handle_metadata(
       request.data.include_cluster_authorized_operations
       && ctx.authorized(
         security::acl_operation::describe, security::default_cluster_name)) {
-        reply.data.cluster_authorized_operations = details::to_bit_field(
-          details::authorized_operations(ctx, security::default_cluster_name));
+        reply.data.cluster_authorized_operations
+          = kafka::cluster_authorized_operations{
+            details::to_bit_field(details::authorized_operations(
+              ctx, security::default_cluster_name))};
     }
 
     co_return reply;

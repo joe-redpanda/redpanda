@@ -56,13 +56,15 @@ public:
       ::model::node_id self,
       model::metadata config,
       partition_leader_cache* partition_leader_cache,
-      partition_manager* partition_manager) override {
+      partition_manager* partition_manager,
+      kafka::client::cluster cluster_connection) override {
         return std::make_unique<link>(
           self,
           link_reconciler_period,
           std::move(config),
           partition_leader_cache,
-          partition_manager);
+          partition_manager,
+          std::move(cluster_connection));
     }
 };
 
@@ -93,6 +95,7 @@ ss::future<> service::start() {
         _shard_table, _partition_manager, _smp_group),
       std::make_unique<link_registry_adapter>(&_plf->local()),
       std::make_unique<default_link_factory>(),
+      std::make_unique<cluster_factory>(),
       30s); // Temporary until we have a proper configuration for this
 
     // Register notifications before the manager starts.  The manager will have
