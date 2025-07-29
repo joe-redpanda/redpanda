@@ -13,8 +13,8 @@
 #include "absl/container/btree_map.h"
 #include "base/seastarx.h"
 #include "cloud_topics/cluster_services.h"
-#include "cloud_topics/core/write_request.h"
 #include "cloud_topics/errc.h"
+#include "cloud_topics/level_zero/write_request.h"
 #include "cloud_topics/types.h"
 #include "container/fragmented_vector.h"
 

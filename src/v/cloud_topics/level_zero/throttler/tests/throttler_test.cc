@@ -8,8 +8,8 @@
  * https://github.com/redpanda-data/redpanda/blob/master/licenses/rcl.md
  */
 
-#include "cloud_topics/core/pipeline_stage.h"
-#include "cloud_topics/throttler/throttler.h"
+#include "cloud_topics/level_zero/pipeline_stage.h"
+#include "cloud_topics/level_zero/throttler/throttler.h"
 #include "container/chunked_circular_buffer.h"
 #include "model/namespace.h"
 #include "model/record.h"

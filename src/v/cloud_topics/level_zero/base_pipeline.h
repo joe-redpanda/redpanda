@@ -12,9 +12,9 @@
 
 #include "base/outcome.h"
 #include "base/vlog.h"
-#include "cloud_topics/core/event_filter.h"
-#include "cloud_topics/core/pipeline_stage.h"
 #include "cloud_topics/errc.h"
+#include "cloud_topics/level_zero/event_filter.h"
+#include "cloud_topics/level_zero/pipeline_stage.h"
 #include "cloud_topics/logger.h"
 #include "container/fragmented_vector.h"
 #include "ssx/future-util.h"

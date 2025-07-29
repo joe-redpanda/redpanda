@@ -8,7 +8,7 @@
  * https://github.com/redpanda-data/redpanda/blob/master/licenses/rcl.md
  */
 
-#include "cloud_topics/core/serializer.h"
+#include "cloud_topics/level_zero/serializer.h"
 
 #include "cloud_topics/extent_meta.h"
 #include "model/timeout_clock.h"

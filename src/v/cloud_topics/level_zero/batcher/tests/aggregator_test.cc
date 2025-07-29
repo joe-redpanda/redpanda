@@ -8,9 +8,9 @@
  * https://github.com/redpanda-data/redpanda/blob/master/licenses/rcl.md
  */
 
-#include "cloud_topics/core/serializer.h"
-#include "cloud_topics/core/write_request.h"
 #include "cloud_topics/level_zero/batcher/aggregator.h"
+#include "cloud_topics/level_zero/serializer.h"
+#include "cloud_topics/level_zero/write_request.h"
 #include "model/namespace.h"
 #include "model/record.h"
 #include "model/tests/random_batch.h"

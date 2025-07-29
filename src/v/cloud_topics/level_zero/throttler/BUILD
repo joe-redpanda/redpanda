@@ -2,7 +2,7 @@ load("//bazel:build.bzl", "redpanda_cc_library")
 
 package(default_visibility = [
     "//src/v/cloud_topics:__pkg__",
-    "//src/v/cloud_topics/throttler/tests:__pkg__",
+    "//src/v/cloud_topics/level_zero/throttler/tests:__pkg__",
 ])
 
 redpanda_cc_library(
@@ -19,15 +19,15 @@ redpanda_cc_library(
         "//src/v/ssx:sformat",
         "//src/v/utils:human",
     ],
-    include_prefix = "cloud_topics/throttler",
+    include_prefix = "cloud_topics/level_zero/throttler",
     deps = [
         "//src/v/base",
         "//src/v/bytes",
         "//src/v/bytes:iobuf",
         "//src/v/cloud_topics:types",
-        "//src/v/cloud_topics/core:event_filter",
-        "//src/v/cloud_topics/core:write_pipeline",
-        "//src/v/cloud_topics/core:write_request",
+        "//src/v/cloud_topics/level_zero:event_filter",
+        "//src/v/cloud_topics/level_zero:write_pipeline",
+        "//src/v/cloud_topics/level_zero:write_request",
         "//src/v/utils:token_bucket",
         "@seastar",
     ],

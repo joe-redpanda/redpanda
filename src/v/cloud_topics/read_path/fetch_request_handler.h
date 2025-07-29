@@ -13,7 +13,7 @@
 #include "base/seastarx.h"
 #include "cloud_io/basic_cache_service_api.h"
 #include "cloud_io/remote.h"
-#include "cloud_topics/core/read_pipeline.h"
+#include "cloud_topics/level_zero/read_pipeline.h"
 #include "model/fundamental.h"
 
 #include <seastar/core/abort_source.hh>

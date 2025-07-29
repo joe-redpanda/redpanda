@@ -1,14 +1,31 @@
 load("//bazel:test.bzl", "redpanda_cc_bench", "redpanda_cc_gtest")
 
 redpanda_cc_gtest(
+    name = "write_pipeline_test",
+    timeout = "short",
+    srcs = [
+        "write_pipeline_test.cc",
+    ],
+    deps = [
+        "//src/v/cloud_topics:extent_meta",
+        "//src/v/cloud_topics/level_zero:write_pipeline",
+        "//src/v/container:chunked_circular_buffer",
+        "//src/v/model",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_gtest(
     name = "write_request_test",
     timeout = "short",
     srcs = [
         "write_request_test.cc",
     ],
     deps = [
-        "//src/v/cloud_topics/core:serializer",
-        "//src/v/cloud_topics/core:write_request",
+        "//src/v/cloud_topics/level_zero:serializer",
+        "//src/v/cloud_topics/level_zero:write_request",
         "//src/v/model",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
@@ -24,27 +41,10 @@ redpanda_cc_gtest(
     ],
     deps = [
         "//src/v/bytes",
-        "//src/v/cloud_topics/core:serializer",
+        "//src/v/cloud_topics/level_zero:serializer",
         "//src/v/model",
         "//src/v/model/tests:random",
         "//src/v/random:generators",
-        "//src/v/test_utils:gtest",
-        "@googletest//:gtest",
-        "@seastar",
-    ],
-)
-
-redpanda_cc_gtest(
-    name = "write_pipeline_test",
-    timeout = "short",
-    srcs = [
-        "write_pipeline_test.cc",
-    ],
-    deps = [
-        "//src/v/cloud_topics:extent_meta",
-        "//src/v/cloud_topics/core:write_pipeline",
-        "//src/v/container:chunked_circular_buffer",
-        "//src/v/model",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
         "@seastar",
@@ -59,9 +59,9 @@ redpanda_cc_gtest(
     ],
     deps = [
         "//src/v/cloud_topics:extent_meta",
-        "//src/v/cloud_topics/core:event_filter",
-        "//src/v/cloud_topics/core:pipeline_stage",
-        "//src/v/cloud_topics/core:write_pipeline",
+        "//src/v/cloud_topics/level_zero:event_filter",
+        "//src/v/cloud_topics/level_zero:pipeline_stage",
+        "//src/v/cloud_topics/level_zero:write_pipeline",
         "//src/v/container:fragmented_vector",
         "//src/v/model",
         "//src/v/model/tests:random",
@@ -79,7 +79,7 @@ redpanda_cc_gtest(
         "circuit_breaker_test.cc",
     ],
     deps = [
-        "//src/v/cloud_topics/core:circuit_breaker",
+        "//src/v/cloud_topics/level_zero:circuit_breaker",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
         "@seastar",
@@ -94,9 +94,9 @@ redpanda_cc_bench(
     ],
     deps = [
         "//src/v/base",
-        "//src/v/cloud_topics/core:event_filter",
-        "//src/v/cloud_topics/core:read_pipeline",
-        "//src/v/cloud_topics/core:write_pipeline",
+        "//src/v/cloud_topics/level_zero:event_filter",
+        "//src/v/cloud_topics/level_zero:read_pipeline",
+        "//src/v/cloud_topics/level_zero:write_pipeline",
         "//src/v/model",
         "//src/v/random:generators",
         "//src/v/ssx:future_util",

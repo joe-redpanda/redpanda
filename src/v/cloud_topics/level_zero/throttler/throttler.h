@@ -11,8 +11,8 @@
 #pragma once
 
 #include "base/seastarx.h"
-#include "cloud_topics/core/write_pipeline.h"
-#include "cloud_topics/core/write_request.h"
+#include "cloud_topics/level_zero/write_pipeline.h"
+#include "cloud_topics/level_zero/write_request.h"
 #include "utils/token_bucket.h"
 
 #include <seastar/core/abort_source.hh>

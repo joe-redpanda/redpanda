@@ -11,9 +11,9 @@
 #include "cloud_topics/read_path/fetch_request_handler.h"
 
 #include "base/unreachable.h"
-#include "cloud_topics/core/event_filter.h"
-#include "cloud_topics/core/read_request.h"
 #include "cloud_topics/dl_placeholder.h"
+#include "cloud_topics/level_zero/event_filter.h"
+#include "cloud_topics/level_zero/read_request.h"
 #include "cloud_topics/logger.h"
 #include "cloud_topics/read_path/materialized_extent_reader.h"
 #include "model/record.h"

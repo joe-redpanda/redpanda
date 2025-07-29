@@ -10,8 +10,8 @@
 
 #include "cloud_topics/level_zero/batcher/aggregator.h"
 
-#include "cloud_topics/core/serializer.h"
-#include "cloud_topics/core/write_request.h"
+#include "cloud_topics/level_zero/serializer.h"
+#include "cloud_topics/level_zero/write_request.h"
 
 #include <seastar/core/future.hh>
 #include <seastar/util/defer.hh>
