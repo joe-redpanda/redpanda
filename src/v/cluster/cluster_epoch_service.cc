@@ -17,7 +17,6 @@
 #include "cluster/controller_stm.h"
 #include "cluster/errc.h"
 #include "cluster/logger.h"
-#include "cluster/partition_leaders_table.h"
 #include "raft/notification.h"
 #include "ssx/future-util.h"
 #include "ssx/work_queue.h"
@@ -30,56 +29,10 @@
 
 #include <algorithm>
 #include <exception>
-#include <stdexcept>
-
-namespace cluster {
-
-namespace {
 
 using namespace std::chrono_literals;
 
-template<typename Clock>
-ss::future<std::expected<int64_t, std::error_code>> do_fetch_leader_epoch_impl(
-  model::node_id self,
-  ss::sharded<partition_leaders_table>* leaders,
-  ss::sharded<rpc::connection_cache>* rpc_conn,
-  typename Clock::duration timeout) {
-    auto cluster_leader = leaders->local().get_leader(model::controller_ntp);
-    if (!cluster_leader) {
-        co_return std::unexpected(make_error_code(errc::no_leader_controller));
-    }
-    try {
-        auto result = co_await rpc_conn->local()
-                        .with_node_client<controller_client_protocol>(
-                          self,
-                          ss::this_shard_id(),
-                          *cluster_leader,
-                          timeout,
-                          [timeout](controller_client_protocol client) {
-                              return client.get_current_cluster_epoch(
-                                get_current_cluster_epoch_request{
-                                  .timeout = timeout},
-                                rpc::client_opts(timeout));
-                          });
-        if (!result) {
-            co_return std::unexpected(result.error());
-        }
-        auto resp = result.value().data;
-        if (resp.ec != errc::success) {
-            co_return std::unexpected(make_error_code(resp.ec));
-        }
-        co_return resp.epoch;
-    } catch (...) {
-        vlog(
-          clusterlog.error,
-          "Unknown error fetching current cluster epoch from leader {}: {}",
-          cluster_leader,
-          std::current_exception());
-        co_return std::unexpected(make_error_code(errc::timeout));
-    }
-}
-
-} // namespace
+namespace cluster {
 
 // raft0_state is a service that runs on shard0 and is responsible for
 // managing the current epoch. The current epoch is a frozen point in time of
@@ -118,6 +71,10 @@ public:
                     stop_service_loop();
                 }
             })) {}
+
+    std::optional<model::node_id> current_leader() const noexcept {
+        return _raft0->get_leader_id();
+    }
 
     void start() {
         if (_raft0->is_leader()) {
@@ -248,13 +205,59 @@ ss::future<> cluster_epoch_service<Clock>::raft0_state::update_epoch() {
     }
 }
 
+namespace {
+
+template<typename Clock>
+ss::future<std::expected<int64_t, std::error_code>> do_fetch_leader_epoch_impl(
+  model::node_id self,
+  std::optional<model::node_id> raft0_leader,
+  ss::sharded<rpc::connection_cache>* rpc_conn,
+  typename Clock::duration timeout) {
+    if (!raft0_leader) {
+        co_return std::unexpected(make_error_code(errc::no_leader_controller));
+    }
+    try {
+        auto result = co_await rpc_conn->local()
+                        .with_node_client<controller_client_protocol>(
+                          self,
+                          ss::this_shard_id(),
+                          *raft0_leader,
+                          timeout,
+                          [timeout](controller_client_protocol client) {
+                              return client.get_current_cluster_epoch(
+                                get_current_cluster_epoch_request{
+                                  .timeout = timeout},
+                                rpc::client_opts(timeout));
+                          });
+        if (!result) {
+            co_return std::unexpected(result.error());
+        }
+        auto resp = result.value().data;
+        if (resp.ec != errc::success) {
+            co_return std::unexpected(make_error_code(resp.ec));
+        }
+        co_return resp.epoch;
+    } catch (...) {
+        vlog(
+          clusterlog.error,
+          "Unknown error fetching current cluster epoch from leader {}: {}",
+          raft0_leader,
+          std::current_exception());
+        co_return std::unexpected(make_error_code(errc::timeout));
+    }
+}
+
+} // namespace
+
 template<typename Clock>
 cluster_epoch_service<Clock>::cluster_epoch_service(
-  model::node_id self,
-  ss::sharded<rpc::connection_cache>* cc,
-  ss::sharded<partition_leaders_table>* l) noexcept
-  : cluster_epoch_service<Clock>([self, cc, l](Clock::duration timeout) {
-      return do_fetch_leader_epoch_impl<Clock>(self, l, cc, timeout);
+  model::node_id self, ss::sharded<rpc::connection_cache>* cc) noexcept
+  : cluster_epoch_service<Clock>([this, self, cc](Clock::duration timeout) {
+      vassert(
+        _shard0_state,
+        "expected shard0 state to be set and this only called on shard0");
+      return do_fetch_leader_epoch_impl<Clock>(
+        self, _shard0_state->current_leader(), cc, timeout);
   }) {}
 
 template<typename Clock>

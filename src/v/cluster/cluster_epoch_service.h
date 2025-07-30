@@ -12,7 +12,6 @@
 #pragma once
 
 #include "base/seastarx.h"
-#include "cluster/partition_leaders_table.h"
 #include "raft/consensus.h"
 #include "raft/group_manager.h"
 #include "rpc/connection_cache.h"
@@ -66,9 +65,7 @@ public:
       = 24 * 60min;
 
     cluster_epoch_service(
-      model::node_id,
-      ss::sharded<rpc::connection_cache>*,
-      ss::sharded<partition_leaders_table>*) noexcept;
+      model::node_id, ss::sharded<rpc::connection_cache>*) noexcept;
     // **For testing** support injecting a custom "remote fetch epoch" function.
     explicit cluster_epoch_service(
       ss::noncopyable_function<
