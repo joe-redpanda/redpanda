@@ -2134,9 +2134,9 @@ void application::wire_up_redpanda_services(
               : _epoch_service(epoch_generator) {}
 
             seastar::future<experimental::cloud_topics::cluster_epoch>
-            current_epoch() override {
+            current_epoch(seastar::abort_source* as) override {
                 std::expected<int64_t, std::error_code> epoch
-                  = co_await _epoch_service->local().get_cached_epoch();
+                  = co_await _epoch_service->local().get_cached_epoch(as);
                 if (!epoch) {
                     throw std::system_error(epoch.error());
                 }

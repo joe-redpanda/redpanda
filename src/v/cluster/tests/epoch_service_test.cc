@@ -8,7 +8,9 @@
 // by the Apache License, Version 2.0
 
 #include "cluster/cluster_epoch_service.h"
+#include "cluster/errc.h"
 #include "gmock/gmock.h"
+#include "ssx/abort_source.h"
 #include "test_utils/async.h"
 #include "test_utils/test.h"
 
@@ -20,13 +22,21 @@ using epoch_service = cluster::cluster_epoch_service<ss::manual_clock>;
 class ClusterEpochService : public seastar_test {
 protected:
     ss::future<> SetUpAsync() override {
+        co_await abort_source.start(parent_abort_source);
         co_await service.start(ss::sharded_parameter([this] {
-            return
-              [this](ss::manual_clock::duration) { return get_leader_epoch(); };
+            return [this](ss::abort_source*) { return get_leader_epoch(); };
         }));
         co_await service.invoke_on_all(&epoch_service::start);
     }
-    ss::future<> TearDownAsync() override { co_await service.stop(); }
+    ss::future<> TearDownAsync() override {
+        co_await abort_source.stop();
+        co_await service.stop();
+    }
+
+    ss::future<> reset_abort_source() {
+        co_await abort_source.stop();
+        co_await abort_source.start(parent_abort_source);
+    }
 
     ss::future<std::expected<int64_t, std::error_code>> get_leader_epoch() {
         auto guard = co_await ss::smp::submit_to(0, [this] {
@@ -46,7 +56,8 @@ protected:
     auto acquire_barrier() { return ss::get_unique_lock(_mutex); }
 
     ss::future<int64_t> get_cached_epoch() {
-        auto result = co_await service.local().get_cached_epoch();
+        auto result = co_await service.local().get_cached_epoch(
+          &abort_source.local());
         if (!result) {
             throw std::runtime_error(
               fmt::format("unable to fetch epoch: {}", result.error()));
@@ -55,8 +66,9 @@ protected:
     }
 
     ss::future<std::vector<int64_t>> all_epochs() {
-        auto results = co_await service.map(
-          [](epoch_service& es) { return es.get_cached_epoch(); });
+        auto results = co_await service.map([this](epoch_service& es) {
+            return es.get_cached_epoch(&abort_source.local());
+        });
         std::vector<int64_t> epochs;
         for (const auto& res : results) {
             if (res.has_value()) {
@@ -74,6 +86,8 @@ protected:
     std::atomic<int64_t> accesses = 0;
     std::atomic<int64_t> injected_failure_count = 0;
     ss::sharded<epoch_service> service;
+    ss::abort_source parent_abort_source;
+    ssx::sharded_abort_source abort_source;
 };
 
 TEST_F_CORO(ClusterEpochService, TestCaching) {
@@ -117,8 +131,15 @@ TEST_F_CORO(ClusterEpochService, IncrementMustHappenEventually) {
     }
     // After the max duration we wait to fetch the value, and will fail if we
     // cannot
-    EXPECT_ANY_THROW(co_await get_cached_epoch());
-    EXPECT_ANY_THROW(co_await get_cached_epoch());
+    auto fut = get_cached_epoch();
+    co_await abort_source.request_abort();
+    while (!fut.available()) {
+        ss::manual_clock::advance(1s);
+        co_await tests::drain_task_queue();
+    }
+    EXPECT_TRUE(fut.failed());
+    fut.ignore_ready_future();
+    co_await reset_abort_source();
     // After the epoch is updated we can fetch again successfully
     ++cluster_epoch;
     auto accesses_before = accesses.load();

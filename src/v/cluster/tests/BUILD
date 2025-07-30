@@ -1299,6 +1299,7 @@ redpanda_cc_gtest(
     cpu = 2,
     deps = [
         "//src/v/cluster",
+        "//src/v/ssx:abort_source",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
         "@seastar",

@@ -154,7 +154,7 @@ ss::future<result<bool>> batcher<Clock>::run_once() noexcept {
         // collecting the write requests. The second invariant is enforced
         // by the strict order in which the ack() method is called
         // explicitly after the operation is either committed or failed.
-        auto epoch = co_await _cluster_services->current_epoch();
+        auto epoch = co_await _cluster_services->current_epoch(&_as);
 
         auto list = _stage.pull_write_requests(
           10_MiB); // TODO: use configuration parameter

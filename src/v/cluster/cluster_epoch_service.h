@@ -15,6 +15,7 @@
 #include "raft/consensus.h"
 #include "raft/group_manager.h"
 #include "rpc/connection_cache.h"
+#include "ssx/abort_source.h"
 #include "ssx/checkpoint_mutex.h"
 
 #include <seastar/core/distributed.hh>
@@ -69,8 +70,8 @@ public:
     // **For testing** support injecting a custom "remote fetch epoch" function.
     explicit cluster_epoch_service(
       ss::noncopyable_function<
-        ss::future<std::expected<int64_t, std::error_code>>(
-          typename Clock::duration)> fn) noexcept;
+        ss::future<std::expected<int64_t, std::error_code>>(ss::abort_source*)>
+        fn) noexcept;
     cluster_epoch_service(const cluster_epoch_service&) = delete;
     cluster_epoch_service(cluster_epoch_service&&) = delete;
     cluster_epoch_service& operator=(const cluster_epoch_service&) = delete;
@@ -98,7 +99,8 @@ public:
     //
     // The future may end up returning an error code if cached epoch is too old
     // and we have not been able to reach the controller leader to update it.
-    ss::future<std::expected<int64_t, std::error_code>> get_cached_epoch();
+    ss::future<std::expected<int64_t, std::error_code>>
+    get_cached_epoch(seastar::abort_source*);
 
     // Returns the current epoch for the cluster.
     //
@@ -132,11 +134,12 @@ private:
     ss::future<std::expected<
       std::tuple<int64_t, typename Clock::time_point>,
       std::error_code>>
-    shard0_get_epoch();
+    shard0_get_epoch(ssx::sharded_abort_source*);
     // Update the epoch
-    ss::future<std::error_code> do_update_epoch();
+    ss::future<std::error_code> do_update_epoch(ss::abort_source*);
     // Fetch the epoch from the leader node
-    ss::future<std::expected<int64_t, std::error_code>> fetch_leader_epoch();
+    ss::future<std::expected<int64_t, std::error_code>>
+    fetch_leader_epoch(ss::abort_source*);
 
     // The currently cached epoch
     int64_t _cached_epoch{-1};
@@ -149,9 +152,10 @@ private:
     ssx::checkpoint_mutex _mu{"cluster_epoch_generator"};
 
     ss::gate _gate;
+    ss::abort_source _abort_source;
 
-    ss::noncopyable_function<ss::future<
-      std::expected<int64_t, std::error_code>>(typename Clock::duration)>
+    ss::noncopyable_function<
+      ss::future<std::expected<int64_t, std::error_code>>(ss::abort_source*)>
       _do_fetch_leader_epoch_fn;
 
     std::unique_ptr<raft0_state> _shard0_state;
