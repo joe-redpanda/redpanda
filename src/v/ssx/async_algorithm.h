@@ -17,10 +17,12 @@
 #include <seastar/core/future.hh>
 #include <seastar/coroutine/maybe_yield.hh>
 
+#include <sys/types.h>
+
+#include <concepts>
 #include <iterator>
 #include <limits>
 #include <type_traits>
-
 //
 // async_algorithms.h
 //
@@ -54,6 +56,34 @@ struct async_algo_traits {
 };
 
 namespace detail {
+
+// Concept to force compliance for a cost function
+template<typename Candidate, typename Element>
+concept CostFuncType = requires(Candidate c, const Element& e) {
+    { c.operator()(e) } -> std::convertible_to<ssize_t>;
+};
+
+// default value
+template<typename Element>
+struct default_cost_func {
+    ssize_t operator()(const Element&) { return 1u; }
+};
+
+// quick traits to help parse out the cost function type from a container
+template<typename Container>
+using CElemBase = decltype(*std::begin(std::declval<Container>()));
+template<typename Container>
+using CElem = std::remove_cvref_t<CElemBase<Container>>;
+template<typename Container>
+using CDefaultCost = default_cost_func<CElem<Container>>;
+
+// quick traits to help parse out the cost function type from an iterator
+template<std::forward_iterator Iterator>
+using IElemBase = typename Iterator::value_type;
+template<std::forward_iterator Iterator>
+using IElem = std::remove_cvref_t<IElemBase<Iterator>>;
+template<std::forward_iterator Iterator>
+using IDefaultCost = default_cost_func<IElem<Iterator>>;
 
 // value-semantic counter for when no external counter was passed
 struct internal_counter {
@@ -103,7 +133,12 @@ struct iter_size {
  * as the termination condition.
  */
 template<std::random_access_iterator I, typename Fn>
-iter_size<I> for_each_limit(const I begin, const I end, ssize_t limit, Fn f) {
+iter_size<I> for_each_limit(
+  const I begin,
+  const I end,
+  ssize_t limit,
+  Fn f,
+  IDefaultCost<I> /*not used*/) {
     auto chunk_size = std::min(limit, end - begin);
     I chunk_end = begin + chunk_size;
     for (I i = begin; i != chunk_end; ++i) {
@@ -112,14 +147,15 @@ iter_size<I> for_each_limit(const I begin, const I end, ssize_t limit, Fn f) {
     return {chunk_end, chunk_size};
 }
 
-template<std::forward_iterator I, typename Fn>
-iter_size<I> for_each_limit(const I begin, const I end, ssize_t limit, Fn f) {
+template<std::forward_iterator I, typename Fn, CostFuncType<IElem<I>> CostFunc>
+iter_size<I> for_each_limit(
+  const I begin, const I end, ssize_t limit, Fn f, CostFunc cost_func) {
     ssize_t count = 0;
     auto i = begin;
     while (i != end && count < limit) {
+        count += cost_func(*i);
         f(*i);
         ++i;
-        ++count;
     }
     return {i, count};
 }
@@ -128,12 +164,13 @@ template<
   typename Traits,
   typename Counter,
   typename Fn,
-  std::forward_iterator Iterator>
-ss::future<>
-async_for_each_coro(Counter counter, Iterator begin, Iterator end, Fn f) {
+  std::forward_iterator Iterator,
+  detail::CostFuncType<IElem<Iterator>> CostFunc>
+ss::future<> async_for_each_coro(
+  Counter counter, Iterator begin, Iterator end, Fn f, CostFunc cost_func) {
     do {
         auto new_begin = for_each_limit(
-          begin, end, remaining<Traits>(counter), f);
+          begin, end, remaining<Traits>(counter), f, cost_func);
         begin = new_begin.iter;
         counter.count += new_begin.count;
         if (counter.count >= Traits::interval) {
@@ -151,23 +188,25 @@ template<
   typename Traits = async_algo_traits,
   typename Counter,
   typename Fn,
-  std::forward_iterator Iterator>
-ss::future<>
-async_for_each_fast(Counter counter, Iterator begin, Iterator end, Fn f) {
-    // This first part is an important optimization: if the input range is small
-    // enough, we don't want to create a coroutine frame as that's costly, so
-    // this function is not coroutine and we do the whole iteration here (as we
-    // won't yield), otherwise we defer to the coroutine-based helper.
+  std::forward_iterator Iterator,
+  typename CostFunc>
+ss::future<> async_for_each_fast(
+  Counter counter, Iterator begin, Iterator end, Fn f, CostFunc cost_func) {
+    //  This first part is an important optimization: if the input range is
+    //  small enough, we don't want to create a coroutine frame as that's
+    //  costly, so this function is not coroutine and we do the whole iteration
+    //  here (as we won't yield), otherwise we defer to the coroutine-based
+    //  helper.
 
     ssize_t limit = detail::remaining<Traits>(counter);
-    auto new_begin = for_each_limit(begin, end, limit, f);
+    auto new_begin = for_each_limit(begin, end, limit, f, cost_func);
     counter.count += new_begin.count + FIXED_COST;
     if (new_begin.iter == end && counter.count < Traits::interval) [[likely]] {
         return ss::make_ready_future();
     }
 
     return async_for_each_coro<Traits>(
-      counter, new_begin.iter, end, std::move(f));
+      counter, new_begin.iter, end, std::move(f), std::move(cost_func));
 }
 
 } // namespace detail
@@ -176,7 +215,7 @@ async_for_each_fast(Counter counter, Iterator begin, Iterator end, Fn f) {
  * @brief Call f on every element, yielding occasionally.
  *
  * This is equivalent to std::for_each, except that the computational
- * loop yields every Traits::interval (default 100) iterations in order
+ * loop yields every Traits::interval (default 100 iterations) in order
  * to avoid reactor stalls. The returned future resolves when all elements
  * have been processed.
  *
@@ -193,17 +232,24 @@ async_for_each_fast(Counter counter, Iterator begin, Iterator end, Fn f) {
 template<
   typename Traits = async_algo_traits,
   typename Fn,
-  std::forward_iterator Iterator>
-ss::future<> async_for_each(Iterator begin, Iterator end, Fn f) {
+  std::forward_iterator Iterator,
+  detail::CostFuncType<detail::IElem<Iterator>> CostFunc
+  = detail::IDefaultCost<Iterator>>
+ss::future<> async_for_each(
+  Iterator begin, Iterator end, Fn f, CostFunc cost_func = CostFunc{}) {
     return async_for_each_fast<Traits>(
-      detail::internal_counter{}, begin, end, std::move(f));
+      detail::internal_counter{},
+      begin,
+      end,
+      std::move(f),
+      std::move(cost_func));
 }
 
 /**
  * @brief Call f on every element, yielding occasionally.
  *
  * This is equivalent to std::for_each, except that the computational
- * loop yields every Traits::interval (default 100) iterations in order
+ * loop yields every Traits::interval (default 100 iterations) in order
  * to avoid reactor stalls. The returned future resolves when all elements
  * have been processed.
  *
@@ -214,20 +260,30 @@ ss::future<> async_for_each(Iterator begin, Iterator end, Fn f) {
  *
  * @param container universal reference to container
  * @param f the function to call on each element
+ * @param cost_func cost_func an optional argument intended to calculate the
+ cost per element (default 1), useful if not all elements have the same cpu
+ burden
  * @return ss::future<> a future which resolves when all elements have been
  * processed
  */
-template<typename Traits = async_algo_traits, typename Fn, typename Container>
-requires requires(Container c, Fn fn) {
+template<
+  typename Traits = async_algo_traits,
+  typename Fn,
+  typename Container,
+  typename CostFunc = detail::CDefaultCost<Container>>
+requires requires(Container c, Fn fn, CostFunc cost_func) {
     { ss::futurize_invoke(fn, *std::begin(c)) } -> std::same_as<ss::future<>>;
     std::end(c);
+    { std::invoke(cost_func, *std::begin(c)) } -> std::same_as<ssize_t>;
 }
-ss::future<> async_for_each(Container&& container, Fn f) {
+ss::future<>
+async_for_each(Container&& container, Fn f, CostFunc cost_func = CostFunc{}) {
     return async_for_each_fast<Traits>(
       detail::internal_counter{},
       std::begin(container),
       std::end(container),
-      std::move(f));
+      std::move(f),
+      std::move(cost_func));
 }
 
 /**
@@ -235,7 +291,7 @@ ss::future<> async_for_each(Container&& container, Fn f) {
  * an externally provided counter for yield control.
  *
  * This is equivalent to std::for_each, except that the computational
- * loop yields every Traits::interval (default 100) iterations in order
+ * loop yields every Traits::interval (default 100 iterations) in order
  * to avoid reactor stalls. The returned future resolves when all elements
  * have been processed.
  *
@@ -275,17 +331,29 @@ ss::future<> async_for_each(Container&& container, Fn f) {
  * @param begin the beginning of the range to process
  * @param end the end of the range to process
  * @param f the function to call on each element
+ * @param cost_func an optional argument intended to calculate the cost per
+ element (default 1), useful if not all elements have the same cpu burden
  * @return ss::future<> a future which resolves when all elements have been
  * processed
  */
 template<
   typename Traits = async_algo_traits,
   typename Fn,
-  std::forward_iterator Iterator>
+  std::forward_iterator Iterator,
+  detail::CostFuncType<detail::IElem<Iterator>> CostFunc
+  = detail::IDefaultCost<Iterator>>
 ss::future<> async_for_each_counter(
-  async_counter& counter, Iterator begin, Iterator end, Fn f) {
+  async_counter& counter,
+  Iterator begin,
+  Iterator end,
+  Fn f,
+  CostFunc cost_func = CostFunc{}) {
     return detail::async_for_each_fast<Traits>(
-      detail::ref_counter{counter.count}, begin, end, std::move(f));
+      detail::ref_counter{counter.count},
+      begin,
+      end,
+      std::move(f),
+      std::move(cost_func));
 }
 
 /**
@@ -293,7 +361,7 @@ ss::future<> async_for_each_counter(
  * an externally provided counter for yield control.
  *
  * This is equivalent to std::for_each, except that the computational
- * loop yields every Traits::interval (default 100) iterations in order
+ * loop yields every Traits::interval (default 100 iterations) in order
  * to avoid reactor stalls. The returned future resolves when all elements
  * have been processed.
  *
@@ -333,18 +401,33 @@ ss::future<> async_for_each_counter(
  * @param counter the counter object to use, may be reused across invocations
  * @param container universal reference to container
  * @param f the function to call on each element
+ * @param cost_func cost_func an optional argument intended to calculate the
+ cost per element (default 1), useful if not all elements have the same cpu
+ burden
  * @return ss::future<> a future which resolves when all elements have been
  * processed
  */
-template<typename Traits = async_algo_traits, typename Fn, typename Container>
-requires requires(Container c, Fn fn) {
+template<
+  typename Traits = async_algo_traits,
+  typename Fn,
+  typename Container,
+  typename CostFunc = detail::CDefaultCost<Container>>
+requires requires(Container c, Fn fn, CostFunc cost_func) {
     { ss::futurize_invoke(fn, *std::begin(c)) } -> std::same_as<ss::future<>>;
     std::end(c);
+    { std::invoke(cost_func, *std::begin(c)) } -> std::same_as<ssize_t>;
 }
-ss::future<>
-async_for_each_counter(async_counter& counter, Container&& container, Fn f) {
+ss::future<> async_for_each_counter(
+  async_counter& counter,
+  Container&& container,
+  Fn f,
+  CostFunc cost_func = CostFunc{}) {
     return detail::async_for_each_fast<Traits>(
-      counter, std::begin(container), std::end(container), std::move(f));
+      counter,
+      std::begin(container),
+      std::end(container),
+      std::move(f),
+      std::move(cost_func));
 }
 
 } // namespace ssx

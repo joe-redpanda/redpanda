@@ -11,6 +11,7 @@
 #include "ssx/async-clear.h"
 #include "ssx/async_algorithm.h"
 #include "ssx/future-util.h"
+#include "test_utils/test.h"
 #include "utils/move_canary.h"
 
 #include <seastar/core/reactor.hh>
@@ -271,6 +272,46 @@ TYPED_TEST(AsyncAlgo, async_for_each_move_correctness) {
     // NOLINTNEXTLINE(bugprone-use-after-move)
     ASSERT_TRUE(func(-1));
     ASSERT_FALSE(other_func(-1));
+}
+
+// this test checks that an async counter responds appropriately to its cost
+// function
+TEST_CORO(async_algo_suite, test_nested_counter) {
+    yields = 0; // reset yields
+    async_counter a_counter{};
+
+    static constexpr size_t inner_vector_size = 100;
+    static constexpr size_t outer_vector_size = 10;
+    static constexpr int vector_default = 0;
+
+    // 10x10 matrix of ints
+    std::vector<int> initialization_vector(inner_vector_size, vector_default);
+    std::vector<std::vector<int>> compound_list(
+      outer_vector_size, initialization_vector);
+
+    // first check the expected behavior, that a default cost function will not
+    // yield because it only sees 10 elements to be processed
+    co_await async_for_each_counter<test_traits<100>>(
+      a_counter,
+      compound_list.begin(),
+      compound_list.end(),
+      [](const std::vector<int>&) {});
+    EXPECT_EQ(yields, 0);
+    yields = 0; // reset yields
+
+    // now check that with a cost function, we yield according to the size of
+    // the composed vector
+    static constexpr auto cost_function =
+      [](const std::vector<int>& vec) -> ssize_t {
+        return static_cast<ssize_t>(vec.size());
+    };
+    co_await async_for_each_counter<test_traits<100>>(
+      a_counter,
+      compound_list.begin(),
+      compound_list.end(),
+      [](const std::vector<int>&) {},
+      cost_function);
+    EXPECT_EQ(yields, 10);
 }
 
 } // namespace ssx
