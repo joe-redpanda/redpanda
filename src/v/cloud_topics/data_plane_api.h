@@ -12,7 +12,6 @@
 
 #include "base/outcome.h"
 #include "cloud_topics/level_zero/common/extent_meta.h"
-#include "container/chunked_circular_buffer.h"
 #include "container/fragmented_vector.h"
 #include "model/fundamental.h"
 #include "model/record.h"
