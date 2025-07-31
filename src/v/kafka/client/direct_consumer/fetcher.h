@@ -183,6 +183,7 @@ private:
         leader_epoch current_leader_epoch{kafka::invalid_leader_epoch};
         intrusive_list_hook _hook;
         assignment_epoch assignment_epoch{0};
+        bool incremental_include{false};
 
         bool include_in_fetch_request() const {
             return fetch_offset.has_value();
@@ -222,11 +223,14 @@ private:
     ss::future<kafka::error_code> maybe_initialise_fetch_offsets(
       const chunked_vector<partitions_to_process>&,
       const topic_partition_map<assignment_epoch>& epochs);
+
     ss::future<fetch_request>
-      make_fetch_request(chunked_vector<partitions_to_process>);
+    make_fetch_request(const chunked_vector<partitions_to_process>&);
 
     ss::future<kafka_result<fetch_response_content>> process_fetch_response(
-      fetch_response resp, const topic_partition_map<assignment_epoch>& epochs);
+      fetch_response resp,
+      const topic_partition_map<assignment_epoch>& epochs,
+      const chunked_vector<partitions_to_process>& partitions);
     /**
      * Returns false if the partition was not found or the fetch offset was
      * not updated.
