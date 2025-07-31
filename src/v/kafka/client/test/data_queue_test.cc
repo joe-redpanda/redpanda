@@ -12,7 +12,12 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+
 using namespace kafka::client;
+using namespace std::chrono_literals;
+
+namespace {
 
 static constexpr size_t max_bytes = 1024;
 static constexpr size_t max_count = 10;
@@ -29,6 +34,14 @@ make_data(int topic_count, int bytes_per_topic) {
     }
     return data;
 }
+
+inline ss::future<> yield_a_few_times(uint times) {
+    for (uint i{0}; i < times; ++i) {
+        co_await ss::yield();
+    }
+}
+
+} // namespace
 
 TEST(DataQueueTest, TestIfCanInsertWorks) {
     data_queue queue(max_bytes, max_count);
@@ -196,6 +209,58 @@ TEST(DataQueueTest, TestEdgeCases) {
     ASSERT_EQ(queue.current_bytes(), 0);
 
     ASSERT_TRUE(queue.can_insert(1024));
+}
+
+// the queue as written will indefinitely starve out large operations in
+// exchange for smaller ones, to fix we probably need a fair condition_variable
+TEST_CORO(DataQueueTest, QueueUnfairness) {
+    // constants for making fetched_topic_data
+    static constexpr size_t small_size = 128u;
+    static constexpr auto make_small = +[] { return make_data(1, small_size); };
+    static constexpr size_t big_size = 2048;
+
+    data_queue queue(max_bytes, max_count);
+
+    // drop a small record in the queue
+    co_await queue.push(make_small(), small_size);
+
+    // attempt to push an oversized record, and keep tabs on its successful push
+    bool big_push_has_completed{false};
+    auto big_push = queue.push(make_data(1, big_size), big_size)
+                      .then([&big_push_has_completed] {
+                          big_push_has_completed = true;
+                          return ss::now();
+                      });
+
+    // float around the task queue a bit
+    co_await yield_a_few_times(10);
+    ASSERT_FALSE_CORO(big_push_has_completed);
+
+    // start a loop that will continuously put small data on and then take small
+    // data off. If the queue were fair, the small data pushes should be blocked
+    // until the large data gets a chance to enter the queue
+    bool should_keep_contending{true};
+    auto contention_lambda = [&should_keep_contending, &queue] -> ss::future<> {
+        while (should_keep_contending) {
+            co_await queue.push(make_small(), small_size);
+            std::ignore = queue.pop(100ms);
+        }
+    };
+    auto contention_fiber = contention_lambda();
+
+    // wait to see if big_push completes within a reasonable amount of time
+    try {
+        co_await ss::with_timeout(
+          seastar::lowres_clock::now() + 10s, std::move(big_push));
+    } catch (const ss::timed_out_error& /*ignored*/) {
+    }
+
+    // stop the contention fiber, and wait for its termination
+    should_keep_contending = false;
+    co_await std::move(contention_fiber);
+
+    // check if we every got big_push to complete
+    ASSERT_TRUE_CORO(big_push_has_completed);
 }
 
 TEST(DataQueueTest, TestSizeAndCurrentBytesTracking) {
