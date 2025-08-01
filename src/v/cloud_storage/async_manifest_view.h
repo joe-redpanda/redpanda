@@ -248,12 +248,13 @@ private:
 
     materialized_manifest_cache& _manifest_cache;
 
-    // BG loop state
+    using materialized_manifest_ptr = ss::shared_ptr<materialized_manifest>;
 
+    // BG loop state
     /// Materialization request which is sent to background fiber
     struct materialization_request_t {
         segment_meta search_vec;
-        ss::promise<result<manifest_section_t, error_outcome>> promise;
+        ss::promise<result<materialized_manifest_ptr, error_outcome>> promise;
         std::unique_ptr<ts_read_path_probe::hist_t::measurement> _measurement;
     };
     std::deque<materialization_request_t> _requests;
