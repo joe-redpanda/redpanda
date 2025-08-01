@@ -443,17 +443,12 @@ ss::future<> async_manifest_view::run_bg_loop() {
                   "Processing spillover manifest request {}, path: {}",
                   front.search_vec,
                   path);
-                if (in_stm(front.search_vec.base_offset)) {
-                    vlog(
-                      _ctxlog.warn,
-                      "Request {} refers to STM manifest",
-                      front.search_vec);
-                    // Normally, the request shouldn't contain the STM
-                    // request but nothing prevents us from handling this
-                    // just in case.
-                    front.promise.set_value(std::ref(_stm_manifest));
-                    continue;
-                }
+
+                vassert(
+                  !in_stm(front.search_vec.base_offset),
+                  "Request {} refers to STM manifest",
+                  front.search_vec);
+
                 if (!_manifest_cache.contains(
                       std::make_tuple(
                         get_ntp(), front.search_vec.base_offset))) {
