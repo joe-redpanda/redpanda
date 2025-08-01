@@ -11,7 +11,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/container/node_hash_set.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "hashing/crc32c.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"

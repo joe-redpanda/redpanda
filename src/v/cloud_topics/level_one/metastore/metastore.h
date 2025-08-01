@@ -13,7 +13,7 @@
 #include "cloud_topics/level_one/common/object_id.h"
 #include "cloud_topics/level_one/metastore/offset_interval_set.h"
 #include "container/chunked_hash_map.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/fundamental.h"
 #include "model/timestamp.h"
 

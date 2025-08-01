@@ -23,7 +23,7 @@
 #include "cluster/topic_table.h"
 #include "cluster/tx_utils.h"
 #include "config/property.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "features/feature_table.h"
 #include "metrics/metrics.h"
 #include "model/fundamental.h"

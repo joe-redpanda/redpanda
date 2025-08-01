@@ -16,7 +16,7 @@
 #include "cluster/tx_protocol_types.h"
 #include "cluster/types.h"
 #include "compat/check.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/compression.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"

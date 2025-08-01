@@ -9,7 +9,7 @@
  * by the Apache License, Version 2.0
  */
 
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "container/tests/bench_utils.h"
 #include "random/generators.h"
 

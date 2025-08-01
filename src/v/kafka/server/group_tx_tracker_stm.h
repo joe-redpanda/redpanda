@@ -13,7 +13,7 @@
 
 #include "cluster/state_machine_registry.h"
 #include "container/chunked_hash_map.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "kafka/server/group_data_parser.h"
 #include "raft/persisted_stm.h"
 #include "serde/rw/envelope.h"

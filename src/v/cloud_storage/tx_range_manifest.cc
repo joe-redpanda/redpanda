@@ -13,7 +13,7 @@
 #include "bytes/iostream.h"
 #include "bytes/streambuf.h"
 #include "cloud_storage/types.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "json/istreamwrapper.h"
 #include "json/ostreamwrapper.h"
 #include "model/record.h"

@@ -10,7 +10,7 @@
  */
 #pragma once
 
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "json/json.h"
 
 namespace json {

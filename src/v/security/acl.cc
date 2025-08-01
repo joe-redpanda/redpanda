@@ -22,7 +22,7 @@
 
 #include <seastar/coroutine/maybe_yield.hh>
 
-#include <container/fragmented_vector.h>
+#include <container/chunked_vector.h>
 #include <fmt/format.h>
 
 namespace security {

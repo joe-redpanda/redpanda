@@ -12,7 +12,7 @@
 
 #include "cluster/metadata_dissemination_types.h"
 #include "compat/generator.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/metadata.h"
 #include "model/tests/randoms.h"
 #include "random/generators.h"

@@ -15,7 +15,7 @@
 #include "cluster/scheduling/leader_balancer_strategy.h"
 #include "cluster/scheduling/leader_balancer_types.h"
 #include "container/chunked_hash_map.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/metadata.h"
 #include "raft/fundamental.h"
 #include "random/generators.h"

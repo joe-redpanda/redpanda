@@ -15,7 +15,7 @@
 #include "cluster/archival/types.h"
 #include "cluster/fwd.h"
 #include "cluster/partition_leaders_table.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 
 #include <seastar/core/shared_ptr.hh>
 

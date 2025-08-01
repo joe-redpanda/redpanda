@@ -35,7 +35,7 @@
 #include "cluster/archival/types.h"
 #include "cluster/partition_manager.h"
 #include "config/configuration.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "features/feature_table.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"

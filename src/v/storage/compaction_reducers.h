@@ -14,7 +14,7 @@
 #include "absl/container/btree_map.h"
 #include "base/units.h"
 #include "bytes/bytes.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "hashing/xx.h"
 #include "model/fundamental.h"
 #include "model/record_batch_reader.h"

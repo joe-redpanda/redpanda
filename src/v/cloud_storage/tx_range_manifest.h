@@ -11,7 +11,7 @@
 #pragma once
 
 #include "cloud_storage/base_manifest.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/fundamental.h"
 #include "model/record.h"
 

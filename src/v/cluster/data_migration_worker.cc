@@ -15,7 +15,7 @@
 #include "cluster/data_migration_types.h"
 #include "cluster/types.h"
 #include "cluster_utils.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "errc.h"
 #include "kafka/protocol/types.h"
 #include "logger.h"

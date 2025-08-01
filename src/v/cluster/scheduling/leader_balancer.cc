@@ -24,7 +24,7 @@
 #include "cluster/topic_table.h"
 #include "config/configuration.h"
 #include "config/node_config.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "features/enterprise_feature_messages.h"
 #include "model/metadata.h"
 #include "model/namespace.h"

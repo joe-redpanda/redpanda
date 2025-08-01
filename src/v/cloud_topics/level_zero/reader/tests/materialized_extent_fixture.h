@@ -15,7 +15,7 @@
 #include "cloud_topics/level_zero/common/extent_meta.h"
 #include "cloud_topics/level_zero/reader/materialized_extent.h"
 #include "cloud_topics/level_zero/stm/placeholder.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "mocks.h"
 #include "model/fundamental.h"
 #include "test_utils/test.h"

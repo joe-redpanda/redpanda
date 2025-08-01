@@ -11,7 +11,7 @@
 
 #include "cluster/cloud_metadata/types.h"
 #include "cluster/errc.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"
 #include "model/timeout_clock.h"

@@ -18,7 +18,7 @@
 #include "cluster/notification.h"
 #include "cluster/partition.h"
 #include "cluster/partition_manager.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 
 #include <seastar/core/future.hh>
 #include <seastar/core/gate.hh>

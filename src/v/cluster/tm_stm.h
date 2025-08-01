@@ -18,7 +18,7 @@
 #include "cluster/tm_stm_types.h"
 #include "cluster/tx_hash_ranges.h"
 #include "container/chunked_hash_map.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/fundamental.h"
 #include "model/record.h"
 #include "model/timestamp.h"

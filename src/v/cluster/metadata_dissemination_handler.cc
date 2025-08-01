@@ -15,7 +15,7 @@
 #include "cluster/metadata_cache.h"
 #include "cluster/metadata_dissemination_types.h"
 #include "cluster/partition_leaders_table.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"
 #include "model/timeout_clock.h"

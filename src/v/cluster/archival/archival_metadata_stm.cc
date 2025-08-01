@@ -22,7 +22,7 @@
 #include "cluster/prefix_truncate_record.h"
 #include "cluster/snapshot.h"
 #include "config/configuration.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "features/feature_table.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"

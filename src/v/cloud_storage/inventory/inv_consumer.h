@@ -15,7 +15,7 @@
 #include "absl/container/node_hash_map.h"
 #include "absl/container/node_hash_set.h"
 #include "cloud_storage/inventory/report_parser.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/fundamental.h"
 
 #include <seastar/core/file.hh>

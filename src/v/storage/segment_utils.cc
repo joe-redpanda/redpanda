@@ -17,7 +17,7 @@
 #include "base/vlog.h"
 #include "bytes/iobuf_parser.h"
 #include "config/configuration.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/adl_serde.h"
 #include "model/fundamental.h"
 #include "model/timeout_clock.h"

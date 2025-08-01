@@ -17,7 +17,7 @@
 #include "cluster/tx_gateway_frontend.h"
 #include "cluster/types.h"
 #include "container/chunked_hash_map.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "metrics/metrics.h"
 #include "metrics/prometheus_sanitize.h"
 #include "model/fundamental.h"

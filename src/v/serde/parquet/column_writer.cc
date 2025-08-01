@@ -13,7 +13,7 @@
 
 #include "absl/numeric/int128.h"
 #include "compression/compression.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "hashing/crc32.h"
 #include "serde/parquet/column_stats_collector.h"
 #include "serde/parquet/encoding.h"

@@ -20,7 +20,7 @@
 #include "cluster/types.h"
 #include "config/configuration.h"
 #include "config/property.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "http/tests/http_imposter.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"

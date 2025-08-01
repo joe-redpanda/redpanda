@@ -11,7 +11,7 @@
 #include "cloud_topics/level_zero/common/extent_meta.h"
 #include "cloud_topics/level_zero/event_filter.h"
 #include "cloud_topics/level_zero/write_pipeline.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/namespace.h"
 #include "model/record.h"
 #include "model/tests/random_batch.h"

@@ -9,7 +9,7 @@
 
 #include "model/record_batch_reader.h"
 
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/record.h"
 #include "model/record_batch_types.h"
 

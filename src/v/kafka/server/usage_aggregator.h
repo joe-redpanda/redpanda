@@ -11,7 +11,7 @@
 
 #pragma once
 #include "base/vlog.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "kafka/server/datalake_usage_api.h"
 #include "kafka/server/logger.h"
 #include "serde/rw/envelope.h"

@@ -13,7 +13,7 @@
 
 #include "bytes/iobuf.h"
 #include "container/chunked_hash_map.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "src/v/bytes/hash.h" // IWYU pragma: keep
 
 #include <variant>

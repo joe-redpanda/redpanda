@@ -13,7 +13,7 @@
 #include "base/seastarx.h"
 #include "bytes/iobuf.h"
 #include "cloud_topics/level_zero/common/extent_meta.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/record_batch_reader.h"
 
 namespace experimental::cloud_topics::l0 {

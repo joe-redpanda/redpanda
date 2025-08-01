@@ -10,7 +10,7 @@
 #pragma once
 
 #include "cluster/errc.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"
 #include "serde/envelope.h"

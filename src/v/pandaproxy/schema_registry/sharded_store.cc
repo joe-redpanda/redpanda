@@ -14,7 +14,7 @@
 #include "absl/algorithm/container.h"
 #include "base/vlog.h"
 #include "config/configuration.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "hashing/jump_consistent_hash.h"
 #include "hashing/xx.h"
 #include "pandaproxy/logger.h"

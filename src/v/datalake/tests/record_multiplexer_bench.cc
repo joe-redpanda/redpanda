@@ -9,7 +9,7 @@
  * by the Apache License, Version 2.0
  */
 #include "cloud_io/provider.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "datalake/catalog_schema_manager.h"
 #include "datalake/location.h"
 #include "datalake/record_multiplexer.h"

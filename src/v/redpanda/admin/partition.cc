@@ -17,7 +17,7 @@
 #include "cluster/rm_stm.h"
 #include "cluster/shard_table.h"
 #include "cluster/topics_frontend.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "container/lw_shared_container.h"
 #include "kafka/data/partition_proxy.h"
 #include "model/record.h"

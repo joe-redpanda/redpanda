@@ -13,7 +13,7 @@
 #include "cluster/snapshot.h"
 #include "cluster/tm_stm_types.h"
 #include "cluster/types.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "kafka/protocol/types.h"
 #include "model/record.h"
 #include "raft/errc.h"

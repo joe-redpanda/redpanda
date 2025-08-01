@@ -15,7 +15,7 @@ redpanda_cc_library(
 redpanda_cc_library(
     name = "fragmented_vector",
     hdrs = [
-        "fragmented_vector.h",
+        "chunked_vector.h",
     ],
     include_prefix = "container",
     visibility = ["//visibility:public"],

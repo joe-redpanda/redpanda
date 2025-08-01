@@ -13,7 +13,7 @@
 
 #include "base/likely.h"
 #include "cloud_storage/logger.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "hashing/xx.h"
 #include "serde/rw/rw.h"
 #include "serde/rw/vector.h"

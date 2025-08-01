@@ -13,7 +13,7 @@
 #include "base/seastarx.h"
 #include "base/vlog.h"
 #include "config/property.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "security/acl.h"
 #include "security/acl_entry_set.h"
 #include "security/fwd.h"

@@ -15,7 +15,7 @@
 #include "absl/container/node_hash_map.h"
 #include "absl/container/node_hash_set.h"
 #include "container/chunked_hash_map.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "random/generators.h"
 #include "utils/tristate.h"
 

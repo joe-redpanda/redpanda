@@ -21,7 +21,7 @@
 #include "cluster/types.h"
 #include "cluster_link/model/types.h"
 #include "container/chunked_hash_map.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "features/feature_table_snapshot.h"
 #include "security/role.h"
 #include "security/types.h"

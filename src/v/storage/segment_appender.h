@@ -13,7 +13,7 @@
 
 #include "base/seastarx.h"
 #include "bytes/bytes.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/record.h"
 #include "ssx/semaphore.h"
 #include "storage/config.h"

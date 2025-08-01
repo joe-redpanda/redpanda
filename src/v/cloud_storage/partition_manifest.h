@@ -13,7 +13,7 @@
 #include "cloud_storage/base_manifest.h"
 #include "cloud_storage/fwd.h"
 #include "cloud_storage/types.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"
 #include "model/record.h"

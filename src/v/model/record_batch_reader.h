@@ -14,7 +14,7 @@
 #include "base/likely.h"
 #include "base/seastarx.h"
 #include "container/chunked_circular_buffer.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/record.h"
 #include "model/timeout_clock.h"
 

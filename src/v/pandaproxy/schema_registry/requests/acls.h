@@ -11,7 +11,7 @@
 #pragma once
 
 #include "absl/strings/ascii.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "json/chunked_buffer.h"
 #include "json/types.h"
 #include "pandaproxy/json/rjson_parse.h"

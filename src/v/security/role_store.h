@@ -14,7 +14,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/container/node_hash_set.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "security/fwd.h"
 #include "security/role.h"
 #include "security/types.h"

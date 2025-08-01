@@ -9,7 +9,7 @@
 
 #include "absl/container/btree_map.h"
 #include "base/vlog.h"
-#include "container/fragmented_vector.h"
+#include "container/chunked_vector.h"
 #include "model/namespace.h"
 #include "model/record_batch_types.h"
 #include "model/timeout_clock.h"
