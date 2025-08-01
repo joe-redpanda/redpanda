@@ -795,7 +795,7 @@ SEASTAR_THREAD_TEST_CASE(serde_fields_test_struct_test) {
       == serde_fields_test_struct{123});
 }
 
-SEASTAR_THREAD_TEST_CASE(fragmented_vector_test) {
+SEASTAR_THREAD_TEST_CASE(chunked_vector_test) {
     std::vector<int> sizes(100);
     std::iota(sizes.begin(), sizes.end(), 0);
     sizes.push_back(4095);

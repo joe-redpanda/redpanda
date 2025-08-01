@@ -175,7 +175,7 @@ usage_aggregator<clock_type>::usage_aggregator(
         window_closed();
         rearm_window_timer();
     });
-    /// TODO: This should be refactored when fragmented_vector::resize is
+    /// TODO: This should be refactored when chunked_vector::resize is
     /// implemented
     for (size_t i = 0; i < _usage_num_windows; ++i) {
         _buckets.push_back(usage_window{});
