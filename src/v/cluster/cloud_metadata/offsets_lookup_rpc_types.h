@@ -22,7 +22,6 @@ struct offsets_lookup_request
       offsets_lookup_request,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     cluster::errc error;
 
     // Node ID to which this request is sent.
@@ -43,13 +42,9 @@ struct offsets_lookup_reply
       offsets_lookup_reply,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
-
     struct ntp_offset
       : public serde::
           envelope<ntp_offset, serde::version<0>, serde::compat_version<0>> {
-        using rpc_adl_exempt = std::true_type;
-
         model::ntp ntp;
         kafka::offset offset;
 

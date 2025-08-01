@@ -30,7 +30,6 @@ enum class errc : int16_t {
 struct add_objects_reply
   : serde::
       envelope<add_objects_reply, serde::version<0>, serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     auto serde_fields() { return std::tie(ec); }
 
     errc ec;
@@ -40,7 +39,6 @@ struct add_objects_request
       add_objects_request,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     using resp_t = add_objects_reply;
     auto serde_fields() { return std::tie(update, metastore_partition); }
 
@@ -53,7 +51,6 @@ struct replace_objects_reply
       replace_objects_reply,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     auto serde_fields() { return std::tie(ec); }
 
     errc ec;
@@ -63,7 +60,6 @@ struct replace_objects_request
       replace_objects_request,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     using resp_t = replace_objects_reply;
     auto serde_fields() { return std::tie(update, metastore_partition); }
 
@@ -74,7 +70,6 @@ struct replace_objects_request
 struct object_metadata
   : serde::
       envelope<object_metadata, serde::version<0>, serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     auto serde_fields() { return std::tie(oid, footer_pos); }
 
     object_id oid;
@@ -86,7 +81,6 @@ struct get_first_offset_ge_reply
       get_first_offset_ge_reply,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     auto serde_fields() { return std::tie(ec, object); }
 
     errc ec;
@@ -97,7 +91,6 @@ struct get_first_offset_ge_request
       get_first_offset_ge_request,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     using resp_t = get_first_offset_ge_reply;
     auto serde_fields() { return std::tie(tp); }
 
@@ -109,7 +102,6 @@ struct get_first_timestamp_ge_reply
       get_first_timestamp_ge_reply,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     auto serde_fields() { return std::tie(ec, object); }
 
     errc ec;
@@ -120,7 +112,6 @@ struct get_first_timestamp_ge_request
       get_first_timestamp_ge_request,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     using resp_t = get_first_timestamp_ge_reply;
     auto serde_fields() { return std::tie(tp); }
 
@@ -130,7 +121,6 @@ struct get_first_timestamp_ge_request
 struct get_offsets_reply
   : serde::
       envelope<get_offsets_reply, serde::version<0>, serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     auto serde_fields() { return std::tie(ec, start_offset, next_offset); }
 
     errc ec;
@@ -142,7 +132,6 @@ struct get_offsets_request
       get_offsets_request,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     using resp_t = get_offsets_reply;
     auto serde_fields() { return std::tie(tp); }
 
@@ -154,7 +143,6 @@ struct get_compaction_offsets_reply
       get_compaction_offsets_reply,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     auto serde_fields() {
         return std::tie(ec, dirty_ranges, removable_tombstone_ranges);
     }
@@ -168,7 +156,6 @@ struct get_compaction_offsets_request
       get_compaction_offsets_request,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     using resp_t = get_compaction_offsets_reply;
     auto serde_fields() { return std::tie(tp); }
 

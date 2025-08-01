@@ -21,14 +21,11 @@ namespace cluster::cloud_metadata {
 struct group_offsets
   : public serde::
       envelope<group_offsets, serde::version<0>, serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
-
     struct partition_offset
       : public serde::envelope<
           partition_offset,
           serde::version<0>,
           serde::compat_version<0>> {
-        using rpc_adl_exempt = std::true_type;
         partition_offset(model::partition_id p, kafka::offset o)
           : partition(p)
           , offset(o) {}
@@ -46,7 +43,6 @@ struct group_offsets
           topic_partitions,
           serde::version<0>,
           serde::compat_version<0>> {
-        using rpc_adl_exempt = std::true_type;
         topic_partitions(model::topic t, chunked_vector<partition_offset> ps)
           : topic(std::move(t))
           , partitions(std::move(ps)) {}
@@ -77,8 +73,6 @@ struct group_offsets_snapshot
       group_offsets_snapshot,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
-
     // Partition ID of the offsets topic that managed these groups.
     model::partition_id offsets_topic_pid;
 

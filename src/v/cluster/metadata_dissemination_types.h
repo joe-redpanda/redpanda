@@ -108,7 +108,6 @@ struct update_leadership_request_v2
       update_leadership_request_v2,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     static constexpr int8_t version = 0;
     chunked_vector<ntp_leader_revision> leaders;
 
@@ -151,7 +150,6 @@ struct update_leadership_reply
       update_leadership_reply,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     update_leadership_reply() noexcept = default;
 
     friend std::ostream&
@@ -168,7 +166,6 @@ struct get_leadership_request
       get_leadership_request,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     get_leadership_request() noexcept = default;
 
     friend std::ostream&
@@ -185,7 +182,6 @@ struct get_leadership_reply
       get_leadership_reply,
       serde::version<1>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
     using is_success = ss::bool_class<struct glr_tag>;
     chunked_vector<ntp_leader> leaders;
     is_success success = is_success::yes;

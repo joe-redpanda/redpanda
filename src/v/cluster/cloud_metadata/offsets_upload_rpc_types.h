@@ -24,8 +24,6 @@ struct offsets_upload_request
       offsets_upload_request,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
-
     // Cluster UUID with which to associate the uploaded metadata.
     model::cluster_uuid cluster_uuid;
 
@@ -47,8 +45,6 @@ struct offsets_upload_reply
       offsets_upload_reply,
       serde::version<0>,
       serde::compat_version<0>> {
-    using rpc_adl_exempt = std::true_type;
-
     cluster::errc ec{};
 
     // Remote paths that were successfully uploaded.
