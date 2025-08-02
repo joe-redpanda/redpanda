@@ -87,6 +87,7 @@
 #include "config/configuration.h"
 #include "config/endpoint_tls_config.h"
 #include "config/node_config.h"
+#include "config/property.h"
 #include "config/seed_server.h"
 #include "config/types.h"
 #include "crash_tracker/signals.h"
@@ -1213,14 +1214,16 @@ static storage::log_config manager_config_from_global_config(
 
 static storage::backlog_controller_config
 compaction_controller_config(ss::scheduling_group sg, uint64_t fs_avail) {
-    /**
-     * By default we set desired compaction backlog size to 10% of disk
-     * availability.
-     */
-    static const int64_t backlog_avail_percents = 10;
-    int64_t backlog_size
-      = config::shard_local_cfg().compaction_ctrl_backlog_size().value_or(
-        (fs_avail / 100) * backlog_avail_percents / ss::smp::count);
+    auto backlog_size_function = [fs_avail] {
+        /**
+         * By default we set desired compaction backlog size to 10% of disk
+         * availability.
+         */
+        static const int64_t backlog_avail_percents = 10;
+        return config::shard_local_cfg()
+          .compaction_ctrl_backlog_size()
+          .value_or((fs_avail / 100) * backlog_avail_percents / ss::smp::count);
+    };
 
     /**
      * We normalize internals using disk availability to make controller
@@ -1242,16 +1245,16 @@ compaction_controller_config(ss::scheduling_group sg, uint64_t fs_avail) {
     auto normalization = fs_avail / (1000 * ss::smp::count);
 
     return storage::backlog_controller_config(
-      config::shard_local_cfg().compaction_ctrl_p_coeff(),
-      config::shard_local_cfg().compaction_ctrl_i_coeff(),
-      config::shard_local_cfg().compaction_ctrl_d_coeff(),
+      config::shard_local_cfg().compaction_ctrl_p_coeff.bind(),
+      config::shard_local_cfg().compaction_ctrl_i_coeff.bind(),
+      config::shard_local_cfg().compaction_ctrl_d_coeff.bind(),
       normalization,
-      backlog_size,
+      std::move(backlog_size_function),
       200,
-      config::shard_local_cfg().compaction_ctrl_update_interval_ms(),
+      config::shard_local_cfg().compaction_ctrl_update_interval_ms.bind(),
       sg,
-      config::shard_local_cfg().compaction_ctrl_min_shares(),
-      config::shard_local_cfg().compaction_ctrl_max_shares());
+      config::shard_local_cfg().compaction_ctrl_min_shares.bind(),
+      config::shard_local_cfg().compaction_ctrl_max_shares.bind());
 }
 
 static storage::backlog_controller_config
@@ -1267,20 +1270,21 @@ make_upload_controller_config(ss::scheduling_group sg, uint64_t fs_avail) {
     // once integral part will rump up high enough it won't be able to go down
     // even if everything is uploaded.
 
-    int64_t setpoint = 0;
+    auto setpoint_function = []() { return 0; };
     int64_t normalization = static_cast<int64_t>(fs_avail)
                             / (1000 * ss::smp::count);
     return {
-      config::shard_local_cfg().cloud_storage_upload_ctrl_p_coeff(),
-      0,
-      config::shard_local_cfg().cloud_storage_upload_ctrl_d_coeff(),
+      config::shard_local_cfg().cloud_storage_upload_ctrl_p_coeff.bind(),
+      config::mock_binding(0.0),
+      config::shard_local_cfg().cloud_storage_upload_ctrl_d_coeff.bind(),
       normalization,
-      setpoint,
+      std::move(setpoint_function),
       static_cast<int>(sg.get_shares()),
-      config::shard_local_cfg().cloud_storage_upload_ctrl_update_interval_ms(),
+      config::shard_local_cfg()
+        .cloud_storage_upload_ctrl_update_interval_ms.bind(),
       sg,
-      config::shard_local_cfg().cloud_storage_upload_ctrl_min_shares(),
-      config::shard_local_cfg().cloud_storage_upload_ctrl_max_shares()};
+      config::shard_local_cfg().cloud_storage_upload_ctrl_min_shares.bind(),
+      config::shard_local_cfg().cloud_storage_upload_ctrl_max_shares.bind()};
 }
 
 // add additional services in here
@@ -2024,8 +2028,10 @@ void application::wire_up_redpanda_services(
         construct_service(
           _archival_upload_controller,
           std::ref(partition_manager),
-          make_upload_controller_config(
-            sched_groups.archival_upload(), fs_avail))
+          ss::sharded_parameter(
+            [sg = sched_groups.archival_upload(), fs_avail] {
+                return make_upload_controller_config(sg, fs_avail);
+            }))
           .get();
 
         construct_service(
@@ -2475,7 +2481,9 @@ void application::wire_up_redpanda_services(
     construct_service(
       _compaction_controller,
       std::ref(storage),
-      compaction_controller_config(sched_groups.compaction_sg(), fs_avail))
+      ss::sharded_parameter([sg = sched_groups.compaction_sg(), fs_avail] {
+          return compaction_controller_config(sg, fs_avail);
+      }))
       .get();
 }
 
