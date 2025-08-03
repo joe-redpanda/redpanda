@@ -31,6 +31,7 @@ redpanda_cc_library(
         "//src/v/cloud_storage:cache",
         "//src/v/cluster",
         "//src/v/config",
+        "//src/v/container:chunked_vector",
         "//src/v/datalake:manager",
         "//src/v/metrics",
         "//src/v/raft",

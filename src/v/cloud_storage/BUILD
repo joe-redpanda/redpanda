@@ -245,7 +245,7 @@ redpanda_cc_library(
         "//src/v/config",
         "//src/v/metrics",
         "//src/v/ssx:semaphore",
-        "//src/v/storage",
+        "//src/v/storage:disk",
         "@seastar",
     ],
 )
