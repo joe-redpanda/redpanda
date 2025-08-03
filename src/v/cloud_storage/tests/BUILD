@@ -73,7 +73,7 @@ redpanda_cc_btest(
     deps = [
         ":common",
         "//src/v/base",
-        "//src/v/cloud_storage",
+        "//src/v/cloud_storage:segment_meta_cstore",
         "//src/v/cloud_storage:types",
         "//src/v/model",
         "//src/v/random:generators",
@@ -611,6 +611,7 @@ redpanda_cc_bench(
     deps = [
         "//src/v/base",
         "//src/v/cloud_storage",
+        "//src/v/cloud_storage:segment_meta_cstore",
         "//src/v/config",
         "//src/v/model",
         "//src/v/random:generators",
@@ -632,7 +633,8 @@ redpanda_cc_fuzz_test(
     ],
     deps = [
         "//src/v/bytes:iobuf",
-        "//src/v/cloud_storage",
+        "//src/v/cloud_storage:segment_meta_cstore",
+        "//src/v/cloud_storage:types",
         "//src/v/model",
         "//src/v/reflection:to_tuple",
         "//src/v/serde",

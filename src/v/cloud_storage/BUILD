@@ -71,7 +71,6 @@ redpanda_cc_library(
         "segment_chunk.cc",
         "segment_chunk_api.cc",
         "segment_chunk_data_source.cc",
-        "segment_meta_cstore.cc",
         "segment_path_utils.cc",
         "segment_state.cc",
         "topic_manifest.cc",
@@ -121,7 +120,6 @@ redpanda_cc_library(
         "segment_chunk.h",
         "segment_chunk_api.h",
         "segment_chunk_data_source.h",
-        "segment_meta_cstore.h",
         "segment_path_utils.h",
         "segment_state.h",
         "spillover_manifest.h",
@@ -140,6 +138,7 @@ redpanda_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":remote_label",
+        ":segment_meta_cstore",
         ":topic_mount_manifest_path",
         ":types",
         "//src/v/base",
@@ -239,5 +238,27 @@ redpanda_cc_library(
         "//src/v/utils:named_type",
         "@abseil-cpp//absl/container:node_hash_set",
         "@seastar",
+    ],
+)
+
+redpanda_cc_library(
+    name = "segment_meta_cstore",
+    srcs = [
+        "segment_meta_cstore.cc",
+    ],
+    hdrs = [
+        "segment_meta_cstore.h",
+    ],
+    implementation_deps = [
+        "//src/v/config",
+        "@abseil-cpp//absl/container:btree",
+    ],
+    include_prefix = "cloud_storage",
+    visibility = [":__subpackages__"],
+    deps = [
+        ":types",
+        "//src/v/model",
+        "//src/v/utils:delta_for",
+        "@boost//:iterator",
     ],
 )
