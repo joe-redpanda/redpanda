@@ -10,12 +10,19 @@ redpanda_cc_library(
     hdrs = [
         "domain_supervisor.h",
     ],
+    implementation_deps = [
+        ":domain_manager",
+        "//src/v/cloud_topics:logger",
+        "//src/v/cluster",
+        "//src/v/cluster/utils:partition_change_notifier_api",
+        "//src/v/cluster/utils:partition_change_notifier_impl",
+        "//src/v/model",
+        "//src/v/ssx:work_queue",
+    ],
     include_prefix = "cloud_topics/level_one/domain",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
-        "//src/v/cloud_topics:logger",
-        "//src/v/cluster",
         "//src/v/model",
         "@seastar",
     ],
