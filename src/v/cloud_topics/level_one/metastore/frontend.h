@@ -34,6 +34,7 @@ concept request_has_topic_id_partition = requires(T t) {
 };
 
 namespace experimental::cloud_topics::l1 {
+class domain_supervisor;
 
 /*
  * Frontend is the gateway into a partition of a partitioned metastore on a
@@ -53,7 +54,8 @@ public:
       ss::sharded<cluster::metadata_cache>*,
       ss::sharded<cluster::partition_leaders_table>*,
       ss::sharded<cluster::shard_table>*,
-      ss::sharded<::rpc::connection_cache>*);
+      ss::sharded<::rpc::connection_cache>*,
+      domain_supervisor*);
 
     ss::future<> stop();
 
@@ -145,6 +147,7 @@ private:
     ss::sharded<cluster::partition_leaders_table>* _leaders;
     ss::sharded<cluster::shard_table>* _shard_table;
     ss::sharded<::rpc::connection_cache>* _connection_cache;
+    domain_supervisor* _domain_supervisor;
 };
 
 } // namespace experimental::cloud_topics::l1

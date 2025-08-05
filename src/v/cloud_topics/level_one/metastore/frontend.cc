@@ -9,6 +9,8 @@
  */
 #include "cloud_topics/level_one/metastore/frontend.h"
 
+#include "cloud_topics/level_one/domain/domain_manager.h"
+#include "cloud_topics/level_one/domain/domain_supervisor.h"
 #include "cloud_topics/level_one/metastore/rpc_types.h"
 #include "cloud_topics/logger.h"
 #include "cluster/metadata_cache.h"
@@ -26,37 +28,71 @@ namespace experimental::cloud_topics::l1 {
 namespace {
 
 ss::future<rpc::add_objects_reply> do_add_objects(
-  cluster::partition_manager&, model::ntp, rpc::add_objects_request) {
-    co_return rpc::add_objects_reply{.ec = rpc::errc::ok};
+  domain_supervisor& domain_supervisor,
+  const model::ntp& ntp,
+  rpc::add_objects_request req) {
+    auto domain_mgr = domain_supervisor.get(ntp);
+    if (!domain_mgr) {
+        co_return rpc::add_objects_reply{.ec = rpc::errc::not_leader};
+    }
+    co_return co_await domain_mgr->add_objects(std::move(req));
 }
 
 ss::future<rpc::replace_objects_reply> do_replace_objects(
-  cluster::partition_manager&, model::ntp, rpc::replace_objects_request) {
-    co_return rpc::replace_objects_reply{.ec = rpc::errc::ok};
+  domain_supervisor& domain_supervisor,
+  const model::ntp& ntp,
+  rpc::replace_objects_request req) {
+    auto domain_mgr = domain_supervisor.get(ntp);
+    if (!domain_mgr) {
+        co_return rpc::replace_objects_reply{.ec = rpc::errc::not_leader};
+    }
+    co_return co_await domain_mgr->replace_objects(std::move(req));
 }
 
 ss::future<rpc::get_first_offset_ge_reply> do_get_first_offset_ge(
-  cluster::partition_manager&, model::ntp, rpc::get_first_offset_ge_request) {
-    co_return rpc::get_first_offset_ge_reply{.ec = rpc::errc::ok};
+  domain_supervisor& domain_supervisor,
+  const model::ntp& ntp,
+  rpc::get_first_offset_ge_request req) {
+    auto domain_mgr = domain_supervisor.get(ntp);
+    if (!domain_mgr) {
+        co_return rpc::get_first_offset_ge_reply{.ec = rpc::errc::not_leader};
+    }
+    co_return co_await domain_mgr->get_first_offset_ge(std::move(req));
 }
 
 ss::future<rpc::get_first_timestamp_ge_reply> do_get_first_timestamp_ge(
-  cluster::partition_manager&,
-  model::ntp,
-  rpc::get_first_timestamp_ge_request) {
-    co_return rpc::get_first_timestamp_ge_reply{.ec = rpc::errc::ok};
+  domain_supervisor& domain_supervisor,
+  const model::ntp& ntp,
+  rpc::get_first_timestamp_ge_request req) {
+    auto domain_mgr = domain_supervisor.get(ntp);
+    if (!domain_mgr) {
+        co_return rpc::get_first_timestamp_ge_reply{
+          .ec = rpc::errc::not_leader};
+    }
+    co_return co_await domain_mgr->get_first_timestamp_ge(std::move(req));
 }
 
 ss::future<rpc::get_offsets_reply> do_get_offsets(
-  cluster::partition_manager&, model::ntp, rpc::get_offsets_request) {
-    co_return rpc::get_offsets_reply{.ec = rpc::errc::ok};
+  domain_supervisor& domain_supervisor,
+  const model::ntp& ntp,
+  rpc::get_offsets_request req) {
+    auto domain_mgr = domain_supervisor.get(ntp);
+    if (!domain_mgr) {
+        co_return rpc::get_offsets_reply{.ec = rpc::errc::not_leader};
+    }
+    co_return co_await domain_mgr->get_offsets(std::move(req));
 }
 
 ss::future<rpc::get_compaction_offsets_reply> do_get_compaction_offsets(
-  cluster::partition_manager&,
-  model::ntp,
-  rpc::get_compaction_offsets_request) {
-    co_return rpc::get_compaction_offsets_reply{.ec = rpc::errc::ok};
+  domain_supervisor& domain_supervisor,
+  const model::ntp& ntp,
+  rpc::get_compaction_offsets_request req) {
+    auto domain_mgr = domain_supervisor.get(ntp);
+    if (!domain_mgr) {
+        co_return rpc::get_compaction_offsets_reply{
+          .ec = rpc::errc::not_leader};
+    }
+    co_return co_await domain_mgr->get_compaction_offsets(std::move(req));
 }
 
 } // namespace
@@ -191,7 +227,8 @@ frontend::frontend(
   ss::sharded<cluster::metadata_cache>* metadata,
   ss::sharded<cluster::partition_leaders_table>* leaders,
   ss::sharded<cluster::shard_table>* shards,
-  ss::sharded<::rpc::connection_cache>* connections)
+  ss::sharded<::rpc::connection_cache>* connections,
+  domain_supervisor* domain_supervisor)
   : _self(self)
   , _group_mgr(group_mgr)
   , _partition_mgr(partition_mgr)
@@ -199,7 +236,8 @@ frontend::frontend(
   , _metadata(metadata)
   , _leaders(leaders)
   , _shard_table(shards)
-  , _connection_cache(connections) {}
+  , _connection_cache(connections)
+  , _domain_supervisor(domain_supervisor) {}
 
 ss::future<> frontend::stop() { return _gate.close(); }
 
@@ -283,11 +321,10 @@ ss::future<rpc::add_objects_reply> frontend::add_objects_locally(
   rpc::add_objects_request request,
   const model::ntp& metastore_ntp,
   ss::shard_id shard) {
-    co_return co_await _partition_mgr->invoke_on(
-      shard,
-      [metastore_ntp,
-       req = std::move(request)](cluster::partition_manager& pm) mutable {
-          return do_add_objects(pm, metastore_ntp, std::move(req));
+    co_return co_await container().invoke_on(
+      shard, [metastore_ntp, req = std::move(request)](frontend& fe) mutable {
+          return do_add_objects(
+            *(fe._domain_supervisor), metastore_ntp, std::move(req));
       });
 }
 
@@ -303,11 +340,10 @@ ss::future<rpc::replace_objects_reply> frontend::replace_objects_locally(
   rpc::replace_objects_request request,
   const model::ntp& metastore_ntp,
   ss::shard_id shard) {
-    co_return co_await _partition_mgr->invoke_on(
-      shard,
-      [metastore_ntp,
-       req = std::move(request)](cluster::partition_manager& pm) mutable {
-          return do_replace_objects(pm, metastore_ntp, std::move(req));
+    co_return co_await container().invoke_on(
+      shard, [metastore_ntp, req = std::move(request)](frontend& fe) mutable {
+          return do_replace_objects(
+            *(fe._domain_supervisor), metastore_ntp, std::move(req));
       });
 }
 
@@ -324,11 +360,10 @@ frontend::get_first_offset_ge_locally(
   rpc::get_first_offset_ge_request request,
   const model::ntp& metastore_ntp,
   ss::shard_id shard) {
-    co_return co_await _partition_mgr->invoke_on(
-      shard,
-      [metastore_ntp,
-       req = std::move(request)](cluster::partition_manager& pm) mutable {
-          return do_get_first_offset_ge(pm, metastore_ntp, std::move(req));
+    co_return co_await container().invoke_on(
+      shard, [metastore_ntp, req = std::move(request)](frontend& fe) mutable {
+          return do_get_first_offset_ge(
+            *(fe._domain_supervisor), metastore_ntp, std::move(req));
       });
 }
 
@@ -345,11 +380,10 @@ frontend::get_first_timestamp_ge_locally(
   rpc::get_first_timestamp_ge_request request,
   const model::ntp& metastore_ntp,
   ss::shard_id shard) {
-    co_return co_await _partition_mgr->invoke_on(
-      shard,
-      [metastore_ntp,
-       req = std::move(request)](cluster::partition_manager& pm) mutable {
-          return do_get_first_timestamp_ge(pm, metastore_ntp, std::move(req));
+    co_return co_await container().invoke_on(
+      shard, [metastore_ntp, req = std::move(request)](frontend& fe) mutable {
+          return do_get_first_timestamp_ge(
+            *(fe._domain_supervisor), metastore_ntp, std::move(req));
       });
 }
 
@@ -366,11 +400,10 @@ ss::future<rpc::get_offsets_reply> frontend::get_offsets_locally(
   rpc::get_offsets_request request,
   const model::ntp& metastore_ntp,
   ss::shard_id shard) {
-    co_return co_await _partition_mgr->invoke_on(
-      shard,
-      [metastore_ntp,
-       req = std::move(request)](cluster::partition_manager& pm) mutable {
-          return do_get_offsets(pm, metastore_ntp, std::move(req));
+    co_return co_await container().invoke_on(
+      shard, [metastore_ntp, req = std::move(request)](frontend& fe) mutable {
+          return do_get_offsets(
+            *(fe._domain_supervisor), metastore_ntp, std::move(req));
       });
 }
 
@@ -387,11 +420,10 @@ frontend::get_compaction_offsets_locally(
   rpc::get_compaction_offsets_request request,
   const model::ntp& metastore_ntp,
   ss::shard_id shard) {
-    co_return co_await _partition_mgr->invoke_on(
-      shard,
-      [metastore_ntp,
-       req = std::move(request)](cluster::partition_manager& pm) mutable {
-          return do_get_compaction_offsets(pm, metastore_ntp, std::move(req));
+    co_return co_await container().invoke_on(
+      shard, [metastore_ntp, req = std::move(request)](frontend& fe) mutable {
+          return do_get_compaction_offsets(
+            *(fe._domain_supervisor), metastore_ntp, std::move(req));
       });
 }
 

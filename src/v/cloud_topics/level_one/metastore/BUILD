@@ -21,6 +21,8 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         "//src/v/cloud_topics:logger",
+        "//src/v/cloud_topics/level_one/domain:domain_manager",
+        "//src/v/cloud_topics/level_one/domain:domain_supervisor",
         "//src/v/hashing:murmur",
         "@fmt",
     ],
