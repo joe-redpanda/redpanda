@@ -54,7 +54,8 @@ private:
 
 private:
     ss::gate _gate;
-    model::node_id _self;
+    // Need explicit namespace due to having a `cluster_link::model` namespace
+    ::model::node_id _self;
     ss::sharded<::cluster::cluster_link::frontend>* _plf;
     std::unique_ptr<cluster::partition_change_notifier> _notifications;
     ss::sharded<cluster::partition_manager>* _partition_manager;
