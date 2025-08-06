@@ -440,6 +440,7 @@ redpanda_cc_gtest(
         "data_queue_test.cc",
     ],
     deps = [
+        "//src/v/base",
         "//src/v/kafka/client/direct_consumer",
         "//src/v/model/tests:random",
         "//src/v/test_utils:gtest",

@@ -75,6 +75,9 @@ private:
         chunked_vector<fetched_topic_data> topics;
         size_t total_bytes{0};
     };
+
+    fetches do_pop();
+
     size_t _max_count{10};
     size_t _max_bytes{10_MiB};
 
