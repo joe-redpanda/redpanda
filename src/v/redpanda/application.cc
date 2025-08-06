@@ -144,6 +144,7 @@
 #include "rpc/rpc_utils.h"
 #include "security/audit/audit_log_manager.h"
 #include "ssx/abort_source.h"
+#include "ssx/sharded_service_container.h"
 #include "ssx/thread_worker.h"
 #include "storage/backlog_controller.h"
 #include "storage/chunk_cache.h"
@@ -281,13 +282,9 @@ static void set_auditing_kafka_client_defaults(
 }
 
 application::application(ss::sstring logger_name)
-  : _log(std::move(logger_name)) {};
+  : ssx::sharded_service_container(logger_name) {}
 
-application::~application() {
-    while (!_deferred.empty()) {
-        _deferred.pop_back();
-    }
-}
+application::~application() {}
 
 void application::shutdown() {
     storage.invoke_on_all(&storage::api::stop_cluster_uuid_waiters).get();
@@ -426,10 +423,7 @@ void application::shutdown() {
         });
     }
 
-    // Shut down services in reverse order to which they were registered.
-    while (!_deferred.empty()) {
-        _deferred.pop_back();
-    }
+    ssx::sharded_service_container::shutdown();
 }
 
 static void log_system_resources(
