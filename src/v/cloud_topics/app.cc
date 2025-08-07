@@ -69,6 +69,12 @@ ss::future<> app::construct(
             std::make_unique<real_cluster_services>(
               &controller->get_cluster_epoch_generator()));
       }));
+    co_await construct_service(
+      reconciler,
+      partition_mgr,
+      remote,
+      ss::sharded_parameter([this] { return state.local().get_data_plane(); }),
+      bucket);
     co_await construct_service(domain_supervisor, controller);
     co_await construct_service(
       l1_metastore_fe,
@@ -82,6 +88,7 @@ ss::future<> app::construct(
 
 ss::future<> app::start() {
     co_await state.invoke_on_all([](auto& s) { return s.start(); });
+    co_await reconciler.invoke_on_all([](auto& r) { return r.start(); });
     co_await domain_supervisor.invoke_on_all(
       [](auto& ds) { return ds.start(); });
 }

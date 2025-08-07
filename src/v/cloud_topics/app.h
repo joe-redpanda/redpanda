@@ -12,6 +12,7 @@
 
 #include "cloud_topics/level_one/domain/domain_supervisor.h"
 #include "cloud_topics/level_one/metastore/frontend.h"
+#include "cloud_topics/level_zero/reconciler/reconciler.h"
 #include "cloud_topics/state_accessors.h"
 #include "ssx/sharded_service_container.h"
 
@@ -66,6 +67,7 @@ public:
 
 private:
     ss::sharded<state_accessors> state;
+    ss::sharded<reconciler::reconciler> reconciler;
     ss::sharded<l1::domain_supervisor> domain_supervisor;
     ss::sharded<l1::frontend> l1_metastore_fe;
 };
