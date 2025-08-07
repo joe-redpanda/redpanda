@@ -236,7 +236,7 @@ kafka::client::cluster& link::get_cluster_connection() noexcept {
 }
 
 bool link::should_start_task(task* t) const {
-    if (t->get_state() != model::task_state::not_running) {
+    if (t->get_state() != model::task_state::stopped) {
         // Can only start tasks that are currently not running
         return false;
     }
@@ -255,7 +255,7 @@ bool link::should_start_task(task* t) const {
 }
 
 bool link::should_stop_task(task* t) const {
-    if (t->get_state() == model::task_state::not_running) {
+    if (t->get_state() == model::task_state::stopped) {
         // Can only stop tasks that are currently running
         return false;
     }
@@ -295,7 +295,7 @@ link::handle_controller_leadership_change(ntp_leader is_ntp_leader) {
             continue;
         }
         if (
-          t->get_state() == model::task_state::not_running
+          t->get_state() == model::task_state::stopped
           && is_ntp_leader == ntp_leader::yes) {
             vlog(
               cllog.info,
@@ -312,7 +312,7 @@ link::handle_controller_leadership_change(ntp_leader is_ntp_leader) {
             }
         }
         if (
-          t->get_state() != model::task_state::not_running
+          t->get_state() != model::task_state::stopped
           && is_ntp_leader == ntp_leader::no) {
             vlog(
               cllog.info,

@@ -139,8 +139,8 @@ ss::future<result<void>> task::start() {
 ss::future<result<void>> task::stop() {
     vlog(logger().trace, "stop called");
     auto res = change_state(
-      model::task_state::not_running, ssx::sformat("{} has stopped", name()));
-    vassert(res.has_value(), "Failed to change state to not_running");
+      model::task_state::stopped, ssx::sformat("{} has stopped", name()));
+    vassert(res.has_value(), "Failed to change state to stopped");
     if (_task_runner) {
         co_await _task_runner->stop();
         _task_runner.reset();
@@ -236,8 +236,8 @@ bool task::valid_previous_state(model::task_state st) const {
                || _state == model::task_state::faulted;
     case model::task_state::link_unavailable:
         return _state == model::task_state::active;
-    // Always valid to change to not_running, active or faulted
-    case model::task_state::not_running:
+    // Always valid to change to stopped, active or faulted
+    case model::task_state::stopped:
     case model::task_state::active:
     case model::task_state::faulted:
         return true;

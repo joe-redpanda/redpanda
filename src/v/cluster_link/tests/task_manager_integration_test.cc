@@ -173,7 +173,7 @@ TEST_P(task_manager_integration_test, create_task_no_controller) {
       link_name,
       test_task::name,
       GetParam().is_locked_to_controller == task::is_locked_to_controller::yes
-        ? model::task_state::not_running
+        ? model::task_state::stopped
         : model::task_state::active);
 }
 
@@ -243,13 +243,13 @@ TEST_P(task_manager_integration_test, controller_leadership_moved_on) {
       link_name,
       test_task::name,
       GetParam().is_locked_to_controller == task::is_locked_to_controller::yes
-        ? model::task_state::not_running
+        ? model::task_state::stopped
         : model::task_state::active);
 
     // Register for a callback from the task to alert us if the task changes
     // state.  If the task is not locked to the controller, then no state change
     // should be reported, however if it is locked to the controller, then the
-    // state should change from not_running to active
+    // state should change from stopped to active
     ss::condition_variable cv;
 
     task::state_change change;
@@ -277,7 +277,7 @@ TEST_P(task_manager_integration_test, controller_leadership_moved_on) {
     fixture()->elect_leader(::model::controller_ntp, self(), std::nullopt);
     try {
         cv.wait(1s).get();
-        EXPECT_EQ(change.prev, model::task_state::not_running);
+        EXPECT_EQ(change.prev, model::task_state::stopped);
         EXPECT_EQ(change.cur, model::task_state::active);
     } catch (const ss::condition_variable_timed_out&) {
         if (
@@ -332,7 +332,7 @@ TEST_P(task_manager_integration_test, controller_leadership_move_off) {
     // Register for a callback from the task to alert us if the task changes
     // state.  If the task is not locked to the controller, then no state change
     // should be reported, however if it is locked to the controller, then the
-    // state should change from active to not_running
+    // state should change from active to stopped
     ss::condition_variable cv;
 
     task::state_change change;
@@ -362,7 +362,7 @@ TEST_P(task_manager_integration_test, controller_leadership_move_off) {
     try {
         cv.wait(1s).get();
         EXPECT_EQ(change.prev, model::task_state::active);
-        EXPECT_EQ(change.cur, model::task_state::not_running);
+        EXPECT_EQ(change.cur, model::task_state::stopped);
     } catch (const ss::condition_variable_timed_out&) {
         if (
           GetParam().is_locked_to_controller
@@ -505,7 +505,7 @@ TEST_F_CORO(
 
     // Expect that the status report should not be running yet
     validate_report(
-      *report, link_name, evil_task::name, model::task_state::not_running);
+      *report, link_name, evil_task::name, model::task_state::stopped);
 
     // Await the task reconciler interval time (plus a fudge) to allow the loop
     // to run to start the task
@@ -543,7 +543,7 @@ TEST_F_CORO(
 
     // Expect that the status report should be running now
     validate_report(
-      *report, link_name, evil_task::name, model::task_state::not_running);
+      *report, link_name, evil_task::name, model::task_state::stopped);
 }
 
 TEST_F_CORO(
@@ -570,7 +570,7 @@ TEST_F_CORO(
 
     // Expect that the status report should not be running yet
     validate_report(
-      *report, link_name, evil_task::name, model::task_state::not_running);
+      *report, link_name, evil_task::name, model::task_state::stopped);
 
     fixture()->elect_leader(::model::controller_ntp, self(), std::nullopt);
 
@@ -617,7 +617,7 @@ TEST_F_CORO(
 
     // Expect that the status report should not be running yet
     validate_report(
-      *report, link_name, evil_task::name, model::task_state::not_running);
+      *report, link_name, evil_task::name, model::task_state::stopped);
 
     // Await the task reconciler interval time (plus a fudge) to allow the loop
     // to run to start the task

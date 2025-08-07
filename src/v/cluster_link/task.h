@@ -108,7 +108,7 @@ private:
     link* _link;
     ss::lowres_clock::duration _run_interval;
     task_status_cb _status_cb;
-    model::task_state _state{model::task_state::not_running};
+    model::task_state _state{model::task_state::stopped};
     ss::sstring _last_state_change_response;
 
     notification_list<task_status_cb, notification_id> _callbacks;
