@@ -93,9 +93,6 @@ public:
 private:
     bool should_start_task(task* t) const;
     bool should_stop_task(task* t) const;
-    ss::future<> handle_controller_leadership_change(ntp_leader is_ntp_leader);
-    ss::future<>
-    do_handle_controller_leadership_change(ntp_leader is_ntp_leader);
     ss::future<> run_task_reconciler();
     ss::future<result<void>> do_register_task(std::unique_ptr<task>);
 

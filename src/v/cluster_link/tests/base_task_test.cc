@@ -40,9 +40,11 @@ public:
     explicit test_task(link* link, ss::lowres_clock::duration run_interval)
       : task(link, run_interval, name) {}
 
-    task::is_locked_to_controller
-    locked_to_controller() const noexcept override {
-        return task::is_locked_to_controller::no;
+    bool should_start_impl(ss::shard_id, ::model::node_id) const override {
+        return true;
+    }
+    bool should_stop_impl(ss::shard_id, ::model::node_id) const override {
+        return false;
     }
 
     void update_config(const model::metadata& meta) override {
@@ -218,9 +220,11 @@ public:
     explicit evil_task(ss::lowres_clock::duration run_interval)
       : task(nullptr, run_interval, name) {}
 
-    task::is_locked_to_controller
-    locked_to_controller() const noexcept override {
-        return task::is_locked_to_controller::no;
+    bool should_start_impl(ss::shard_id, ::model::node_id) const override {
+        return true;
+    }
+    bool should_stop_impl(ss::shard_id, ::model::node_id) const override {
+        return false;
     }
 
     void update_config(const model::metadata&) override {}
@@ -251,9 +255,11 @@ public:
     explicit link_unavailable_task(ss::lowres_clock::duration run_interval)
       : task(nullptr, run_interval, name) {}
 
-    task::is_locked_to_controller
-    locked_to_controller() const noexcept override {
-        return task::is_locked_to_controller::no;
+    bool should_start_impl(ss::shard_id, ::model::node_id) const override {
+        return true;
+    }
+    bool should_stop_impl(ss::shard_id, ::model::node_id) const override {
+        return false;
     }
 
     void update_config(const model::metadata&) override {}
