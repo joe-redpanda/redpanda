@@ -384,7 +384,6 @@ redpanda_cc_library(
         "//src/v/utils:named_type",
         "//src/v/utils:queue_depth_control",
         "//src/v/utils:remote",
-        "//src/v/utils:rwlock",
         "//src/v/utils:to_string",
         "//src/v/utils:tristate",
         "//src/v/utils:truncating_logger",
