@@ -575,8 +575,19 @@ TEST(ChunkedVector, FromRangeMove) {
 
     auto src = chunked_vector<move_only_t>();
 
+    // From ref.
     auto vec = chunked_vector<move_only_t>(
       std::from_range, src | std::views::as_rvalue);
+
+    // From temporary.
+    auto vec2 = chunked_vector<move_only_t>(
+      std::from_range, chunked_vector<move_only_t>() | std::views::as_rvalue);
+}
+
+TEST(ChunkedVector, FromRangeCopy) {
+    chunked_vector<int> src;
+    static_assert(!std::is_copy_constructible_v<decltype(src)>);
+    auto vec = chunked_vector<int>(std::from_range, src);
 }
 
 TEST(ChunkedVector, InPlaceSingleElement) {

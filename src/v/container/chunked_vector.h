@@ -135,7 +135,8 @@ public:
      */
     template<typename Range>
     requires(std::ranges::sized_range<Range>)
-    chunked_vector(std::from_range_t, const Range& range)
+    // NOLINTNEXTLINE(cppcoreguidelines-missing-std-forward)
+    chunked_vector(std::from_range_t, Range&& range)
       : chunked_vector() {
         reserve(std::ranges::size(range));
         std::copy(range.begin(), range.end(), std::back_inserter(*this));
