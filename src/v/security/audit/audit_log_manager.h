@@ -20,6 +20,7 @@
 #include "model/timeout_clock.h"
 #include "net/types.h"
 #include "security/acl.h"
+#include "security/audit/fwd.h"
 #include "security/audit/logger.h"
 #include "security/audit/probe.h"
 #include "security/audit/schemas/application_activity.h"
@@ -50,8 +51,6 @@ namespace security::audit {
 template<typename T>
 concept InheritsFromOCSFBase
   = std::is_base_of<security::audit::ocsf_base_event<T>, T>::value;
-
-class audit_sink;
 
 using is_started = ss::bool_class<struct is_started_tag>;
 
@@ -264,6 +263,9 @@ public:
     /// Returns true if the internal fibers are up
     bool is_effectively_enabled() const { return _effectively_enabled; }
 
+    ss::future<> pause();
+    ss::future<> resume();
+
     bool report_redpanda_app_event(is_started);
 
     const kafka::client::configuration& get_client_config() const {
@@ -305,8 +307,9 @@ private:
     model::partition_id compute_partition_id();
 
     ss::future<> drain();
-    ss::future<> pause();
-    ss::future<> resume();
+
+    audit_sink& sink();
+    void set_auth_misconfigured(bool v) { _auth_misconfigured = v; }
 
     bool is_audit_event_enabled(event_type) const;
     void set_enabled_events();
