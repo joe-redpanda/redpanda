@@ -9,6 +9,7 @@ redpanda_cc_gtest(
     deps = [
         "//src/v/kafka/client/direct_consumer",
         "//src/v/model/tests:random",
+        "//src/v/random:generators",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
         "@seastar",

@@ -17,53 +17,55 @@ namespace kafka::client {
 /**
  * Very simple blocking queue that is used in
  * the direct consumer to store data fetched from the broker. The queue is
- * bounded by the number of entries and the total size of the data in the queue.
- * The queue can store a single entry that exceeds the size limit but the
- * prerequisite for that is that the queue is empty.
+ * strictly bounded by the number of elements it may contain and loosely bounded
+ * on the maximum data size. At the point of being filled, the queue will force
+ * additional pushes to wait.
  */
 class data_queue {
 public:
     data_queue(size_t max_bytes = 10_MiB, size_t max_count = 10);
-    /*
-     * Returns true if the queue can accept more data.
-     */
-    bool can_insert(size_t bytes) const;
+
+    /** true if the queue can accept another entry without waiting */
+    bool can_insert_immediately() const;
+
     /**
-     * Pushes data into the queue. If the queue is full, it will block until
-     * there is enough space.
+     * @brief pushes fetched data onto the queue, blocks if the queue is full
+     * @param data the data to be emplaced
+     * @param total_bytes the total size of the data to be emplaced, used to
+     * limit maximum queue size
+     * @throws ss::broken_condition_variable if the queue closes before
+     * completion
      */
     ss::future<>
     push(chunked_vector<fetched_topic_data> data, size_t total_bytes);
 
-    /**
-     * Pushes an error into the queue. If the queue is full, it will block until
-     * there is enough space. The error are not accounted for the total bytes.
-     */
+    /** push operation for the queue, error case, blocks if the queue is full.
+     * Throws ss::broken_condition */
     ss::future<> push_error(kafka::error_code ec);
+
     /**
-     * Pops data from the queue. If the queue is empty, it will block until
-     * there is data available or the timeout is reached.
-     * If the timeout is reached, it will throw condition_variable_timed_out.
+     * @brief pushes fetched data onto the queue, blocks if there is no data to
+     * pop
+     * @param timeout how long to wait before throwing a ss::timed_out_error
+     * @throws ss::timed_out_error thrown if the timeout is met before data is
+     * found
+     * @throws ss::broken_condition_variable if the queue closes before
+     * completion
      */
     ss::future<fetches> pop(std::chrono::milliseconds timeout);
 
     /**
      * Stops the queue. All methods will return immediately after this
-     * method is called. If the methods is waiting it will throw an exception.
+     * method is called. If the methods is waiting it will throw an
+     * ss::broken_condition_variable exception
      */
     void stop();
 
     /**
      * Configuration setters for the queue.
      */
-    void set_max_bytes(size_t bytes) {
-        _max_bytes = bytes;
-        _updated.signal();
-    }
-    void set_max_count(size_t count) {
-        _max_count = count;
-        _updated.signal();
-    }
+    void set_max_bytes(size_t bytes);
+    void set_max_count(size_t count);
 
     size_t size() const { return _queue.size(); }
 
@@ -75,11 +77,23 @@ private:
         chunked_vector<fetched_topic_data> topics;
         size_t total_bytes{0};
     };
+
+    ss::future<> push(entry entry);
+
+    // specifically, does the queue have capacity for one more fetch
+    bool has_capacity() const;
+
+    // wake next if appropriate
+    void update_next_push();
+    void update_next_pop();
+
     size_t _max_count{10};
     size_t _max_bytes{10_MiB};
 
     size_t _current_bytes{0};
     ss::chunked_fifo<entry> _queue;
-    ss::condition_variable _updated;
+
+    ss::condition_variable _waiting_to_push;
+    ss::condition_variable _waiting_to_pop;
 };
 } // namespace kafka::client
