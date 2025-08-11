@@ -8,14 +8,18 @@
 // by the Apache License, Version 2.0
 
 #include "kafka/client/direct_consumer/data_queue.h"
+#include "test_utils/async.h"
 #include "test_utils/test.h"
 
 #include <gtest/gtest.h>
 
 using namespace kafka::client;
 
+namespace {
+
 static constexpr size_t max_bytes = 1024;
 static constexpr size_t max_count = 10;
+static constexpr auto default_timeout = 100ms;
 
 chunked_vector<fetched_topic_data>
 make_data(int topic_count, int bytes_per_topic) {
@@ -29,6 +33,12 @@ make_data(int topic_count, int bytes_per_topic) {
     }
     return data;
 }
+
+auto insert_single_element(data_queue& queue, size_t element_size) {
+    return queue.push(make_data(1, element_size), element_size);
+}
+
+} // namespace
 
 TEST(DataQueueTest, TestIfCanInsertWorks) {
     data_queue queue(max_bytes, max_count);
@@ -227,4 +237,63 @@ TEST(DataQueueTest, TestSizeAndCurrentBytesTracking) {
     queue.pop(std::chrono::milliseconds(100)).get();
     ASSERT_EQ(queue.size(), 0);
     ASSERT_EQ(queue.current_bytes(), 0);
+}
+
+// check that the queue is fair in that no writer gets starved
+TEST_CORO(DataQueueTest, QueueUnfairness) {
+    static constexpr size_t small_size = 128u;
+    static constexpr size_t big_size = 2048;
+
+    data_queue queue(max_bytes, max_count);
+
+    // drop a small record in the queue
+    co_await insert_single_element(queue, small_size);
+
+    // attempt to push an oversized record, and keep tabs on its successful push
+    auto big_push = insert_single_element(queue, big_size);
+
+    co_await tests::drain_task_queue();
+    ASSERT_FALSE_CORO(big_push.available());
+
+    // start a loop that will continuously put small data on and then take small
+    // data off. If the queue were fair, the small data pushes should be blocked
+    // until the large data gets a chance to enter the queue
+    bool should_keep_contending{true};
+    auto contention_lambda = [&should_keep_contending, &queue] -> ss::future<> {
+        while (should_keep_contending) {
+            co_await ss::yield();
+            std::ignore = queue.pop(default_timeout)
+                            .discard_result()
+                            .handle_exception_type(
+                              [](ss::timed_out_error) { return ss::now(); })
+                            .handle_exception_type(
+                              [](ss::broken_condition_variable) {
+                                  return ss::now();
+                              });
+            std::ignore = insert_single_element(queue, small_size)
+                            .discard_result()
+                            .handle_exception_type(
+                              [](ss::timed_out_error) { return ss::now(); })
+                            .handle_exception_type(
+                              [](ss::broken_condition_variable) {
+                                  return ss::now();
+                              });
+        }
+        co_return;
+    };
+    auto contention_fiber = contention_lambda();
+
+    // wait to see if big_push completes within a reasonable amount of time
+    try {
+        co_await ss::with_timeout(
+          seastar::lowres_clock::now() + 10s, std::move(big_push));
+    } catch (const ss::timed_out_error& /*ignored*/) {
+        ASSERT_TRUE_CORO(false);
+    }
+
+    // stop the contention fiber, and wait for its termination
+    should_keep_contending = false;
+    co_await std::move(contention_fiber);
+
+    co_await tests::drain_task_queue();
 }
