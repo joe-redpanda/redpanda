@@ -13,6 +13,7 @@
 #include "container/chunked_hash_map.h"
 #include "kafka/client/cluster.h"
 #include "kafka/client/direct_consumer/api_types.h"
+#include "utils/mutex.h"
 
 namespace kafka {
 struct metadata_response_data;
@@ -143,6 +144,9 @@ private:
     configuration _config;
 
     topic_partition_map<subscription> _subscriptions;
+    // serialize updates to _subscriptions
+    mutex _subscriptions_lock{"direct_consumer::_subscriptions_lock"};
+
     chunked_hash_map<model::node_id, std::unique_ptr<fetcher>> _broker_fetchers;
     std::unique_ptr<data_queue> _fetched_data_queue;
     ss::condition_variable _data_available;

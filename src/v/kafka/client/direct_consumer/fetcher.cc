@@ -130,17 +130,43 @@ bool fetcher::maybe_update_fetch_offset(
   model::partition_id partition_id,
   kafka::offset last_received,
   assignment_epoch assignment_epoch) {
+    // lets see if this is running
+    vlog(
+      logger().info,
+      "[broker: {}] {}/{} maybe_update_fetch_offset assignment_epoch: {}",
+      _id,
+      topic,
+      partition_id,
+      assignment_epoch);
+
     auto t_it = _partitions.find(topic);
+    // topic not found
     if (t_it == _partitions.end()) {
+        vlog(
+          logger().info,
+          "[broker: {}] {}/{} topic not found",
+          _id,
+          topic,
+          partition_id);
         return false;
     }
+
     auto p_it = t_it->second.find(partition_id);
+    // partition not found
     if (p_it == t_it->second.end()) {
+        vlog(
+          logger().info,
+          "[broker: {}] {}/{} partition not found",
+          _id,
+          topic,
+          partition_id);
         return false;
     }
+
+    // assignment mismatch
     if (p_it->second.assignment_epoch != assignment_epoch) {
         vlog(
-          logger().trace,
+          logger().info,
           "[broker: {}] Ignoring {}/{} reply, assignment epoch changed, "
           "request epoch: {}, current epoch: {}",
           _id,
@@ -151,8 +177,9 @@ bool fetcher::maybe_update_fetch_offset(
         return false;
     }
 
+    // success
     vlog(
-      logger().trace,
+      logger().info,
       "[broker: {}] Updating {}/{} fetch offset to {}",
       _id,
       topic,
@@ -345,12 +372,18 @@ fetcher::process_fetch_response(
                 part_data.data = co_await reader_to_chunked_vector(
                   std::move(part_response.records.value()));
 
-                maybe_update_fetch_offset(
+                const bool was_updated = maybe_update_fetch_offset(
                   topic_data.topic,
                   part_data.partition_id,
                   model::offset_cast(part_data.data.back().last_offset()),
                   find_assignment_epoch(
                     topic_data.topic, part_data.partition_id, epochs));
+
+                // whether by epoch change or missing partition, do not put this
+                // data on the queue
+                if (!was_updated) {
+                    continue;
+                }
             }
             topic_data.partitions.push_back(std::move(part_data));
         }
@@ -472,6 +505,7 @@ ss::future<kafka::error_code> fetcher::maybe_initialise_fetch_offsets(
                   partition_offset.offset,
                   request_epoch,
                   p_it->second.assignment_epoch);
+                // TODO continue?;
             }
             vlog(
               logger().info,
@@ -541,14 +575,17 @@ fetcher::unassign_partition(model::topic_partition_view tp_v) {
         // partition not found, nothing to unassign
         co_return std::nullopt;
     }
+    auto fetch_offset = p_it->second.fetch_offset;
+
     vlog(
       logger().debug,
-      "[broker: {}] Removing partition: {} assignment",
+      "[broker: {}] Removing partition: {} assignment with offset: {}",
       _id,
-      tp_v);
+      tp_v,
+      fetch_offset);
+
     // TODO: for fetch sessions we will need to mark partitions to deletion so
     // they can be removed from the fetch session
-    auto fetch_offset = p_it->second.fetch_offset;
     partitions.erase(p_it);
     if (partitions.empty()) {
         // if there are no partitions left for this topic, remove the topic

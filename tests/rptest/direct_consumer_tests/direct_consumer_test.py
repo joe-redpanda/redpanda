@@ -25,6 +25,7 @@ from rptest.services.direct_consumer_verifier import (
     DirectConsumerConfiguration, OffsetResetPolicy, IsolationLevel,
     AssignPartitionsRequest, TopicAssignment, PartitionAssignment,
     GetConsumerStateRequest)
+from rptest.utils.node_operations import FailureInjectorBackgroundThread
 from rptest.services.kgo_verifier_services import KgoVerifierProducer
 from rptest.clients.types import TopicSpec
 from rptest.tests.redpanda_test import RedpandaTest
@@ -104,6 +105,9 @@ class DirectConsumerVerifierTest(RedpandaTest):
         troublemaker = self.create_troublemaker_thread(topic_spec=topic_spec)
         troublemaker.start()
 
+        #failure_injector = FailureInjectorBackgroundThread(self.redpanda, self.logger, max_inter_failure_time=10)
+        #failure_injector.start()
+
         try:
             # check if the verifier is alive
             verifier.status()
@@ -168,6 +172,7 @@ class DirectConsumerVerifierTest(RedpandaTest):
             )
 
         finally:
+            #failure_injector.stop()
             troublemaker.stop()
             producer.stop()
             verifier.stop()
