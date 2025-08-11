@@ -516,7 +516,7 @@ redpanda_cc_gtest(
         "scoped_file_tracker_test.cc",
     ],
     deps = [
-        "//src/v/storage",
+        "//src/v/storage:scoped_file_tracker",
         "//src/v/test_utils:gtest",
         "@abseil-cpp//absl/container:btree",
         "@googletest//:gtest",
@@ -560,6 +560,7 @@ redpanda_cc_gtest(
         "//src/v/model",
         "//src/v/random:generators",
         "//src/v/storage",
+        "//src/v/storage:scoped_file_tracker",
         "//src/v/test_utils:gtest",
         "//src/v/utils:mutex",
         "@googletest//:gtest",

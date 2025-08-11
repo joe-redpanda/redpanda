@@ -319,7 +319,6 @@ redpanda_cc_library(
         "probe.h",
         "readers_cache.h",
         "readers_cache_probe.h",
-        "scoped_file_tracker.h",
         "segment.h",
         "segment_deduplication_utils.h",
         "segment_index.h",
@@ -348,6 +347,7 @@ redpanda_cc_library(
         ":record_batch_builder",
         ":record_batch_utils",
         ":resources",
+        ":scoped_file_tracker",
         ":segment_appender",
         "//src/v/base",
         "//src/v/bytes",
@@ -423,6 +423,19 @@ redpanda_cc_library(
         "@fmt",
         "@roaring",
         "@seastar",
+    ],
+)
+
+
+redpanda_cc_library(
+    name = "scoped_file_tracker",
+    hdrs = [
+        "scoped_file_tracker.h",
+    ],
+    include_prefix = "storage",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/container:btree",
     ],
 )
 
