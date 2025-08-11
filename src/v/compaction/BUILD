@@ -69,3 +69,21 @@ redpanda_cc_library(
         "@seastar",
     ],
 )
+
+redpanda_cc_library(
+    name = "utils",
+    srcs = [
+        "utils.cc",
+    ],
+    hdrs = [
+        "utils.h",
+    ],
+    include_prefix = "compaction",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":key_offset_map",
+        "//src/v/model",
+        "//src/v/storage:parser_utils",
+        "@seastar",
+    ],
+)

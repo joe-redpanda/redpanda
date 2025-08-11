@@ -358,6 +358,7 @@ redpanda_cc_library(
         "//src/v/compaction:key",
         "//src/v/compaction:key_offset_map",
         "//src/v/compaction:types",
+        "//src/v/compaction:utils",
         "//src/v/compression",
         "//src/v/config",
         "//src/v/container:chunked_circular_buffer",

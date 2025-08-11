@@ -11,6 +11,7 @@
 
 #pragma once
 #include "compaction/key_offset_map.h"
+#include "compaction/utils.h"
 #include "model/record_batch_reader.h"
 #include "model/record_batch_types.h"
 #include "storage/compacted_index.h"
@@ -255,56 +256,6 @@ struct clean_segment_value
     auto serde_fields() { return std::tie(segment_name); }
 };
 
-inline bool is_compactible_control_batch(
-  const model::ntp& ntp, const model::record_batch_type batch_type) {
-    // Control batches in consumer offsets are special compared to
-    // the ones in data partitions can be safely compacted away.
-    //
-    // tx_fence batches  in consumer offsets are special and should be
-    // compacted. They were used historically to mark the begin of a transaction
-    // but later switched to group_fence_tx.
-    return unlikely(
-             batch_type == model::record_batch_type::tx_fence
-             && model::is_consumer_offsets_topic(ntp))
-           || batch_type == model::record_batch_type::group_fence_tx
-           || batch_type == model::record_batch_type::group_prepare_tx
-           || batch_type == model::record_batch_type::group_abort_tx
-           || batch_type == model::record_batch_type::group_commit_tx;
-}
-
-// Returns `true` or `false` indicating whether the batch type of the header
-// passed contains records that may be removed by compaction- whether that is by
-// de-duplication, or by other logic, i.e we need to consider transactional
-// batch removal past `delete.retention.ms`. Batches which should NEVER be
-// removed from the log via compaction filtering include compaction placeholder
-// batches, as well as all batches that shift offset translation. These batches
-// shouldn't even be considered in `should_keep()`, they should be kept
-// unconditionally.
-inline bool is_filterable(model::record_batch_type t) {
-    if (t == model::record_batch_type::compaction_placeholder) {
-        return false;
-    }
-    static const auto filtered_types = model::offset_translator_batch_types();
-    auto n = std::count(filtered_types.begin(), filtered_types.end(), t);
-    return n == 0;
-}
-
-// Returns `true` or `false` indicating whether the batch type of the header
-// passed contains records that may be de-duplicated by compaction
-// (de-duplication refers to the removal of records performed _only_ due to
-// records with the same key existing for a later record in the log). This is a
-// more stringent condition than `is_filterable()`- this condition determines
-// whether records from a batch should be indexed in a .compaction_index file,
-// and whether only the latest record for a given key should be kept in
-// `should_keep()`.
-inline bool
-is_compactible(const model::ntp& ntp, const model::record_batch_header& h) {
-    if (h.attrs.is_control() && !is_compactible_control_batch(ntp, h.type)) {
-        return false;
-    }
-    return is_filterable(h.type);
-}
-
 offset_delta_time should_apply_delta_time_offset(
   ss::sharded<features::feature_table>& feature_table);
 
@@ -378,7 +329,7 @@ inline bool can_discard(
   const model::ntp& ntp,
   bool past_tombstone_delete_horizon) {
     // Compactible control batches are always removable
-    if (is_compactible_control_batch(ntp, b.header().type)) {
+    if (compaction::is_compactible_control_batch(ntp, b.header().type)) {
         return true;
     }
 
@@ -430,7 +381,7 @@ ss::future<bool> should_keep(
     }
 
     auto& header = b.header();
-    if (!is_compactible(ntp, header)) {
+    if (!compaction::is_compactible(ntp, header)) {
         if (header.attrs.is_control()) {
             has_tx_batches = true;
         }
