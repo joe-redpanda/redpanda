@@ -47,11 +47,8 @@ public:
         bool fill_registered_ids(iceberg::struct_type&);
     };
 
-    virtual ss::future<checked<table_info, errc>> get_table_info(
-      const iceberg::table_identifier&,
-      std::optional<std::reference_wrapper<iceberg::struct_type>> desired_type
-      = std::nullopt)
-      = 0;
+    virtual ss::future<checked<table_info, errc>>
+    get_table_info(const iceberg::table_identifier&) = 0;
 
     virtual ss::future<> stop() = 0;
     virtual ~schema_manager() = default;
@@ -70,10 +67,8 @@ public:
       const iceberg::struct_type& writer_struct_type,
       const iceberg::unresolved_partition_spec&) override;
 
-    ss::future<checked<table_info, schema_manager::errc>> get_table_info(
-      const iceberg::table_identifier&,
-      std::optional<std::reference_wrapper<iceberg::struct_type>> desired_type
-      = std::nullopt) override;
+    ss::future<checked<table_info, schema_manager::errc>>
+    get_table_info(const iceberg::table_identifier&) override;
     ss::future<> stop() final { return ss::now(); }
 
 private:
@@ -101,10 +96,8 @@ public:
       const iceberg::unresolved_partition_spec&) override;
 
     // Loads the table metadata for the given topic.
-    ss::future<checked<table_info, schema_manager::errc>> get_table_info(
-      const iceberg::table_identifier&,
-      std::optional<std::reference_wrapper<iceberg::struct_type>> desired_type
-      = std::nullopt) override;
+    ss::future<checked<table_info, schema_manager::errc>>
+    get_table_info(const iceberg::table_identifier&) override;
 
     // Stops the schema manager, waiting for any ongoing operations to
     // complete.
