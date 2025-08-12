@@ -56,6 +56,7 @@ direct_consumer::update_fetchers(topic_partition_map<subscription> removals) {
         co_return;
     }
     auto holder = _gate.hold();
+    auto subscription_lock_holder = co_await _subscriptions_lock.get_units();
     /**
      * Unassign partitions from fetchers that are no longer needed.
      */
@@ -153,7 +154,12 @@ ss::future<> direct_consumer::start() {
 ss::future<> direct_consumer::stop() {
     _cluster->unregister_metadata_cb(_metadata_callback_id);
     _fetched_data_queue->stop();
-    co_await _gate.close();
+
+    // close the gate and break the lock together, no need to drain all
+    // operations
+    auto f = _gate.close();
+    _subscriptions_lock.broken();
+    co_await std::move(f);
 
     co_await ss::parallel_for_each(
       _broker_fetchers, [](auto& pair) { return pair.second->stop(); });

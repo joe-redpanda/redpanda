@@ -93,6 +93,13 @@ ss::future<> consumer_runner::do_fetch() {
             if (fetched_partition_data.data.empty()) {
                 continue; // no data to process
             }
+
+            vlog(
+              v_logger.info,
+              "fetched ntp: {}/{}, no offset yet",
+              fetched_topic_data.topic,
+              fetched_partition_data.partition_id);
+
             auto& partition_stats = _stats[fetched_topic_data.topic]
                                           [fetched_partition_data.partition_id];
             if (fetched_partition_data.error != kafka::error_code::none) {
@@ -116,7 +123,7 @@ ss::future<> consumer_runner::do_fetch() {
               fetched_partition_data.data.back().last_offset());
 
             vlog(
-              v_logger.trace,
+              v_logger.info,
               "fetched ntp: {}/{}, offset: {}",
               fetched_topic_data.topic,
               fetched_partition_data.partition_id,

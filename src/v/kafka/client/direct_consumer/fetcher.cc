@@ -529,6 +529,9 @@ fetcher::process_fetch_response(
                   part_data.high_watermark,
                   find_assignment_epoch(
                     topic_data.topic, part_data.partition_id, epochs));
+                // if (!updated_offset) {
+                //     continue;
+                // }
                 if (updated_offset) {
                     dirty_partitions[topic_data.topic].insert(
                       part_data.partition_id);

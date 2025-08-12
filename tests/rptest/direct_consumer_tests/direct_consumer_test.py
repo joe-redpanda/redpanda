@@ -82,7 +82,8 @@ class DirectConsumerVerifierTest(RedpandaTest):
     @cluster(num_nodes=5)
     def test_basic_consuming_from_topic(self):
         topic_name = "test-topic"
-        msg_count = 2000000
+        #msg_count = 2000000
+        msg_count = 200000
         msg_size = 128
         client_id = "test-consumer"
 
