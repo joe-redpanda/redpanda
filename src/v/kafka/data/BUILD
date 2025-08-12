@@ -37,6 +37,7 @@ redpanda_cc_library(
         "//src/v/cloud_topics/frontend",
         "//src/v/cloud_topics/frontend:errc",
         "//src/v/cloud_topics/level_zero/frontend_reader",
+        "//src/v/kafka/data:log_reader_config",
         "//src/v/kafka/protocol",
         "//src/v/kafka/server:errors",
         "//src/v/model",
@@ -69,6 +70,24 @@ redpanda_cc_library(
         "//src/v/base",
         "//src/v/bytes:iobuf",
         "//src/v/model",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
+    name = "log_reader_config",
+    srcs = [
+        "log_reader_config.cc",
+    ],
+    hdrs = [
+        "log_reader_config.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/v/base",
+        "//src/v/model",
+        "//src/v/utils:named_type",
+        "//src/v/utils:to_string",
         "@seastar",
     ],
 )
