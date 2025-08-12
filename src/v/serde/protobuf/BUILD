@@ -9,7 +9,6 @@ redpanda_cc_library(
         "parser.h",
     ],
     implementation_deps = [":wire_format"],
-    include_prefix = "serde/protobuf",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/bytes:hash",
@@ -33,7 +32,6 @@ redpanda_cc_library(
     implementation_deps = [
         "//src/v/utils:vint",
     ],
-    include_prefix = "serde/protobuf",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/bytes:hash",
@@ -52,7 +50,6 @@ redpanda_cc_library(
     hdrs = [
         "support.h",
     ],
-    include_prefix = "serde/protobuf",
     visibility = ["//visibility:public"],
     deps = [
         ":field_mask",
@@ -81,7 +78,6 @@ redpanda_cc_library(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
     ],
-    include_prefix = "serde/protobuf",
     visibility = ["//visibility:public"],
     deps = [
         ":field_mask",
@@ -98,7 +94,6 @@ redpanda_cc_library(
     hdrs = [
         "rpc.h",
     ],
-    include_prefix = "serde/protobuf",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
@@ -110,7 +105,6 @@ redpanda_cc_library(
     name = "field_mask",
     srcs = ["field_mask.cc"],
     hdrs = ["field_mask.h"],
-    include_prefix = "serde/protobuf",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",

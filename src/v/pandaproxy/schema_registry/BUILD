@@ -6,7 +6,6 @@ redpanda_cc_library(
     hdrs = [
         "exceptions.h",
     ],
-    include_prefix = "pandaproxy/schema_registry",
     visibility = ["//visibility:public"],
 )
 
@@ -34,7 +33,6 @@ redpanda_cc_library(
         "@rapidjson",
         "@seastar",
     ],
-    include_prefix = "pandaproxy/schema_registry",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
@@ -125,7 +123,6 @@ redpanda_cc_library(
         "@rapidjson",
         "@re2",
     ] + well_known_cc_protos,
-    include_prefix = "pandaproxy/schema_registry",
     visibility = ["//visibility:public"],
     deps = [
         ":config",
@@ -213,7 +210,6 @@ redpanda_cc_library(
         "@boost//:algorithm",
         "@seastar",
     ],
-    include_prefix = "pandaproxy/schema_registry",
     visibility = ["//visibility:public"],
     deps = [
         ":config",
@@ -244,7 +240,6 @@ redpanda_cc_library(
     implementation_deps = [
         "//src/v/cluster",
     ],
-    include_prefix = "pandaproxy/schema_registry",
     visibility = ["//visibility:public"],
     deps = [
         ":server",
@@ -257,7 +252,6 @@ redpanda_cc_library(
     hdrs = [
         "schema_id_validation.h",
     ],
-    include_prefix = "pandaproxy/schema_registry",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/strings:string_switch",
@@ -270,7 +264,6 @@ redpanda_cc_library(
     hdrs = [
         "subject_name_strategy.h",
     ],
-    include_prefix = "pandaproxy/schema_registry",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",

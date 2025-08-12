@@ -5,7 +5,6 @@ redpanda_cc_library(
     hdrs = [
         "fips_config.h",
     ],
-    include_prefix = "model",
     visibility = ["//visibility:public"],
     deps = [
         ":model",
@@ -45,7 +44,6 @@ redpanda_cc_library(
         "transform.h",
         "validation.h",
     ],
-    include_prefix = "model",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
@@ -98,7 +96,6 @@ redpanda_cc_library(
     hdrs = [
         "timeout_clock.h",
     ],
-    include_prefix = "model",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
@@ -114,7 +111,6 @@ redpanda_cc_library(
     hdrs = [
         "batch_utils.h",
     ],
-    include_prefix = "model",
     visibility = ["//visibility:public"],
     deps = [
         ":model",

@@ -3,7 +3,6 @@ load("//bazel:test.bzl", "redpanda_cc_gtest", "redpanda_test_cc_library")
 redpanda_test_cc_library(
     name = "cluster_fixture",
     hdrs = ["cluster_fixture.h"],
-    include_prefix = "cloud_topics/tests",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/cloud_io/tests:s3_imposter",

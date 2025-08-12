@@ -21,7 +21,6 @@ redpanda_cc_library(
     hdrs = [
         "extent_meta.h",
     ],
-    include_prefix = "cloud_topics/level_zero/common",
     deps = [
         "//src/v/cloud_topics:types",
         "//src/v/model",

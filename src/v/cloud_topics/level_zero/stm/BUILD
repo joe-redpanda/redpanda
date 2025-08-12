@@ -9,7 +9,6 @@ redpanda_cc_library(
     hdrs = [
         "placeholder.h",
     ],
-    include_prefix = "cloud_topics/level_zero/stm",
     visibility = [
         "//src/v/cloud_topics/batch_cache:__pkg__",
         "//src/v/cloud_topics/frontend:__pkg__",
@@ -30,7 +29,6 @@ redpanda_cc_library(
 redpanda_cc_library(
     name = "dl_version",
     hdrs = ["dl_version.h"],
-    include_prefix = "cloud_topics/level_zero/stm",
     deps = ["//src/v/utils:named_type"],
 )
 
@@ -45,7 +43,6 @@ redpanda_cc_library(
     implementation_deps = [
         "@fmt",
     ],
-    include_prefix = "cloud_topics/level_zero/stm",
     deps = [
         ":dl_version",
         "//src/v/container:chunked_vector",
@@ -56,7 +53,6 @@ redpanda_cc_library(
 redpanda_cc_library(
     name = "ctp_stm_commands",
     hdrs = ["ctp_stm_commands.h"],
-    include_prefix = "cloud_topics/level_zero/stm",
     deps = [
         ":dl_version",
         "//src/v/serde",
@@ -66,7 +62,6 @@ redpanda_cc_library(
 redpanda_cc_library(
     name = "ctp_stm_offsets",
     hdrs = ["ctp_stm_offsets.h"],
-    include_prefix = "cloud_topics/level_zero/stm",
     deps = [
         ":dl_version",
         "//src/v/model",
@@ -78,7 +73,6 @@ redpanda_cc_library(
     name = "ctp_stm_state",
     srcs = ["ctp_stm_state.cc"],
     hdrs = ["ctp_stm_state.h"],
-    include_prefix = "cloud_topics/level_zero/stm",
     deps = [
         ":ctp_stm_offsets",
         ":dl_snapshot",
@@ -102,7 +96,6 @@ redpanda_cc_library(
         "//src/v/serde:uuid",
         "//src/v/serde:vector",
     ],
-    include_prefix = "cloud_topics/level_zero/stm",
     visibility = ["//visibility:public"],
     deps = [
         ":ctp_stm_state",
@@ -122,7 +115,6 @@ redpanda_cc_library(
         "//src/v/serde:uuid",
         "//src/v/storage:record_batch_builder",
     ],
-    include_prefix = "cloud_topics/level_zero/stm",
     visibility = ["//visibility:public"],
     deps = [
         ":dl_snapshot",
@@ -147,7 +139,6 @@ redpanda_cc_library(
         ":ctp_stm",
         "//src/v/cloud_topics:logger",
     ],
-    include_prefix = "cloud_topics/level_zero/stm",
     visibility = ["//visibility:public"],
     deps = ["//src/v/cluster:state_machine_registry"],
 )
