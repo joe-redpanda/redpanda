@@ -8,7 +8,6 @@ redpanda_cc_library(
     hdrs = [
         "errc.h",
     ],
-    include_prefix = "cloud_topics/frontend",
     visibility = ["//visibility:public"],
     deps = [
         "@fmt",
@@ -28,7 +27,6 @@ redpanda_cc_library(
         "//src/v/cloud_topics:logger",
         "//src/v/cluster",
     ],
-    include_prefix = "cloud_topics/frontend",
     visibility = ["//visibility:public"],
     deps = [
         ":errc",

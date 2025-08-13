@@ -4,7 +4,6 @@ load("//src/v/rpc:compiler.bzl", "redpanda_cc_rpc_library")
 redpanda_cc_rpc_library(
     name = "consumer_group_lag_metrics_rpc",
     src = "consumer_group_lag_metrics_rpc.json",
-    include_prefix = "kafka/server",
 )
 
 redpanda_cc_library(
@@ -12,7 +11,6 @@ redpanda_cc_library(
     hdrs = [
         "queue_depth_monitor_config.h",
     ],
-    include_prefix = "kafka/server",
     visibility = ["//visibility:public"],
 )
 
@@ -24,7 +22,6 @@ redpanda_cc_library(
     hdrs = [
         "logger.h",
     ],
-    include_prefix = "kafka/server",
     visibility = [":__subpackages__"],
     deps = [
         "//src/v/base",
@@ -48,7 +45,6 @@ redpanda_cc_library(
         "handlers/topics/types.h",
         "handlers/topics/validators.h",
     ],
-    include_prefix = "kafka/server",
     visibility = ["//visibility:public"],
     deps = [
         ":errors",
@@ -232,7 +228,6 @@ redpanda_cc_library(
     implementation_deps = [
         "//src/v/features:enterprise_feature_messages",
     ],
-    include_prefix = "kafka/server",
     visibility = ["//visibility:public"],
     deps = [
         ":consumer_group_lag_metrics_rpc",
@@ -412,7 +407,6 @@ redpanda_cc_library(
     hdrs = [
         "datalake_usage_api.h",
     ],
-    include_prefix = "kafka/server",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/container:chunked_vector",
@@ -430,7 +424,6 @@ redpanda_cc_library(
     hdrs = [
         "datalake_throttle_manager.h",
     ],
-    include_prefix = "kafka/server",
     visibility = [":__subpackages__"],
     deps = [
         ":logger",
@@ -452,7 +445,6 @@ redpanda_cc_library(
     hdrs = [
         "errors.h",
     ],
-    include_prefix = "kafka/server",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/cluster",
@@ -471,7 +463,6 @@ redpanda_cc_library(
     implementation_deps = [
         ":server",
     ],
-    include_prefix = "kafka/server",
     visibility = ["//src/v/redpanda:__pkg__"],
     deps = [
         ":datalake_throttle_manager",
@@ -488,7 +479,6 @@ redpanda_cc_library(
     hdrs = [
         "write_at_offset_stm.h",
     ],
-    include_prefix = "kafka/server",
     visibility = ["//visibility:public"],
     deps = [
         ":logger",

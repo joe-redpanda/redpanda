@@ -5,7 +5,6 @@ redpanda_cc_library(
     hdrs = [
         "intrusive_list_helpers.h",
     ],
-    include_prefix = "container",
     visibility = ["//visibility:public"],
     deps = [
         "@boost//:intrusive",
@@ -18,7 +17,6 @@ redpanda_cc_library(
         "chunked_vector.h",
         "chunked_vector_async.h",
     ],
-    include_prefix = "container",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
@@ -31,7 +29,6 @@ redpanda_cc_library(
     hdrs = [
         "chunked_hash_map.h",
     ],
-    include_prefix = "container",
     visibility = ["//visibility:public"],
     deps = [
         ":chunked_vector",
@@ -45,7 +42,6 @@ redpanda_cc_library(
     hdrs = [
         "interval_set.h",
     ],
-    include_prefix = "container",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/bytes:iobuf_parser",
@@ -60,7 +56,6 @@ redpanda_cc_library(
     hdrs = [
         "contiguous_range_map.h",
     ],
-    include_prefix = "container",
     visibility = ["//visibility:public"],
     deps = [
         ":chunked_vector",
@@ -72,7 +67,6 @@ redpanda_cc_library(
     hdrs = [
         "zip.h",
     ],
-    include_prefix = "container",
     visibility = ["//visibility:public"],
     deps = [
         "@boost//:iterator",
@@ -84,7 +78,6 @@ redpanda_cc_library(
     hdrs = [
         "json.h",
     ],
-    include_prefix = "container",
     visibility = ["//visibility:public"],
     deps = [
         ":chunked_vector",
@@ -97,7 +90,6 @@ redpanda_cc_library(
     hdrs = [
         "lw_shared_container.h",
     ],
-    include_prefix = "container",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
@@ -110,6 +102,5 @@ redpanda_cc_library(
     hdrs = [
         "chunked_circular_buffer.h",
     ],
-    include_prefix = "container",
     visibility = ["//visibility:public"],
 )

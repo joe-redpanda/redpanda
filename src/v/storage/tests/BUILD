@@ -5,7 +5,6 @@ redpanda_test_cc_library(
     hdrs = [
         "storage_e2e_fixture.h",
     ],
-    include_prefix = "storage/tests",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/kafka/server/tests:kafka_test_utils",
@@ -21,7 +20,6 @@ redpanda_test_cc_library(
     hdrs = [
         "manual_mixin.h",
     ],
-    include_prefix = "storage/tests",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/test_utils:scoped_config",
@@ -33,7 +31,6 @@ redpanda_test_cc_library(
     hdrs = [
         "kvstore_fixture.h",
     ],
-    include_prefix = "storage/tests",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/config",
@@ -49,7 +46,6 @@ redpanda_test_cc_library(
     hdrs = [
         "randoms.h",
     ],
-    include_prefix = "storage/tests",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/model/tests:random",
@@ -63,7 +59,6 @@ redpanda_test_cc_library(
     hdrs = [
         "disk_log_builder_fixture.h",
     ],
-    include_prefix = "storage/tests",
     deps = [
         ":disk_log_builder",
         "@googletest//:gtest",
@@ -78,7 +73,6 @@ redpanda_test_cc_library(
     hdrs = [
         "utils/disk_log_builder.h",
     ],
-    include_prefix = "storage/tests",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
@@ -99,7 +93,6 @@ redpanda_test_cc_library(
     hdrs = [
         "common.h",
     ],
-    include_prefix = "storage/tests",
     deps = [
         "//src/v/storage",
     ],
@@ -110,7 +103,6 @@ redpanda_test_cc_library(
     hdrs = [
         "batch_generators.h",
     ],
-    include_prefix = "storage/tests",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/bytes:iobuf",
@@ -132,7 +124,6 @@ redpanda_test_cc_library(
     hdrs = [
         "storage_test_fixture.h",
     ],
-    include_prefix = "storage/tests",
     visibility = ["//visibility:public"],
     deps = [
         ":batch_generators",
@@ -149,7 +140,6 @@ redpanda_test_cc_library(
     hdrs = [
         "storage_test_fixture.h",
     ],
-    include_prefix = "storage/tests",
     visibility = ["//visibility:public"],
     deps = [
         ":batch_generators",
@@ -169,7 +159,6 @@ redpanda_test_cc_library(
     hdrs = [
         "utils/log_gap_analysis.h",
     ],
-    include_prefix = "storage/tests",
     deps = [
         "//src/v/model",
         "//src/v/model:batch_compression",
