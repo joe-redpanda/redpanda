@@ -795,6 +795,27 @@ ss::future<> fetcher::assign_partition(
       .assignment_epoch = next_epoch(),
       .incremental_include = true};
 
+    // in the case of fast leadership transfers, we may have a partition both
+    // being added and forgotten, in which case, make sure that it is only being
+    // added
+    auto forget_topic_iterator = _partitions_to_forget.find(tp.topic);
+    if (forget_topic_iterator != _partitions_to_forget.end()) {
+        // topic is in the 'to forget map', now is the partition in the topic's
+        // map
+        auto& partitions_to_forget = forget_topic_iterator->second;
+        auto forget_partition_iterator = partitions_to_forget.find(
+          tp.partition);
+        if (forget_partition_iterator != partitions_to_forget.end()) {
+            // the ntp is both being added and forgotten, make sure its only
+            // added
+            partitions_to_forget.erase(forget_partition_iterator);
+            if (partitions_to_forget.empty()) {
+                // cleanup if this was the last partition
+                _partitions_to_forget.erase(forget_topic_iterator);
+            }
+        }
+    }
+
     _partitions_updated.signal();
     co_return;
 }
