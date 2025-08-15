@@ -62,6 +62,9 @@ struct new_object
     void collect_extents_by_tidp(sorted_extents_by_tidp_t*) const;
 };
 
+using term_state_update_t
+  = chunked_hash_map<model::topic_id_partition, chunked_vector<term_start>>;
+
 struct add_objects_update
   : public serde::envelope<
       add_objects_update,
@@ -69,12 +72,13 @@ struct add_objects_update
       serde::compat_version<0>> {
     friend bool operator==(const add_objects_update&, const add_objects_update&)
       = default;
-    auto serde_fields() { return std::tie(new_objects); }
+    auto serde_fields() { return std::tie(new_objects, new_terms); }
 
     static constexpr auto key{update_key::add_objects};
     static std::expected<add_objects_update, stm_update_error> build(
       const state&,
       chunked_vector<new_object>,
+      term_state_update_t,
       chunked_hash_map<model::topic_id_partition, kafka::offset>* = nullptr);
 
     std::expected<std::monostate, stm_update_error> can_apply(
@@ -83,6 +87,7 @@ struct add_objects_update
     std::expected<std::monostate, stm_update_error> apply(state&);
 
     chunked_vector<new_object> new_objects;
+    term_state_update_t new_terms;
 };
 
 struct compaction_state_update

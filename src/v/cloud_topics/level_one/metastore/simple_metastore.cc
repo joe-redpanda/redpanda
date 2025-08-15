@@ -133,9 +133,13 @@ simple_metastore::add_objects(const chunked_vector<object_metadata>& objects) {
     for (const auto& o : objects) {
         new_objects.emplace_back(make_new_object(o));
     }
+    auto terms_update = term_state_update_t{};
     add_response resp;
     auto update_res = add_objects_update::build(
-      state_, std::move(new_objects), &resp.corrected_next_offsets);
+      state_,
+      std::move(new_objects),
+      std::move(terms_update),
+      &resp.corrected_next_offsets);
     if (!update_res.has_value()) {
         vlog(cd_log.debug, "Object add failed: {}", update_res.error());
         co_return std::unexpected(metastore::errc::invalid_request);

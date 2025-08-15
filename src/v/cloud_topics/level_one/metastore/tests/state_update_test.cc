@@ -114,7 +114,7 @@ private:
 
 TEST(StateUpdateTest, TestEmptyAdd) {
     state s;
-    auto empty_update = add_objects_update::build(s, {});
+    auto empty_update = add_objects_update::build(s, {}, {});
     EXPECT_FALSE(empty_update.has_value());
     EXPECT_EQ(empty_update.error(), "No objects requested");
 }

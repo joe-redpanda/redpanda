@@ -60,9 +60,11 @@ void new_object::collect_extents_by_tidp(sorted_extents_by_tidp_t* ret) const {
 std::expected<add_objects_update, stm_update_error> add_objects_update::build(
   const state& state,
   chunked_vector<new_object> objects,
+  term_state_update_t terms,
   chunked_hash_map<model::topic_id_partition, kafka::offset>* corrections) {
     add_objects_update update{
       .new_objects = std::move(objects),
+      .new_terms = std::move(terms),
     };
     auto allowed = update.can_apply(state, corrections);
     if (!allowed.has_value()) {
