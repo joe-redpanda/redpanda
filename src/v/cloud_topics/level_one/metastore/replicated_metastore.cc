@@ -393,6 +393,12 @@ replicated_metastore::get_first_ge(
     co_return resp;
 }
 
+ss::future<std::expected<kafka::offset, metastore::errc>>
+replicated_metastore::get_end_offset_for_term(
+  const model::topic_id_partition&, model::term_id) {
+    co_return kafka::offset{};
+}
+
 ss::future<std::expected<void, metastore::errc>>
 replicated_metastore::compact_objects(
   std::unique_ptr<metastore::object_metadata_builder> builder,

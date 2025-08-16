@@ -264,6 +264,52 @@ simple_metastore::get_first_ge(
     return std::unexpected(metastore::errc::out_of_range);
 }
 
+ss::future<std::expected<kafka::offset, metastore::errc>>
+simple_metastore::get_end_offset_for_term(
+  const model::topic_id_partition& tp, model::term_id requested_term) {
+    co_return get_end_offset_for_term(state_, tp, requested_term);
+}
+std::expected<kafka::offset, metastore::errc>
+simple_metastore::get_end_offset_for_term(
+  const state& state,
+  const model::topic_id_partition& tp,
+  model::term_id requested_term) {
+    auto prt_ref = state.partition_state(tp);
+    if (!prt_ref.has_value()) {
+        vlog(cd_log.debug, "Partition {} not tracked", tp);
+        return std::unexpected(metastore::errc::missing_ntp);
+    }
+    auto& prt = prt_ref->get();
+    if (prt.term_starts.empty()) {
+        return std::unexpected(metastore::errc::missing_ntp);
+    }
+
+    auto first_ge_it = std::ranges::lower_bound(
+      prt.term_starts, requested_term, std::less<>{}, &term_start::term_id);
+    if (first_ge_it == prt.term_starts.end()) {
+        // All terms are below `requested_term`.
+        return std::unexpected(metastore::errc::out_of_range);
+    }
+    if (first_ge_it->term_id > requested_term) {
+        // If we've already found a higher term, return its start; that marks
+        // the end (last + 1) of the requested term.
+        return first_ge_it->start_offset;
+    }
+    vassert(
+      first_ge_it->term_id == requested_term,
+      "lower_bound() return val not >= {}: {}",
+      requested_term,
+      first_ge_it->term_id);
+    auto next_higher = std::next(first_ge_it);
+    if (next_higher == prt.term_starts.end()) {
+        // The requested term is the last term in L1. The end offset (last + 1)
+        // is equivalent to the next offset of L1.
+        return prt.next_offset;
+    }
+    // The term's end offset is equivalent to the start of the next term.
+    return next_higher->start_offset;
+}
+
 ss::future<std::expected<void, metastore::errc>>
 simple_metastore::compact_objects(
   const chunked_vector<object_metadata>& objects,
