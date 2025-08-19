@@ -294,7 +294,7 @@ TEST(DatatypeTest, TestStruct) {
     ASSERT_EQ(t1_move, t1_dup);
     ASSERT_EQ("struct[1:foo<string>]", fmt::format("{}", t2));
     ASSERT_EQ("struct[0:food<string>]", fmt::format("{}", t3));
-    ASSERT_EQ("struct[0:foo<string>]", fmt::format("{}", t4));
+    ASSERT_EQ("struct[0:foo<?string>]", fmt::format("{}", t4));
     ASSERT_EQ("struct[0:foo<boolean>]", fmt::format("{}", t5));
     ASSERT_EQ("struct[0:foo<string>]", fmt::format("{}", t1_dup));
     ASSERT_EQ("struct[0:foo<string>]", fmt::format("{}", t1_move));
