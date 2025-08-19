@@ -116,6 +116,10 @@ security::audit::authentication_event_options make_auth_event_options(
     }
   };
 }
+
+model::topic_namespace_view as_tp_ns_view(const model::topic& tp) {
+    return {model::kafka_namespace, tp};
+}
 } // namespace
 
 server::server(
@@ -1235,8 +1239,7 @@ offset_delete_handler::handle(request_context ctx, ss::smp_service_group) {
           topic.partitions.end(),
           [&topic, &ctx](const offset_delete_request_partition& partition) {
               return ctx.metadata_cache().contains(
-                model::topic_namespace_view(model::kafka_namespace, topic.name),
-                partition.partition_index);
+                as_tp_ns_view(topic.name), partition.partition_index);
           });
         if (std::distance(unknowns_it, topic.partitions.end()) > 0) {
             unknowns.push_back(
@@ -1363,8 +1366,7 @@ delete_topics_handler::handle(request_context ctx, ss::smp_service_group) {
       request.data.topic_names.begin(),
       request.data.topic_names.end(),
       [&ctx, &resp_delay, now](const model::topic& t) {
-          const auto cfg = ctx.metadata_cache().get_topic_cfg(
-            model::topic_namespace_view(model::kafka_namespace, t));
+          const auto cfg = ctx.metadata_cache().get_topic_cfg(as_tp_ns_view(t));
           const auto mutations = cfg ? cfg->partition_count : 0;
           /// Capture before next scheduling point below
           auto& resp_delay_ref = resp_delay;
@@ -1761,7 +1763,7 @@ offset_commit_handler::handle(request_context ctx, ss::smp_service_group ssg) {
         /*
          * check if topic exists
          */
-        model::topic_namespace_view tn(model::kafka_namespace, topic.name);
+        auto tn{as_tp_ns_view(topic.name)};
 
         if (!octx.rctx.metadata_cache().contains(tn)) {
             /*
