@@ -1344,7 +1344,7 @@ struct fill_ids_test_case {
     std::string_view description{};
     ss::lw_shared_ptr<struct_type> source;
     ss::lw_shared_ptr<struct_type> dest;
-    checked<ids_filled, schema_evolution_errc> expected_result{ids_filled::yes};
+    ids_filled expected_result;
 };
 
 std::ostream& operator<<(std::ostream& os, const fill_ids_test_case& tc) {
@@ -1370,6 +1370,14 @@ std::vector<fill_ids_test_case> generate_fill_ids_test_cases() {
         .description = "equivalent schemas should succeed",
         .source = struct_template(),
         .dest = struct_template(),
+        .expected_result = ids_filled::yes,
+      });
+
+    test_cases.emplace_back(
+      fill_ids_test_case{
+        .description = "equivalent schemas should succeed (nested)",
+        .source = [] { return ss::make_lw_shared(nested_test_struct()); }(),
+        .dest = [] { return ss::make_lw_shared(nested_test_struct()); }(),
         .expected_result = ids_filled::yes,
       });
 
@@ -1433,34 +1441,34 @@ std::vector<fill_ids_test_case> generate_fill_ids_test_cases() {
         .expected_result = ids_filled::no,
       });
 
-    // test_cases.emplace_back(
-    //   fill_ids_test_case{
-    //     .description = "dest int type, source long type should succeed "
-    //                    "(allowed under promotion rules)",
-    //     .source =
-    //       []() {
-    //           auto s = ss::make_lw_shared<struct_type>();
-    //           s->fields.emplace_back(
-    //             nested_field::create(
-    //               nested_field::id_t{1},
-    //               "foo",
-    //               field_required::yes,
-    //               long_type{}));
-    //           return s;
-    //       }(),
-    //     .dest =
-    //       []() {
-    //           auto s = ss::make_lw_shared<struct_type>();
-    //           s->fields.emplace_back(
-    //             nested_field::create(
-    //               nested_field::id_t{0},
-    //               "foo",
-    //               field_required::yes,
-    //               int_type{}));
-    //           return s;
-    //       }(),
-    //     .expected_result = ids_filled::yes,
-    //   });
+    test_cases.emplace_back(
+      fill_ids_test_case{
+        .description = "dest int type, source long type should succeed "
+                       "(allowed under promotion rules)",
+        .source =
+          []() {
+              auto s = ss::make_lw_shared<struct_type>();
+              s->fields.emplace_back(
+                nested_field::create(
+                  nested_field::id_t{1},
+                  "foo",
+                  field_required::yes,
+                  long_type{}));
+              return s;
+          }(),
+        .dest =
+          []() {
+              auto s = ss::make_lw_shared<struct_type>();
+              s->fields.emplace_back(
+                nested_field::create(
+                  nested_field::id_t{0},
+                  "foo",
+                  field_required::yes,
+                  int_type{}));
+              return s;
+          }(),
+        .expected_result = ids_filled::yes,
+      });
 
     for (auto& tc : test_cases) {
         reset_field_ids(*tc.dest);
@@ -1491,26 +1499,20 @@ TEST_P(FillIdsTest, TryFillFieldIds) {
     auto dest = tc.dest->copy();
     auto result = try_fill_field_ids(source, dest);
 
-    ASSERT_EQ(result.has_error(), tc.expected_result.has_error());
+    ASSERT_EQ(result, tc.expected_result);
 
-    if (result.has_error()) {
-        ASSERT_EQ(result.error(), tc.expected_result.error());
-    } else {
-        ASSERT_EQ(result.value(), tc.expected_result.value());
-
-        // If successful and ids_filled::yes, verify that all dest fields have
-        // non-zero IDs
-        if (result.value() == ids_filled::yes) {
-            bool all_have_ids = true;
-            std::ignore = for_each_field(
-              dest, [&all_have_ids](const nested_field* f) {
-                  if (f->id == nested_field::id_t{0}) {
-                      all_have_ids = false;
-                  }
-              });
-            ASSERT_TRUE(all_have_ids)
-              << "All destination fields should have assigned IDs";
-        }
+    // If successful and ids_filled::yes, verify that all dest fields have
+    // non-zero IDs
+    if (result == ids_filled::yes) {
+        bool all_have_ids = true;
+        std::ignore = for_each_field(
+          dest, [&all_have_ids](const nested_field* f) {
+              if (f->id == nested_field::id_t{0}) {
+                  all_have_ids = false;
+              }
+          });
+        ASSERT_TRUE(all_have_ids)
+          << "All destination fields should have assigned IDs";
     }
 }
 

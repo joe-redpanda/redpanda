@@ -12,6 +12,7 @@
 #include "base/vlog.h"
 #include "datalake/logger.h"
 #include "iceberg/compatibility.h"
+#include "iceberg/compatibility_types.h"
 #include "iceberg/datatypes.h"
 #include "iceberg/field_collecting_visitor.h"
 #include "iceberg/table_identifier.h"
@@ -60,27 +61,6 @@ enum class fill_errc {
 };
 
 // Performs a simultaneous, depth-first iteration through fields of the two
-// schemas, filling dest's field IDs with those from the source. Returns
-// successfully if all the field IDs in the destination type are filled.
-checked<std::nullopt_t, fill_errc>
-fill_field_ids(iceberg::struct_type& dest, const iceberg::struct_type& source) {
-    using namespace iceberg;
-    if (auto fill_res = try_fill_field_ids(source, dest);
-        fill_res.has_error()) {
-        vlog(
-          datalake_log.warn,
-          "Schema compatibility error: '{}'\n",
-          fill_res.error());
-        return fill_errc::invalid_schema;
-    } else if (!fill_res.value()) {
-        // Some fields left without IDs
-        return fill_errc::schema_evolution_needed;
-    }
-    // We successfully filled all the fields in the destination.
-    return std::nullopt;
-}
-
-// Performs a simultaneous, depth-first iteration through fields of the two
 // schemas, filling dest's field IDs with those from the source and checking
 // compatibility between the two schemas along the way. Returns successfully if
 // the schemas are identical. An error indicates that the schemas differ, in
@@ -125,8 +105,8 @@ std::ostream& operator<<(std::ostream& o, const schema_manager::errc& e) {
 
 bool schema_manager::table_info::fill_registered_ids(
   iceberg::struct_type& type) {
-    auto fill_res = fill_field_ids(type, schema.schema_struct);
-    return !fill_res.has_error();
+    return iceberg::try_fill_field_ids(schema.schema_struct, type)
+           == iceberg::ids_filled::yes;
 }
 
 ss::future<checked<std::nullopt_t, schema_manager::errc>>
