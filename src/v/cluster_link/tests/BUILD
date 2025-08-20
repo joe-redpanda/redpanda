@@ -147,3 +147,19 @@ redpanda_cc_gtest(
         "@googletest//:gtest",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "security_migrator_test",
+    timeout = "short",
+    srcs = [
+        "security_migrator_test.cc",
+    ],
+    deps = [
+        ":test_deps",
+        "//src/v/cluster_link:security_migrator",
+        "//src/v/kafka/server:security",
+        "//src/v/security",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+    ],
+)
