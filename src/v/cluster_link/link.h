@@ -104,6 +104,8 @@ public:
       chunked_hash_map<::model::topic, model::mirror_topic_metadata>>
     get_mirror_topics_for_link() const;
 
+    ::model::node_id self() const { return _self; }
+
 private:
     bool should_start_task(task* t) const;
     bool should_stop_task(task* t) const;
