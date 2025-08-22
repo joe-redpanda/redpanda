@@ -384,6 +384,25 @@ private:
       _topic_cfgs;
 };
 
+struct test_consumer_group_router : public consumer_groups_router {
+    struct group_state {
+        chunked_hash_map<
+          ::model::topic,
+          chunked_hash_map<::model::partition_id, kafka::offset>>
+          offsets;
+    };
+
+    std::optional<::model::partition_id>
+    partition_for(const kafka::group_id&) const override;
+
+    ss::future<kafka::offset_commit_response>
+      offset_commit(kafka::offset_commit_request) override;
+
+    chunked_hash_map<kafka::group_id, group_state> groups;
+
+    int partition_count = 1;
+};
+
 class cluster_link_manager_test_fixture {
 public:
     explicit cluster_link_manager_test_fixture(::model::node_id self);
@@ -448,6 +467,10 @@ public:
 
     void set_topic_config(cluster::topic_configuration cfg);
 
+    test_consumer_group_router* consumer_group_router() {
+        return _consumer_group_router;
+    }
+
 private:
     void setup_cluster_mock();
 
@@ -463,6 +486,7 @@ private:
     fake_topic_metadata_cache* _tmc{nullptr};
     kafka::data::rpc::test::fake_topic_creator* _ftpc{nullptr};
     link_factory* _lf{nullptr};
+    test_consumer_group_router* _consumer_group_router{nullptr};
     ss::sharded<manager> _manager;
 
     ::model::node_id _self;

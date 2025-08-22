@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include "cluster_link/deps.h"
 #include "cluster_link/model/types.h"
 #include "cluster_link/replication/deps.h"
 #include "cluster_link/replication/link_replication_mgr.h"
@@ -99,6 +100,8 @@ public:
     kafka::data::rpc::topic_creator& topic_creator() noexcept;
 
     kafka::client::cluster& get_cluster_connection() noexcept;
+
+    consumer_groups_router& get_group_router();
 
     std::optional<
       chunked_hash_map<::model::topic, model::mirror_topic_metadata>>

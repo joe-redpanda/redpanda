@@ -75,6 +75,11 @@ ss::future<> cluster_link_manager_test_fixture::wire_up_and_start(
       ss::sharded_parameter([this]() {
           return std::make_unique<cluster_mock_factory>(&_cluster_mock);
       }),
+      ss::sharded_parameter([this]() {
+          auto router = std::make_unique<test_consumer_group_router>();
+          _consumer_group_router = router.get();
+          return router;
+      }),
       1s);
 
     auto notif_id = _table.local().register_for_updates(
@@ -201,5 +206,26 @@ void cluster_link_manager_test_fixture::setup_cluster_mock() {
       ::model::node_id(1), net::unresolved_address{"localhost", 9093});
     _cluster_mock.add_broker(
       ::model::node_id(2), net::unresolved_address{"localhost", 9094});
+}
+
+std::optional<::model::partition_id>
+test_consumer_group_router::partition_for(const kafka::group_id& group) const {
+    auto hash = std::hash<kafka::group_id>{}(group);
+    return ::model::partition_id(
+      static_cast<::model::partition_id::type>(hash % partition_count));
+}
+
+ss::future<kafka::offset_commit_response>
+test_consumer_group_router::offset_commit(kafka::offset_commit_request req) {
+    auto& g_state = groups[req.data.group_id];
+    for (auto& tp : req.data.topics) {
+        auto& topic = g_state.offsets[tp.name];
+        for (auto& p : tp.partitions) {
+            topic[p.partition_index] = ::model::offset_cast(p.committed_offset);
+        }
+    }
+    kafka::offset_commit_response resp;
+
+    co_return resp;
 }
 } // namespace cluster_link::tests
