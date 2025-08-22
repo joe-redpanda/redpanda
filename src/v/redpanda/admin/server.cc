@@ -344,9 +344,6 @@ admin_server::admin_server(
   , _default_blocked_reactor_notify(
       ss::engine().get_blocked_reactor_notify_ms()) {
     _server.set_content_streaming(true);
-    // NOTE: This isn't normally where services should be registered
-    // but this service is special as it has some reflection based methods.
-    add_service(std::make_unique<admin::admin_service_impl>(&_services));
 }
 
 namespace {
@@ -527,6 +524,16 @@ admin_server::handle_rpc_request(serde::pb::rpc::context ctx, iobuf buf) {
 }
 
 ss::future<> admin_server::start() {
+    // NOTE: This isn't normally where services should be registered
+    // but this service is special as it has some reflection based methods.
+    admin::proxy::client client(
+      _controller->self(), &_connection_cache, [this] {
+          return _controller->get_members_table().local().node_ids();
+      });
+    add_service(
+      std::make_unique<admin::admin_service_impl>(
+        std::move(client), &_services));
+
     co_await _debug_bundle_file_handler.start();
 
     _blocked_reactor_notify_reset_timer.set_callback([this] {
@@ -534,6 +541,7 @@ ss::future<> admin_server::start() {
             ss::engine().update_blocked_reactor_notify_ms(ms);
         });
     });
+
     configure_metrics_route();
     configure_admin_routes();
 
