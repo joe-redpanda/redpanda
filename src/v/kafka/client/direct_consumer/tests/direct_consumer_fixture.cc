@@ -85,6 +85,40 @@ model::node_id consumer_fixture::get_partition_leader(const model::ntp& ntp) {
     return leader_id.value();
 }
 
+ss::future<kafka::offset> consumer_fixture::produce_to_partition(
+  const model::topic& topic, int partition, model::record_batch batch) {
+    model::ntp ntp(
+      model::kafka_namespace, topic, model::partition_id(partition));
+    auto leader_id = get_partition_leader(ntp);
+    vlog(
+      logger.debug,
+      "[broker: {}] Producing {} to {}",
+      leader_id,
+      batch.header(),
+      ntp);
+
+    return instance(leader_id)->make_kafka_client().then(
+      [topic, partition, batch = std::move(batch)](auto transport) mutable {
+          return ss::do_with(
+            ::tests::kafka_produce_transport(std::move(transport)),
+            [topic, partition, batch = std::move(batch)](
+              auto& producer) mutable {
+                return producer.start().then([&producer,
+                                              topic,
+                                              partition,
+                                              batch = std::move(
+                                                batch)] mutable {
+                    return producer
+                      .produce_to_partition(
+                        topic, model::partition_id(partition), std::move(batch))
+                      .then(
+                        [](kafka::offset offset) { return ssx::now(offset); })
+                      .finally([&producer] { return producer.stop(); });
+                });
+            });
+      });
+}
+
 ss::future<> consumer_fixture::produce_to_partition(
   const model::topic& topic, int partition, size_t record_count) {
     model::ntp ntp(
