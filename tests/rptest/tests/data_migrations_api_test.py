@@ -795,7 +795,9 @@ class DataMigrationsApiTest(RedpandaTest, DataMigrationTestMixin):
                     try:
                         with self.ck_consumer(group) as consumer:
                             consumer.subscribe([topic])
+                            self.logger.debug("start polling consumer")
                             msg = consumer.poll(20)
+                            self.logger.debug("done polling consumer")
                             if msg is None or msg.error() is not None:
                                 raise ck.KafkaException(
                                     f"Failed to read from topic {topic} "
@@ -803,6 +805,9 @@ class DataMigrationsApiTest(RedpandaTest, DataMigrationTestMixin):
                                 )
                         break
                     except ck.KafkaException as e:
+                        self.logger.debug(
+                            f"exception when polling consumer: {e} (full exception follows)",
+                            exc_info=True)
                         if "Failed to fetch committed offsets for 0 partition" \
                                 in str(e.args[0]):
                             self.logger.info(
