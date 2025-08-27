@@ -198,10 +198,6 @@ ss::future<> level_zero_log_reader_impl::fetch_metadata(
         for (auto&& batch : placeholders) {
             auto& header = batch.header();
             if (header.type == model::record_batch_type::raft_data) {
-                vassert(
-                  batch.header().attrs.is_control(),
-                  "expect all raft data batches to be control batches, got: {}",
-                  batch.header());
                 local_log_batch local_batch{.header = header};
                 local_batch.data = std::move(batch).release_data();
                 _unhydrated.push_back(std::move(local_batch));
