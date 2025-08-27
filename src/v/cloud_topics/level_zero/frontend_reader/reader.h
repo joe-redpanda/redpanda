@@ -96,6 +96,9 @@ private:
     std::optional<chunked_circular_buffer<model::record_batch>>
     maybe_load_slices_from_cache();
 
+    // If adding a batch of `size` would cause this to go over the bytes limit.
+    bool is_over_limit(size_t size) const;
+
     state _current{state::empty_state};
 
     // A batch read from the local log, these can be either placeholder batches

@@ -282,8 +282,7 @@ ss::future<> level_zero_log_reader_impl::materialize_batches(
         chunked_vector<cloud_topics::extent_meta> to_materialize;
         auto unhydrated_it = _unhydrated.begin();
         size_t materialize_bytes = 0;
-        while (_config.bytes_consumed < _config.max_bytes
-               && unhydrated_it != _unhydrated.end()) {
+        for (; unhydrated_it != _unhydrated.end(); ++unhydrated_it) {
             size_t hydrated_batch_size = ss::visit(
               unhydrated_it->data,
               [](const local_log_batch::payload& payload) {
@@ -292,10 +291,7 @@ ss::future<> level_zero_log_reader_impl::materialize_batches(
               [](const cloud_topics::extent_meta& meta) {
                   return meta.byte_range_size();
               });
-            if (
-              (_config.strict_max_bytes || _config.bytes_consumed > 0)
-              && (_config.bytes_consumed + hydrated_batch_size)
-                   > _config.max_bytes) {
+            if (is_over_limit(hydrated_batch_size)) {
                 // If the next meta batch exceeds the max bytes limit, we stop
                 // materializing. The only exception is if we didn't collect any
                 // batches yet, in which case we still materialize the next
@@ -323,9 +319,7 @@ ss::future<> level_zero_log_reader_impl::materialize_batches(
                   "Materialize {} bytes total...",
                   materialize_bytes);
             }
-            ++unhydrated_it;
         }
-
         size_t materialize_count = to_materialize.size();
         vlog(
           cd_log.trace,
@@ -340,12 +334,10 @@ ss::future<> level_zero_log_reader_impl::materialize_batches(
           std::move(to_materialize),
           deadline);
         if (mat_res.has_error()) {
-            vlog(
-              cd_log.info,
-              "Failed to materialize batches from the cloud storage: {}",
-              mat_res.error().message());
-            _current = state::end_of_stream_state;
-            co_return;
+            throw std::runtime_error(
+              fmt::format(
+                "Failed to materialize batches from the cloud storage: {}",
+                mat_res.error().message()));
         }
         auto batches = std::move(mat_res.value());
         if (batches.size() != materialize_count) {
@@ -359,39 +351,44 @@ ss::future<> level_zero_log_reader_impl::materialize_batches(
         // batches, preserving control batches from the local log.
         auto batches_it = batches.begin();
         chunked_circular_buffer<model::record_batch> hydrated;
-        for (auto it = _unhydrated.begin(); it != unhydrated_it; ++it) {
+        auto range_to_materialize = std::ranges::subrange(
+          _unhydrated.begin(), unhydrated_it);
+        for (local_log_batch& local_batch : range_to_materialize) {
+            auto& local_batch_header = local_batch.header;
             model::record_batch batch = ss::visit(
-              it->data,
-              [&it, &batches_it](const cloud_topics::extent_meta&) {
+              local_batch.data,
+              [this, &local_batch_header, &batches_it](
+                const cloud_topics::extent_meta&) {
                   model::record_batch batch = std::move(*batches_it);
                   ++batches_it;
                   auto size = batch.header().size_bytes;
                   auto crc = batch.header().crc;
-                  batch.header() = it->header;
+                  batch.header() = local_batch_header;
                   batch.header().type = model::record_batch_type::raft_data;
                   batch.header().size_bytes = size;
                   batch.header().crc = crc;
                   // Recalculate the header crc
                   batch.header().header_crc = model::internal_header_only_crc(
                     batch.header());
+                  // Propagate materialized batches to the record batch cache
+                  if (cache_enabled()) {
+                      _ct_api->cache_put(_underlying->ntp(), batch.copy());
+                  }
                   return batch;
               },
-              [&it](local_log_batch::payload& payload) {
+              [&local_batch_header](local_log_batch::payload& payload) {
                   return model::record_batch(
-                    it->header,
+                    local_batch_header,
                     std::move(payload),
                     model::record_batch::tag_ctor_ng{});
               });
-            // Propagate materialized batches to the record batch cache
-            if (cache_enabled() && !batch.header().attrs.is_control()) {
-                _ct_api->cache_put(_underlying->ntp(), batch.copy());
-            }
             hydrated.push_back(std::move(batch));
         }
         vassert(
           batches_it == batches.end(),
           "All materialized batches should be used");
-        _unhydrated.erase(_unhydrated.begin(), unhydrated_it);
+        _unhydrated.erase(
+          range_to_materialize.begin(), range_to_materialize.end());
         _hydrated = std::move(hydrated);
         // Materialize batches from the L0 meta batches.
         vlog(
@@ -445,4 +442,8 @@ bool level_zero_log_reader_impl::is_end_of_stream() const {
     return _current == state::end_of_stream_state;
 }
 
+bool level_zero_log_reader_impl::is_over_limit(size_t size) const {
+    return (_config.strict_max_bytes || _config.bytes_consumed > 0)
+           && (_config.bytes_consumed + size) > _config.max_bytes;
+}
 } // namespace cloud_topics
