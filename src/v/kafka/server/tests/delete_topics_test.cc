@@ -54,13 +54,14 @@ public:
           = client.dispatch(std::move(req), kafka::api_version(2)).get();
     }
 
-    kafka::delete_topics_response
-    send_delete_topics_request(kafka::delete_topics_request req) {
+    kafka::delete_topics_response send_delete_topics_request(
+      kafka::delete_topics_request req,
+      kafka::api_version v = kafka::api_version{2}) {
         auto client = make_kafka_client().get();
         auto deferred_close = ss::defer([&client] { client.stop().get(); });
         client.connect().get();
 
-        return client.dispatch(std::move(req), kafka::api_version(2)).get();
+        return client.dispatch(std::move(req), v).get();
     }
 
     void
@@ -159,6 +160,24 @@ FIXTURE_TEST(delete_valid_topics, delete_topics_request_fixture) {
       chunked_vector<model::topic>{
         {model::topic("topic-2"), model::topic("topic-3")}},
       10s));
+}
+
+FIXTURE_TEST(
+  delete_invalid_topics_v5_unknown_name, delete_topics_request_fixture) {
+    wait_for_controller_leadership().get();
+
+    auto resp = send_delete_topics_request(
+      kafka::delete_topics_request{
+        .data
+        = {.topic_names = {{model::topic{"topic-1"}}}, .timeout_ms = 10s}},
+      kafka::api_version{5});
+
+    BOOST_REQUIRE_EQUAL(resp.data.responses.size(), 1);
+    BOOST_REQUIRE_EQUAL(resp.data.responses[0].name, model::topic("topic-1"));
+    BOOST_REQUIRE_EQUAL(resp.data.responses[0].topic_id, model::topic_id{});
+    BOOST_REQUIRE_EQUAL(
+      resp.data.responses[0].error_code,
+      kafka::error_code::unknown_topic_or_partition);
 }
 
 #if 0
