@@ -35,11 +35,12 @@ redpanda_package(
     rpk_binary = "//:rpk",
 )
 
+# This is "bazel-dir" packaging mode used for local DT tests.
 redpanda_package(
     name = "ducktape",
     out = "redpanda_ducktape",
     include_sysroot_libs = True,
-    install_path = ":install_path",
+    install_path = "/opt/redpanda_installs/redpanda",
     redpanda_binary = "//:redpanda",
     rpath_override = "$ORIGIN/../lib",
     rpk_binary = "//:rpk",
@@ -64,9 +65,7 @@ native_package(
     cc_binaries = [
         "//src/v/kafka/client/direct_consumer/verifier:direct_consumer_verifier",
     ],
-    include_sysroot_libs = True,
-    install_path = ":install_path",
-    rpath_override = "$ORIGIN/../lib",
+    install_path = "/opt/redpanda_installs/direct_consumer_verifier",
 )
 
 native_package(
@@ -75,9 +74,7 @@ native_package(
     cc_binaries = [
         "//src/v/kafka/client/direct_consumer/verifier:direct_consumer_verifier",
     ],
-    include_sysroot_libs = True,
-    install_path = ":install_path",
-    rpath_override = "$ORIGIN/../lib",
+    install_path = "/opt/redpanda_installs/direct_consumer_verifier",
 )
 
 # NOTE: this image is currently experimental, don't use this for production.
