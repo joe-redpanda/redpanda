@@ -459,7 +459,7 @@ void admin_server::add_service(
     for (auto& route : service->all_routes()) {
         vlog(adminlog.debug, "Registering RPC route: {}", route.path);
         ss::httpd::path_description path{
-          fmt::format("/v2{}", route.path),
+          route.path,
           ss::httpd::operation_type::POST,
           route.path,
           /*path_parameters=*/{},

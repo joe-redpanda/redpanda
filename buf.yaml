@@ -1,7 +1,7 @@
 # For details on buf.yaml configuration, visit https://buf.build/docs/configuration/v2/buf-yaml
 version: v2
 modules:
-  - name: buf.build/rockwoodredpanda/redpanda-admin-test
+  - name: buf.build/redpandadata/core
     path: .
     includes:
       - proto

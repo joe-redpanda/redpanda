@@ -7,7 +7,7 @@ redpanda_cc_library(
     srcs = ["admin.cc"],
     hdrs = ["admin.h"],
     deps = [
-        "//proto/redpanda/core/admin:admin_redpanda_proto",
+        "//proto/redpanda/core/admin/v2:admin_redpanda_proto",
         "//src/v/redpanda/admin/proxy:client",
         "//src/v/version",
         "@seastar",

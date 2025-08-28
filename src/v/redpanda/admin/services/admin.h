@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "proto/redpanda/core/admin/admin.proto.h"
+#include "proto/redpanda/core/admin/v2/admin.proto.h"
 #include "redpanda/admin/proxy/client.h"
 
 namespace admin {

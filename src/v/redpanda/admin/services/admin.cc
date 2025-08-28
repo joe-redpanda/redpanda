@@ -68,7 +68,7 @@ admin::admin_service_impl::list_rpc_routes(
             proto::rpc_route r;
             r.set_name(
               fmt::format("{}.{}", route.service_name, route.method_name));
-            r.set_http_route(fmt::format("/v2{}", route.path));
+            r.set_http_route(ss::sstring(route.path));
             resp.get_routes().push_back(std::move(r));
         }
     }
