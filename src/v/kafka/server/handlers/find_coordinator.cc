@@ -26,6 +26,8 @@
 
 namespace kafka {
 
+namespace {
+
 static ss::future<response_ptr>
 handle_leader(request_context& ctx, model::node_id leader) {
     auto broker = ctx.metadata_cache().get_node_metadata(leader);
@@ -73,6 +75,8 @@ static ss::future<response_ptr> handle_partition(
             find_coordinator_response(error_code::coordinator_not_available));
       });
 }
+
+} // namespace
 
 template<>
 ss::future<response_ptr> find_coordinator_handler::handle(
