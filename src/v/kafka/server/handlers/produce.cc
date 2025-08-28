@@ -209,63 +209,6 @@ auto validate_batch_timestamps(
   const model::record_batch_header& header,
   model::timestamp_type timestamp_type,
   kafka::kafka_probe& probe) -> std::optional<model::timestamp> {
-    // we compute in std::chrono::timepoints, we print in model::timestamps
-    auto broker_time = model::timestamp::now();
-    auto broker_timepoint = model::duration_since_epoch(broker_time);
-
-    // alert if first_timestamp is too far in the past
-    // default value for threshold basically disables this check, so it's
-    // wrapped in a if check
-    if (auto max_before = config::shard_local_cfg()
-                            .log_message_timestamp_alert_before_ms.value();
-        unlikely(max_before)) {
-        auto first_timepoint = model::duration_since_epoch(
-          header.first_timestamp);
-        if (
-          broker_timepoint > first_timepoint
-          && std::chrono::duration_cast<std::chrono::milliseconds>(
-               broker_timepoint - first_timepoint)
-               > max_before.value()) {
-            // generate an alert
-            thread_local static ss::logger::rate_limit rate(despam_interval);
-            klog.log(
-              ss::log_level::warn,
-              rate,
-              "produce request timestamp for {} was before the alert "
-              "threshold, broker time: {}, timestamp: {}",
-              ntp,
-              broker_time,
-              header.first_timestamp);
-            // it's expected that to debug this, the observer will need to check
-            // the logs for the npt that triggered the alert
-            probe.produce_bad_create_time();
-        }
-    }
-
-    // alert if max_timestamp is too far in the future
-    if (timestamp_type == model::timestamp_type::create_time) {
-        auto max_after = config::shard_local_cfg()
-                           .log_message_timestamp_alert_after_ms.value();
-        auto max_timepoint = model::duration_since_epoch(header.max_timestamp);
-        if (
-          broker_timepoint < max_timepoint
-          && std::chrono::duration_cast<std::chrono::milliseconds>(
-               max_timepoint - broker_timepoint)
-               > max_after) {
-            // same as above, generate an alert
-            thread_local static ss::logger::rate_limit rate(despam_interval);
-            klog.log(
-              ss::log_level::warn,
-              rate,
-              "produce request timestamp for {} was past the alert threshold, "
-              "broker time: {}, timestamp: {}",
-              ntp,
-              broker_time,
-              header.max_timestamp);
-            probe.produce_bad_create_time();
-        }
-    }
-
     /*
      * For append time setting we have to recompute
      * the CRC.
