@@ -150,6 +150,37 @@ ss::future<> consumer_fixture::produce_to_partition(
       });
 }
 
+ss::future<chunked_vector<model::record>>
+consumer_fixture::consume_from_partition(
+  const model::topic& topic, int partition, kafka::offset offset) {
+    model::ntp ntp(
+      model::kafka_namespace, topic, model::partition_id(partition));
+    auto leader_id = get_partition_leader(ntp);
+    vlog(
+      logger.debug,
+      "[broker: {}] Consuming records from partition {}, offset: {}",
+      leader_id,
+      ntp,
+      offset);
+
+    return instance(leader_id)->make_kafka_client().then(
+      [topic, partition, offset](auto transport) mutable {
+          return ss::do_with(
+            ::tests::kafka_consume_transport(std::move(transport)),
+            [topic, partition, offset](auto& consumer) {
+                return consumer.start().then(
+                  [&consumer, topic, partition, offset] {
+                      return consumer
+                        .raw_consume_from_partition(
+                          topic,
+                          model::partition_id(partition),
+                          kafka::offset_cast(offset))
+                        .finally([&consumer] { return consumer.stop(); });
+                  });
+            });
+      });
+}
+
 chunked_hash_map<model::topic_partition, chunked_vector<model::record_batch>>
 consumer_fixture::fetch_until_empty(direct_consumer& consumer) {
     chunked_hash_map<

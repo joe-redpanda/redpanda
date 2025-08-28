@@ -42,6 +42,9 @@ public:
     ss::future<> produce_to_partition(
       const model::topic& topic, int partition, size_t record_count);
 
+    ss::future<chunked_vector<model::record>> consume_from_partition(
+      const model::topic& topic, int partition, kafka::offset offset);
+
     chunked_hash_map<
       model::topic_partition,
       chunked_vector<model::record_batch>>

@@ -11,6 +11,7 @@
 
 #include "container/chunked_vector.h"
 #include "kafka/client/transport.h"
+#include "kafka/protocol/fetch.h"
 #include "kafka/protocol/schemata/produce_request.h"
 #include "model/compression.h"
 
@@ -120,6 +121,7 @@ public:
 
     ss::future<> start() { return _transport.connect(); }
     ss::future<> stop() { return _transport.stop(); }
+
     ss::future<pid_to_kvs_map_t> consume(
       model::topic topic_name,
       std::vector<model::partition_id> pids,
@@ -130,7 +132,16 @@ public:
       model::partition_id pid,
       model::offset kafka_offset_inclusive);
 
+    ss::future<chunked_vector<model::record>> raw_consume_from_partition(
+      model::topic topic_name,
+      model::partition_id pid,
+      model::offset kafka_offset_inclusive);
+
 private:
+    ss::future<kafka::fetch_response> raw_consume(
+      model::topic topic_name,
+      std::vector<model::partition_id> pids,
+      std::vector<model::offset> kafka_offsets_inclusive);
     kafka::client::transport _transport;
 };
 
