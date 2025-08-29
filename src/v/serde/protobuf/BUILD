@@ -118,3 +118,16 @@ redpanda_cc_library(
         "@seastar",
     ],
 )
+
+redpanda_cc_library(
+    name = "base",
+    srcs = ["base.cc"],
+    hdrs = ["base.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":field_mask",
+        "//src/v/bytes:iobuf",
+        "@abseil-cpp//absl/time",
+        "@seastar",
+    ],
+)
