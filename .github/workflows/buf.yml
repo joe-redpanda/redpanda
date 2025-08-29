@@ -86,56 +86,15 @@ jobs:
           sed -i '/includes:/,/- proto/d' buf.yaml
           # Fix proto file imports to remove proto/ prefix
           find proto -name "*.proto" -exec sed -i 's|import "proto/|import "|g' {} \;
-      - name: Buf – push to registry
+      - name: Buf – login to registry
         uses: bufbuild/buf-action@v1
         with:
-          # No validation - already done in validate job
-          lint: false
-          format: false
-          breaking: false
-          # Only push to registry
-          push: true
+          setup_only: true
           token: ${{ env.BUF_TOKEN }}
-  # ===========================================================================
-  # Job: archive-label (delete events only - with error handling)
-  # ===========================================================================
-  archive-label:
-    if: |
-      github.event_name == 'delete' &&
-      github.repository == 'redpanda-data/redpanda'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ vars.RP_AWS_CRED_REGION }}
-          role-to-assume: arn:aws:iam::${{ secrets.RP_AWS_CRED_ACCOUNT_ID }}:role/${{ vars.RP_AWS_CRED_BASE_ROLE_NAME }}${{ github.event.repository.name }}
-      - uses: aws-actions/aws-secretsmanager-get-secrets@v2
-        with:
-          secret-ids: |
-            ,sdlc/prod/github/buf_token
-          parse-json-secrets: true
-      - uses: actions/checkout@v4
-      - name: Preprocess proto files for buf publishing
+      - name: Buf - push to registry
         run: |
-          # WORKAROUND: Our Bazel structure puts proto files to live under a "proto/"
-          # directory, but when publishing to Buf's BCR this creates undesirable import paths
-          # like "proto/redpanda/..." instead of "redpanda/..." paths, which doesn't work with
-          # Buf.
-          #
-          # This preprocessing step:
-          # 1. Updates buf.yaml to use path: proto instead of includes
-          # 2. Strips "proto/" prefixes from buf.yaml paths and proto file imports
-          # 3. Allows buf to publish with import paths that match protoc plugin expectations
-
-          sed -i 's|path: \.|path: proto|' buf.yaml
-          sed -i '/includes:/,/- proto/d' buf.yaml
-          # Fix excludes and other paths to be relative to proto directory
-          sed -i 's|proto/redpanda|redpanda|g' buf.yaml
-      - name: Buf – archive label (ignore if not found)
-        uses: bufbuild/buf-action@v1
-        with:
-          # Only archive - no other operations
-          push: true
-          token: ${{ env.BUF_TOKEN }}
-        # Don't fail the workflow if label doesn't exist
-        continue-on-error: true
+          buf push --error-format github-actions \
+            --exclude-unnamed \
+            --label ${{ github.ref_name }} \
+            --source-control-url https://github.com/redpanda-data/redpanda/commit/${{ github.sha }} \
+            --create
