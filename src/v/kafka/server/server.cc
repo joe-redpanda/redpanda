@@ -18,6 +18,7 @@
 #include "config/broker_authn_endpoint.h"
 #include "config/configuration.h"
 #include "config/node_config.h"
+#include "config/sasl_mechanisms.h"
 #include "container/chunked_hash_map.h"
 #include "features/enterprise_feature_messages.h"
 #include "features/feature_table.h"
@@ -717,11 +718,6 @@ ss::future<response_ptr> sasl_handshake_handler::handle(
     log_request(ctx.header(), request);
     vlog(klog.debug, "Received SASL_HANDSHAKE {}", request);
 
-    const auto& configured = config::shard_local_cfg().sasl_mechanisms();
-    auto supports = [&configured](std::string_view value) {
-        return std::ranges::contains(configured, value);
-    };
-
     /*
      * configure sasl for the current connection context. see the sasl
      * authenticate request for the next phase of the auth process.
@@ -729,7 +725,7 @@ ss::future<response_ptr> sasl_handshake_handler::handle(
     auto error = error_code::none;
 
     chunked_vector<ss::sstring> supported_sasl_mechanisms;
-    if (supports("SCRAM")) {
+    if (config::has_sasl_mechanism(config::scram)) {
         supported_sasl_mechanisms.emplace_back(
           security::scram_sha256_authenticator::name);
         supported_sasl_mechanisms.emplace_back(
@@ -751,7 +747,7 @@ ss::future<response_ptr> sasl_handshake_handler::handle(
         }
     }
 
-    if (supports("PLAIN")) {
+    if (config::has_sasl_mechanism(config::plain)) {
         supported_sasl_mechanisms.emplace_back(
           security::plain_authenticator::name);
         if (request.data.mechanism == security::plain_authenticator::name) {
@@ -761,7 +757,7 @@ ss::future<response_ptr> sasl_handshake_handler::handle(
         }
     }
 
-    if (supports("GSSAPI")) {
+    if (config::has_sasl_mechanism(config::gssapi)) {
         supported_sasl_mechanisms.emplace_back(
           security::gssapi_authenticator::name);
 
@@ -775,7 +771,7 @@ ss::future<response_ptr> sasl_handshake_handler::handle(
         }
     }
 
-    if (supports(security::oidc::sasl_authenticator::name)) {
+    if (config::has_sasl_mechanism(config::oauthbearer)) {
         supported_sasl_mechanisms.emplace_back(
           security::oidc::sasl_authenticator::name);
 

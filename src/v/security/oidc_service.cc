@@ -11,6 +11,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "config/configuration.h"
+#include "config/sasl_mechanisms.h"
 #include "config/tls_config.h"
 #include "http/client.h"
 #include "metrics/metrics.h"
@@ -217,9 +218,8 @@ struct service::impl {
     }
 
     ss::future<> update() {
-        auto enabled = std::ranges::any_of(
-                         _sasl_mechanisms(),
-                         [](const auto& m) { return m == "OAUTHBEARER"; })
+        auto enabled = std::ranges::contains(
+                         _sasl_mechanisms(), config::oauthbearer)
                        || std::ranges::any_of(
                          _http_authentication(),
                          [](const auto& m) { return m == "OIDC"; });

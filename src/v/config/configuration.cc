@@ -14,6 +14,7 @@
 #include "config/base_property.h"
 #include "config/bounded_property.h"
 #include "config/node_config.h"
+#include "config/sasl_mechanisms.h"
 #include "config/types.h"
 #include "config/validators.h"
 #include "model/metadata.h"
@@ -1634,7 +1635,7 @@ configuration::configuration()
       false)
   , sasl_mechanisms(
       *this,
-      std::vector<ss::sstring>{"GSSAPI", "OAUTHBEARER"},
+      is_enterprise_sasl_mechanism,
       "sasl_mechanisms",
       "A list of supported SASL mechanisms. Accepted values: `SCRAM`, "
       "`GSSAPI`, `OAUTHBEARER`, `PLAIN`.  Note that in order to enable PLAIN, "
@@ -1643,7 +1644,7 @@ configuration::configuration()
         .needs_restart = needs_restart::no,
         .visibility = visibility::user,
       },
-      std::vector<ss::sstring>{"SCRAM"},
+      std::vector<ss::sstring>{ss::sstring{scram}},
       validate_sasl_mechanisms)
   , sasl_kerberos_config(
       *this,
