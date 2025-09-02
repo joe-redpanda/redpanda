@@ -148,7 +148,7 @@ ss::future<> consumer_runner::do_fetch() {
                   partition_stats.last_fetched_offset);
             }
 
-            if (last_fetched_offset <= partition_stats.last_fetched_offset) {
+            if (last_fetched_offset < partition_stats.last_fetched_offset) {
                 _non_monotonic_fetches++;
                 vlog(
                   v_logger.warn,
