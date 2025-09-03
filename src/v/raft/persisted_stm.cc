@@ -10,6 +10,7 @@
 #include "raft/persisted_stm.h"
 
 #include "bytes/iostream.h"
+#include "config/configuration.h"
 #include "raft/consensus.h"
 #include "raft/state_machine_base.h"
 #include "ssx/future-util.h"
@@ -17,6 +18,7 @@
 #include "storage/api.h"
 #include "storage/kvstore.h"
 #include "storage/snapshot.h"
+#include "utils/adjustable_semaphore.h"
 
 #include <seastar/core/abort_source.hh>
 #include <seastar/core/coroutine.hh>
@@ -24,8 +26,14 @@
 
 #include <exception>
 #include <filesystem>
+#include <limits>
 namespace raft {
 namespace {
+
+// shard local semaphore which maintains the maximum number of snapshots that
+// stms are allowed to load at once on this shard
+thread_local adjustable_semaphore max_par_local_snapshots{
+  std::numeric_limits<uint32_t>::max()};
 
 std::optional<raft::stm_snapshot_header> read_snapshot_header(
   iobuf_parser& parser, const model::ntp& ntp, const ss::sstring& name) {
@@ -77,7 +85,23 @@ ss::future<> persisted_stm_base<BaseT, T>::apply(
 template<typename BaseT, supported_stm_snapshot T>
 ss::future<std::optional<stm_snapshot>>
 persisted_stm_base<BaseT, T>::load_local_snapshot() {
-    return _snapshot_backend.load_snapshot();
+    // check for config changes
+    uint32_t max_local_snapshot_loads
+      = config::shard_local_cfg()
+          .raft_max_load_local_snapshots_per_shard.value();
+
+    // update capacity
+    max_par_local_snapshots.set_capacity(
+      static_cast<uint64_t>(max_local_snapshot_loads));
+
+    // pass the semaphore units along the path of loading the snapshot
+    return max_par_local_snapshots.get_units(1).then(
+      [this](auto snapshot_units) {
+          return _snapshot_backend.load_snapshot().then(
+            [snapshot_units = std::move(snapshot_units)](auto maybe_snapshot) {
+                return maybe_snapshot;
+            });
+      });
 }
 template<typename BaseT, supported_stm_snapshot T>
 ss::future<> persisted_stm_base<BaseT, T>::stop() {

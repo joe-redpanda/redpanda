@@ -157,6 +157,7 @@ redpanda_cc_library(
         "//src/v/storage:record_batch_builder",
         "//src/v/storage:record_batch_utils",
         "//src/v/utils:absl_sstring_hash",
+        "//src/v/utils:adjustable_semaphore",
         "//src/v/utils:delta_for",
         "//src/v/utils:expiring_promise",
         "//src/v/utils:human",
