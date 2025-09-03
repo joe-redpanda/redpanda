@@ -11,7 +11,10 @@
 #pragma once
 
 #include "base/seastarx.h"
+#include "base/vassert.h"
 #include "ssx/semaphore.h"
+
+#include <limits>
 
 /**
  * This class is extension of ss::semaphore to fit the needs
@@ -33,14 +36,26 @@
  *   control the capacity of a semaphore.
  */
 class adjustable_semaphore {
+private:
+    // seastar's underlying semaphore count is backed by ssize_t but is
+    // initialized off size_t with no boundary check
+    static constexpr size_t initialization_capacity{1};
+    static constexpr size_t max_capacity{std::numeric_limits<ssize_t>::max()};
+
 public:
     explicit adjustable_semaphore(uint64_t capacity)
       : adjustable_semaphore(capacity, "s/allowance") {}
+
     adjustable_semaphore(uint64_t capacity, const ss::sstring& sem_name)
-      : _sem(capacity, sem_name)
-      , _capacity(capacity) {}
+      : _sem(initialization_capacity, sem_name)
+      , _capacity(initialization_capacity) {
+        set_capacity(capacity);
+    }
 
     void set_capacity(uint64_t capacity) noexcept {
+        vassert(
+          capacity <= max_capacity, "max size for semaphore is ssize_t::max");
+
         if (capacity > _capacity) {
             _sem.signal(capacity - _capacity);
         } else if (capacity < _capacity) {
