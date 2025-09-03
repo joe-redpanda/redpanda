@@ -514,6 +514,14 @@ configuration::configuration()
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       0,
       {.min = 0, .max = 100_MiB})
+  , raft_max_load_local_snapshots_per_shard(
+      *this,
+      "raft_max_load_local_snapshots_per_shard",
+      "This is the maximum number of snapshots that may be loaded from the "
+      "disk, typically during recovery.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      std::numeric_limits<uint32_t>::max(),
+      {.min = 1, .max = std::numeric_limits<uint32_t>::max()})
   , enable_usage(
       *this,
       "enable_usage",

@@ -180,6 +180,8 @@ struct configuration final : public config_store {
       raft_max_inflight_follower_append_entries_requests_per_shard;
     bounded_property<size_t>
       raft_max_buffered_follower_append_entries_bytes_per_shard;
+    bounded_property<uint32_t> raft_max_load_local_snapshots_per_shard;
+
     // Kafka
     property<bool> enable_usage;
     bounded_property<size_t> usage_num_windows;
