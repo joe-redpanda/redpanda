@@ -183,7 +183,7 @@ class DirectConsumerVerifierTest(RedpandaTest):
 
             # assertions
             # must have seen at least msg_count, duplicate offsets are legal but undesirable
-            assert final_state.total_consumed_messages >= msg_count, (
+            assert final_state.total_consumed_messages == msg_count, (
                 f"Expected {msg_count} messages, got {final_state.total_consumed_messages}"
             )
 

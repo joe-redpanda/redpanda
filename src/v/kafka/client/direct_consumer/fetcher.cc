@@ -403,6 +403,34 @@ ss::future<> fetcher::do_fetch() {
         }
 
         if (!fetch_result_value.topics.empty()) {
+            // log in line
+            for (auto& topic_list : fetch_result_value.topics) {
+                for (auto& partition : topic_list.partitions) {
+                    std::optional<assignment_epoch> maybe_epoch{};
+                    auto t_it = _partitions.find(topic_list.topic);
+                    if (t_it != _partitions.end()) {
+                        auto p_it = t_it->second.find(partition.partition_id);
+                        if (p_it != t_it->second.end()) {
+                            maybe_epoch = p_it->second.assignment_epoch;
+                        }
+                    }
+                    logger().info(
+                      "putting on queue ntp: {}/{} "
+                      "with assigned epoch: {} and request epoch: {}"
+                      "first offset: {} last "
+                      "offset: {}",
+                      topic_list.topic,
+                      partition.partition_id,
+                      maybe_epoch,
+                      find_assignment_epoch(
+                        topic_list.topic,
+                        partition.partition_id,
+                        assignment_epochs),
+                      partition.data.begin()->base_offset(),
+                      partition.data.back().last_offset());
+                }
+            }
+
             co_await queue().push(
               std::move(fetch_result_value.topics),
               fetch_result_value.total_bytes);

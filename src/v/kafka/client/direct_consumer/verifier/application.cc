@@ -126,9 +126,10 @@ ss::future<> consumer_runner::do_fetch() {
 
             vlog(
               v_logger.info,
-              "fetched ntp: {}/{}, offset: {}",
+              "fetched ntp: {}/{}, start offset: {} end offset: {}",
               fetched_topic_data.topic,
               fetched_partition_data.partition_id,
+              fetched_partition_data.data.begin()->base_offset(),
               last_fetched_offset);
 
             auto first_fetched_offset = model::offset_cast(
