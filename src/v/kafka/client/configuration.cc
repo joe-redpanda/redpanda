@@ -337,12 +337,16 @@ tls_configuration::from_tls_config(const config::tls_config& cfg) {
 
 ss::future<ss::shared_ptr<ss::tls::certificate_credentials>>
 tls_configuration::build_credentials() const {
-    auto builder = co_await net::get_credentials_builder(
-      truststore,
-      k_store,
-      from_config(config::shard_local_cfg().tls_min_version()),
-      config::shard_local_cfg().tls_enable_renegotiation(),
-      false);
+    auto builder = co_await net::get_credentials_builder({
+      .truststore = truststore,
+      .k_store = k_store,
+      .crl = std::nullopt,
+      .min_tls_version = from_config(
+        config::shard_local_cfg().tls_min_version()),
+      .enable_renegotiation
+      = config::shard_local_cfg().tls_enable_renegotiation(),
+      .require_client_auth = false,
+    });
 
     co_return co_await builder.build_reloadable_certificate_credentials(
       [](
