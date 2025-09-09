@@ -48,6 +48,10 @@ redpanda_cc_library(
         "//src/v/serde:vector",
         "//src/v/storage:record_batch_builder",
     ],
+    visibility = [
+        "//src/v/cloud_topics/level_one:__subpackages__",
+        "//src/v/cloud_topics/reconciler:__subpackages__",
+    ],
     deps = [
         "//src/v/base",
         "//src/v/container:chunked_vector",

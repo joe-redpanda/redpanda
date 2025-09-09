@@ -20,6 +20,23 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "reconciliation_consumer",
+    srcs = [
+        "reconciliation_consumer.cc",
+    ],
+    hdrs = [
+        "reconciliation_consumer.h",
+    ],
+    deps = [
+        "//src/v/base",
+        "//src/v/cloud_topics/level_one/common:object",
+        "//src/v/model",
+        "@abseil-cpp//absl/container:btree",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "reconciler",
     srcs = [
         "reconciler.cc",
