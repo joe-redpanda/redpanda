@@ -146,7 +146,8 @@ ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitions() {
         co_await ssx::async_for_each_counter(
           cnt,
           partitions,
-          [&to_process, &ret, inc = _session_state.incremental()](auto& p_fs) {
+          [this, topic, &to_process, &ret, inc = _session_state.incremental()](
+            auto& p_fs) {
               partition_fetch_state& fetch_state = p_fs.second;
               ret.assignment_epochs[to_process.topic][fetch_state.partition_id]
                 = fetch_state.assignment_epoch;
@@ -164,6 +165,23 @@ ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitions() {
                 };
 
               if (inc && should_skip(fetch_state)) {
+                  logger().info(
+                    "[broker: {}] skipping ntp {}/{} litmus pid {} in fetch "
+                    "request"
+                    "incremental is enabled?: {}"
+                    "should_skip result: {}"
+                    "fetch state incremental include?: {}"
+                    "fetch offset: {}, hwm: {}",
+                    _id,
+                    topic,
+                    fetch_state.partition_id,
+                    p_fs.first,
+                    inc,
+                    should_skip(fetch_state),
+                    fetch_state.incremental_include,
+                    fetch_state.fetch_offset,
+                    fetch_state.high_watermark);
+
                   // session should be up to date, so we can omit this
                   // partition from the request
                   return;
@@ -306,7 +324,7 @@ bool fetcher::maybe_update_fetch_offset(
 
     if (p_it->second.assignment_epoch != response_epoch) {
         vlog(
-          logger().trace,
+          logger().info,
           "[broker: {}] Ignoring {}/{} reply, assignment epoch changed, "
           "request epoch: {}, current epoch: {}",
           _id,
@@ -318,7 +336,7 @@ bool fetcher::maybe_update_fetch_offset(
     }
 
     vlog(
-      logger().trace,
+      logger().info,
       "[broker: {}] Updating {}/{} fetch offset from {} to {} {{hwm: {}}}",
       _id,
       topic,
@@ -336,6 +354,7 @@ bool fetcher::maybe_update_fetch_offset(
 }
 
 ss::future<> fetcher::do_fetch() {
+    vlog(logger().info, "[broker: {}] starting do_fetch", _id);
     bool needs_backoff = false;
     try {
         co_await _partitions_updated.wait([this] { return !is_idle(); });
@@ -415,10 +434,11 @@ ss::future<> fetcher::do_fetch() {
                         }
                     }
                     logger().info(
-                      "putting on queue ntp: {}/{} "
+                      "[broker: {}] putting on queue ntp: {}/{} "
                       "with assigned epoch: {} and request epoch: {}"
                       "first offset: {} last "
                       "offset: {}",
+                      _id,
                       topic_list.topic,
                       partition.partition_id,
                       maybe_epoch,
@@ -453,6 +473,7 @@ ss::future<> fetcher::do_fetch() {
         co_await _parent->_cluster->request_metadata_update();
         co_await ss::sleep_abortable(error_backoff, _as);
     }
+    vlog(logger().info, "[broker: {}] completing do_fetch", _id);
 }
 
 std::optional<fetcher::assignment_epoch> fetcher::find_assignment_epoch(
