@@ -16,6 +16,9 @@
 #include <seastar/net/tls.hh>
 namespace net {
 
+extern const std::string_view tls_v1_2_cipher_suites;
+extern const std::string_view tls_v1_3_cipher_suites;
+
 /**
  * Either a path to certificate file or the certificate content itself
  * in PEM format.

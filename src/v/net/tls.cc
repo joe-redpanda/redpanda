@@ -41,28 +41,24 @@ ss::future<std::optional<ss::sstring>> find_ca_file() {
     }
     co_return std::nullopt;
 }
-namespace {
-inline constexpr std::string_view tlsv1_2_cipher_string
+const std::string_view tls_v1_2_cipher_suites
   = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:AES128-GCM-"
     "SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:AES256-"
     "GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-CHACHA20-POLY1305:"
     "ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:AES128-SHA:AES128-CCM:ECDHE-"
     "RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:AES256-SHA:AES256-CCM";
 
-inline constexpr std::string_view tlsv1_3_ciphersuites
+const std::string_view tls_v1_3_cipher_suites
   = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_"
     "SHA256:TLS_AES_128_CCM_SHA256";
-} // namespace
 
 ss::future<ss::tls::credentials_builder>
 get_credentials_builder(credentials_configuration cfg) {
     ss::tls::credentials_builder builder;
 
     builder.enable_server_precedence();
-    builder.set_cipher_string(
-      {tlsv1_2_cipher_string.data(), tlsv1_2_cipher_string.size()});
-    builder.set_ciphersuites(
-      {tlsv1_3_ciphersuites.data(), tlsv1_3_ciphersuites.size()});
+    builder.set_cipher_string(ss::sstring{tls_v1_2_cipher_suites});
+    builder.set_ciphersuites({ss::sstring{tls_v1_3_cipher_suites}});
     builder.set_minimum_tls_version(cfg.min_tls_version);
     builder.set_dh_level(ss::tls::dh_params::level::MEDIUM);
 
