@@ -18,6 +18,7 @@ namespace net {
 
 extern const std::string_view tls_v1_2_cipher_suites;
 extern const std::string_view tls_v1_3_cipher_suites;
+extern const std::string_view tls_v1_3_cipher_suites_strict;
 
 /**
  * Either a path to certificate file or the certificate content itself
