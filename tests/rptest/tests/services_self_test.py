@@ -9,6 +9,7 @@
 
 import signal
 from subprocess import CalledProcessError
+from typing import Any
 from ducktape.cluster.cluster import ClusterNode
 from ducktape.cluster.remoteaccount import RemoteCommandError
 from ducktape.mark import matrix

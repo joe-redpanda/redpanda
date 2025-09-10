@@ -28,7 +28,7 @@ from rptest.utils.allow_logs_on_predicate import AllowLogsOnPredicate
 
 
 def cluster(
-    log_allow_list: LogAllowList | None = None,
+    log_allow_list: LogAllowList = (),
     check_allowed_error_logs: bool = True,
     check_for_storage_usage_inconsistencies: bool = True,
     **kwargs: Any,
@@ -50,15 +50,12 @@ def cluster(
         We find all replicas by traversing ducktape's internal service registry.
         """
         rp = test.redpanda
-        assert isinstance(rp, RedpandaServiceBase) or isinstance(
-            rp, RedpandaServiceCloud
-        )
+        assert isinstance(rp, (RedpandaService, RedpandaServiceCloud))
         yield rp
 
         for svc in test.test_context.services:
             if (
-                isinstance(svc, RedpandaServiceBase)
-                or isinstance(svc, RedpandaServiceCloud)
+                isinstance(svc, (RedpandaService, RedpandaServiceCloud))
                 and svc is not test.redpanda
             ):
                 yield svc
@@ -270,8 +267,8 @@ def cluster(
 
         # Propagate ducktape markers (e.g. parameterize) to our function
         # wrapper
-        wrapped.marks = f.marks
-        wrapped.mark_names = f.mark_names
+        wrapped.marks = f.marks  # type: ignore
+        wrapped.mark_names = f.mark_names  # type: ignore
 
         return wrapped
 
