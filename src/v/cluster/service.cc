@@ -905,9 +905,12 @@ service::update_mirror_topic_properties(
 
 ss::future<update_cluster_link_configuration_response>
 service::update_cluster_link_configuration(
-  update_cluster_link_configuration_request, rpc::streaming_context&) {
-    co_return update_cluster_link_configuration_response{
-      .ec = cluster_link::errc::invalid_update};
+  update_cluster_link_configuration_request req, rpc::streaming_context&) {
+    auto deadline = model::timeout_clock::now() + req.timeout;
+    auto result = co_await _cluster_link_frontend.local()
+                    .update_cluster_link_configuration(
+                      req.link_id, std::move(req.cmd), deadline);
+    co_return update_cluster_link_configuration_response{.ec = result};
 }
 
 ss::future<get_current_cluster_epoch_response>
