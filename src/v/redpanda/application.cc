@@ -1152,16 +1152,18 @@ void application::configure_admin_server(model::node_id node_id) {
       .get();
     _admin
       .invoke_on_all([this, node_id](admin_server& s) {
-          admin::proxy::client client(node_id, &_connection_cache, [this] {
-              return controller->get_members_table().local().node_ids();
-          });
+          auto create_client = [node_id, this]() {
+              return admin::proxy::client(node_id, &_connection_cache, [this] {
+                  return controller->get_members_table().local().node_ids();
+              });
+          };
           // Add RPC services
           s.add_service(
             std::make_unique<admin::shadow_link_service_impl>(
-              &_cluster_link_service));
+              create_client(), &_cluster_link_service, &metadata_cache));
           s.add_service(
             std::make_unique<admin::debug_service_impl>(
-              std::move(client), stress_fiber_manager));
+              create_client(), stress_fiber_manager));
       })
       .get();
 }

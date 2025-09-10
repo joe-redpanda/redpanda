@@ -11,6 +11,7 @@
 
 #include "redpanda/admin/services/shadow_link/shadow_link.h"
 
+#include "cluster/metadata_cache.h"
 #include "cluster_link/service.h"
 #include "redpanda/admin/services/shadow_link/converter.h"
 #include "serde/protobuf/rpc.h"
@@ -59,8 +60,12 @@ T handle_error(cluster_link::result<T> result) {
 } // namespace
 
 shadow_link_service_impl::shadow_link_service_impl(
-  ss::sharded<cluster_link::service>* service)
-  : _service(service) {}
+  admin::proxy::client proxy_client,
+  ss::sharded<cluster_link::service>* service,
+  ss::sharded<cluster::metadata_cache>* md_cache)
+  : _proxy_client(std::move(proxy_client))
+  , _service(service)
+  , _md_cache(md_cache) {}
 
 ss::future<proto::admin::create_shadow_link_response>
 shadow_link_service_impl::create_shadow_link(
@@ -130,5 +135,19 @@ ss::future<proto::admin::fail_over_response>
 shadow_link_service_impl::fail_over(
   serde::pb::rpc::context, proto::admin::fail_over_request) {
     throw serde::pb::rpc::unimplemented_exception();
+}
+
+std::optional<model::node_id>
+shadow_link_service_impl::redirect_to(const model::ntp& ntp) {
+    auto leader_node = _md_cache->local().get_leader_id(ntp);
+    if (!leader_node) {
+        throw serde::pb::rpc::unavailable_exception{
+          ssx::sformat("Partition {} does not have a leader", ntp)};
+    }
+
+    if (*leader_node == _proxy_client.self_node_id()) {
+        return std::nullopt;
+    }
+    return *leader_node;
 }
 } // namespace admin
