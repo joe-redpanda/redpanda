@@ -117,8 +117,17 @@ void reconciler::attach_partition(
         return;
     }
     const auto& ntp = partition->ntp();
-    vlog(lg.debug, "Attaching partition {}", ntp);
-    auto attached = ss::make_lw_shared<attached_partition_info>(partition);
+    auto tidp = ntp_to_topic_id_partition(ntp);
+    if (!tidp.has_value()) {
+        vlog(
+          lg.error,
+          "Cloud topic partition {} does not have a topic id: skipping",
+          ntp);
+        return;
+    }
+    vlog(lg.debug, "Attaching partition {}", ntp, tidp);
+    auto attached = ss::make_lw_shared<attached_partition_info>(
+      tidp.value(), partition);
     auto res = _partitions.try_emplace(ntp, std::move(attached));
     vassert(res.second, "Double registration of ntp {}", ntp);
 }

@@ -21,6 +21,7 @@
 #include "cluster/partition.h"
 #include "cluster/partition_manager.h"
 #include "container/chunked_vector.h"
+#include "model/fundamental.h"
 
 #include <seastar/core/future.hh>
 #include <seastar/core/gate.hh>
@@ -69,8 +70,12 @@ private:
      */
     struct attached_partition_info {
         explicit attached_partition_info(
+          model::topic_id_partition tidp,
           ss::lw_shared_ptr<cluster::partition> p)
-          : partition(std::move(p)) {}
+          : tidp(tidp)
+          , partition(std::move(p)) {}
+
+        model::topic_id_partition tidp;
 
         ss::lw_shared_ptr<cluster::partition> partition;
 
