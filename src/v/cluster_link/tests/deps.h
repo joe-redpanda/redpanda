@@ -159,6 +159,20 @@ public:
         return mirror_topics;
     }
 
+    ss::future<::cluster::cluster_link::errc> update_cluster_link_configuration(
+      model::id_t id,
+      model::update_cluster_link_configuration_cmd cmd,
+      ::model::timeout_clock::time_point) override {
+        auto link = _table->find_link_by_id(id);
+        if (!link) {
+            co_return ::cluster::cluster_link::errc::does_not_exist;
+        }
+        auto batch = ::cluster::cluster_link::testing::
+          create_update_cluster_link_configuration_command(id, std::move(cmd));
+        auto ec = co_await _table->apply_update(std::move(batch));
+        co_return ec.value();
+    }
+
 private:
     cluster::cluster_link::table* _table;
     ::model::offset _last_offset{0};

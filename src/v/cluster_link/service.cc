@@ -88,6 +88,14 @@ public:
         return _plf->get_mirror_topics_for_link(id);
     }
 
+    ss::future<::cluster::cluster_link::errc> update_cluster_link_configuration(
+      model::id_t id,
+      model::update_cluster_link_configuration_cmd cmd,
+      ::model::timeout_clock::time_point timeout) override {
+        return _plf->update_cluster_link_configuration(
+          id, std::move(cmd), timeout);
+    }
+
 private:
     frontend* _plf;
 };

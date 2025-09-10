@@ -67,6 +67,13 @@ public:
       ::model::topic,
       ::cluster_link::model::mirror_topic_metadata>>
     get_mirror_topics_for_link(model::id_t id) const = 0;
+
+    virtual ss::future<::cluster::cluster_link::errc>
+      update_cluster_link_configuration(
+        model::id_t,
+        model::update_cluster_link_configuration_cmd,
+        ::model::timeout_clock::time_point)
+      = 0;
 };
 
 /**
