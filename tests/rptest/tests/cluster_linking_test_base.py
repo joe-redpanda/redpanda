@@ -41,7 +41,14 @@ class ShadowLinkTestBase(RedpandaTest):
                 "enable_developmental_unrecoverable_data_corrupting_features": True,
                 "development_enable_cluster_link": True,
             },
-            log_config=LoggingConfig("info", logger_levels={"cluster_link": "trace"}),
+            log_config=LoggingConfig(
+                "info",
+                logger_levels={
+                    "cluster_link": "trace",
+                    "kafka/client": "trace",
+                    "kafka": "trace",
+                },
+            ),
             *args,
             **kwargs,
         )
