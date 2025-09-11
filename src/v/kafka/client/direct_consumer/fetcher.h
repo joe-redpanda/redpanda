@@ -190,6 +190,7 @@ public:
         std::optional<kafka::offset> fetch_offset;
         std::optional<kafka::offset> high_watermark;
         leader_epoch current_leader_epoch{kafka::invalid_leader_epoch};
+        intrusive_list_hook _hook;
         assignment_epoch assignment_epoch{0};
         bool incremental_include{false};
 
@@ -197,8 +198,8 @@ public:
             return fetch_offset.has_value();
         }
     };
-
-    using state_list = std::vector<partition_fetch_state>;
+    using state_list
+      = intrusive_list<partition_fetch_state, &partition_fetch_state::_hook>;
 
     struct partitions_to_process {
         model::topic topic;
@@ -248,7 +249,7 @@ public:
     static bool should_skip(const partition_fetch_state& fetch_state);
 
     static ss::future<fetcher::partitions_with_epoch> collect_partitons_inner(
-      const topic_partition_map<partition_fetch_state>& assigned_ntps,
+      topic_partition_map<partition_fetch_state>& assigned_ntps,
       const topic_partition_map<model::partition_id>& partitions_to_forget,
       bool is_incremental_enabled,
       prefix_logger& logger,

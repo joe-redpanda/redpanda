@@ -186,15 +186,12 @@ TEST(DataQueueTest, Corruption) {
     for (; iterator != for_topic.to_include_in_fetch.end(); ++iterator) {
         auto& found_state = *iterator;
         _logger.info("found pid: {}", found_state.partition_id);
-        if (found_state.partition_id == model::partition_id{49}) {
-            fetcher_state[test_topic].erase(model::partition_id{25});
-            fetcher_state[test_topic].erase(model::partition_id{10});
-            fetcher_state[test_topic].erase(model::partition_id{62});
-            fetcher_state[test_topic].erase(model::partition_id{50});
+        if (found_state.partition_id == model::partition_id{51}) {
+            fetcher_state[test_topic].erase(model::partition_id{20});
         }
-        /*ASSERT_EQ(
-          partition_to_include.partition_id, model::partition_id{counter});*/
         ++counter;
     }
-    ASSERT_EQ(counter, iterations - 1);
+    ASSERT_TRUE(false);
+
+    ASSERT_EQ(counter, 99);
 }

@@ -150,7 +150,7 @@ bool fetcher::should_skip(const fetcher::partition_fetch_state& fetch_state) {
 }
 
 ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitons_inner(
-  const topic_partition_map<fetcher::partition_fetch_state>& assigned_ntps,
+  topic_partition_map<fetcher::partition_fetch_state>& assigned_ntps,
   const topic_partition_map<model::partition_id>& partitions_to_forget,
   bool is_incremental_enabled,
   prefix_logger& logger,
@@ -174,7 +174,7 @@ ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitons_inner(
            &logger,
            is_incremental_enabled](auto& fetch_state_it) mutable {
               model::partition_id partition_id = fetch_state_it.first;
-              const fetcher::partition_fetch_state& fetch_state
+              fetcher::partition_fetch_state& fetch_state
                 = fetch_state_it.second;
 
               vassert(partition_id == fetch_state.partition_id, "pid drift");
