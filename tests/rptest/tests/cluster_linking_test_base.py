@@ -10,6 +10,7 @@
 from contextlib import contextmanager
 
 import google.protobuf.duration_pb2
+import google.protobuf.field_mask_pb2
 from ducktape.utils.util import wait_until
 
 from rptest.clients.admin.proto.redpanda.core.admin.v2 import (
@@ -192,6 +193,19 @@ class ShadowLinkTestBase(PreallocNodesTest):
             req=shadow_link_pb2.ListShadowLinksRequest()
         )
         return resp.shadow_links
+
+    def update_link(
+        self,
+        shadow_link: shadow_link_pb2.ShadowLink,
+        update_mask: google.protobuf.field_mask_pb2.FieldMask | None = None,
+    ) -> shadow_link_pb2.ShadowLink:
+        resp = self.service_client.update_shadow_link(
+            req=shadow_link_pb2.UpdateShadowLinkRequest(
+                shadow_link=shadow_link, update_mask=update_mask
+            )
+        )
+
+        return resp.shadow_link
 
     def get_link(self, name: str) -> shadow_link_pb2.ShadowLink:
         resp = self.service_client.get_shadow_link(
