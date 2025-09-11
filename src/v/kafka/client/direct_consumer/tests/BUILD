@@ -87,8 +87,10 @@ redpanda_cc_gtest(
     deps = [
         "//src/v/model",
         "//src/v/kafka/client:brokers",
+        "//src/v/container:intrusive",
         "//src/v/kafka/client:cluster",
         "//src/v/kafka/client:types",
+        "//src/v/container:chunked_hash_map",
         "//src/v/kafka/client/direct_consumer",
         "//src/v/kafka/protocol",
         "//src/v/model/tests:random",

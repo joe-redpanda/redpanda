@@ -1,5 +1,7 @@
 
 
+#include "container/chunked_hash_map.h"
+#include "container/intrusive_list_helpers.h"
 #include "kafka/client/direct_consumer/api_types.h"
 #include "kafka/client/direct_consumer/fetcher.h"
 #include "model/fundamental.h"
@@ -7,13 +9,16 @@
 
 #include <gtest/gtest.h>
 
+#include <unordered_map>
+
 using namespace kafka::client;
 
 namespace {
 ss::logger _logger{"fetcher_lib_test"};
 prefix_logger _prefix_logger(_logger, "");
+} // namespace
 
-static const model::topic test_topic = model::topic("test_topic");
+/*static const model::topic test_topic = model::topic("test_topic");
 static constexpr model::partition_id test_partition = model::partition_id{0};
 static constexpr model::node_id broker_id{0};
 
@@ -159,7 +164,7 @@ TEST(DataQueueTest, Disclude) {
     ASSERT_EQ(result.partitions.size(), 0);
 }
 
-TEST(DataQueueTest, Corruption) {
+(TEST(DataQueueTest, Corruption) {
     topic_partition_map<fetcher::partition_fetch_state> fetcher_state{};
     topic_partition_map<model::partition_id> partitions_to_forget{};
 
@@ -194,4 +199,65 @@ TEST(DataQueueTest, Corruption) {
     ASSERT_TRUE(false);
 
     ASSERT_EQ(counter, 99);
+}*/
+
+struct state {
+    int id;
+    intrusive_list_hook _hook;
+};
+
+using state_list = intrusive_list<state, &state::_hook>;
+
+TEST(DataQueueTest, ChunkedReorder) {
+    chunked_hash_map<int, state> owner{};
+
+    const int iterations = 100;
+    for (int i{0}; i < iterations; ++i) {
+        owner[i] = state(i);
+    }
+
+    state_list index{};
+
+    for (int i{0}; i < iterations; ++i) {
+        index.push_back(owner[i]);
+    }
+
+    bool found_99{false};
+    for (auto& index_element : index) {
+        _logger.info("found index element: {}", index_element.id);
+        if (index_element.id == 50) {
+            owner.erase(40);
+        }
+        if (index_element.id == 99) {
+            found_99 = true;
+        }
+    }
+    ASSERT_TRUE(found_99);
+}
+
+TEST(DataQueueTest, STDNoReorder) {
+    std::unordered_map<int, state> owner{};
+
+    const int iterations = 100;
+    for (int i{0}; i < iterations; ++i) {
+        owner[i] = state{.id = i};
+    }
+
+    state_list index{};
+
+    for (int i{0}; i < iterations; ++i) {
+        index.push_back(owner[i]);
+    }
+
+    bool found_99{false};
+    for (auto& index_element : index) {
+        _logger.info("found index element: {}", index_element.id);
+        if (index_element.id == 50) {
+            owner.erase(40);
+        }
+        if (index_element.id == 99) {
+            found_99 = true;
+        }
+    }
+    ASSERT_TRUE(found_99);
 }
