@@ -77,3 +77,24 @@ redpanda_cc_gtest(
         "@seastar//:testing",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "fetcher_lib_test",
+    timeout = "short",
+    srcs = [
+        "fetcher_lib_test.cc",
+    ],
+    deps = [
+        "//src/v/model",
+        "//src/v/kafka/client:brokers",
+        "//src/v/kafka/client:cluster",
+        "//src/v/kafka/client:types",
+        "//src/v/kafka/client/direct_consumer",
+        "//src/v/kafka/protocol",
+        "//src/v/model/tests:random",
+        "//src/v/test_utils:gtest",
+        "//src/v/utils:prefix_logger",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)

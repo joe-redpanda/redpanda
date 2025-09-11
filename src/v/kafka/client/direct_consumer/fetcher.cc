@@ -12,9 +12,13 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "base/format_to.h"
+#include "kafka/client/direct_consumer/api_types.h"
 #include "kafka/client/direct_consumer/data_queue.h"
 #include "kafka/client/direct_consumer/direct_consumer.h"
 #include "kafka/client/errors.h"
+#include "kafka/protocol/errors.h"
+#include "kafka/protocol/list_offset.h"
+#include "model/fundamental.h"
 #include "ssx/async_algorithm.h"
 #include "ssx/future-util.h"
 
@@ -134,50 +138,74 @@ ss::future<> fetcher::stop() {
     return _gate.close();
 }
 
-ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitions() {
-    auto lock = co_await _state_lock.get_units();
-    fetcher::partitions_with_epoch ret;
-    ret.partitions.reserve(_partitions.size());
+/**
+ * fetch can be skipped if
+ * 1. this ntp saw no updates on the last fetch
+ * 2. the fetched offset of this ntp has caught up to the high watermark
+ */
+bool fetcher::should_skip(const fetcher::partition_fetch_state& fetch_state) {
+    return !fetch_state.incremental_include
+           && fetch_state.fetch_offset.value()
+                >= fetch_state.high_watermark.value_or(kafka::offset::min());
+}
+
+ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitons_inner(
+  const topic_partition_map<fetcher::partition_fetch_state>& assigned_ntps,
+  const topic_partition_map<model::partition_id>& partitions_to_forget,
+  bool is_incremental_enabled,
+  prefix_logger& logger,
+  model::node_id broker_id) {
+    fetcher::partitions_with_epoch collected_partitions;
+    collected_partitions.partitions.reserve(assigned_ntps.size());
     ssx::async_counter cnt;
-    for (auto& [topic, partitions] : _partitions) {
-        partitions_to_process to_process;
+
+    // for topic
+    for (auto& [topic, partitions] : assigned_ntps) {
+        fetcher::partitions_to_process to_process;
         to_process.topic = topic;
 
         co_await ssx::async_for_each_counter(
           cnt,
           partitions,
-          [this, topic, &to_process, &ret, inc = _session_state.incremental()](
-            auto& p_fs) {
-              partition_fetch_state& fetch_state = p_fs.second;
-              ret.assignment_epochs[to_process.topic][fetch_state.partition_id]
+          [broker_id,
+           &topic,
+           &to_process,
+           &collected_partitions,
+           &logger,
+           is_incremental_enabled](auto& fetch_state_it) mutable {
+              model::partition_id partition_id = fetch_state_it.first;
+              const fetcher::partition_fetch_state& fetch_state
+                = fetch_state_it.second;
+
+              vassert(partition_id == fetch_state.partition_id, "pid drift");
+
+              // gather the assignment epoch for checks which update state later
+              collected_partitions
+                .assignment_epochs[to_process.topic][fetch_state.partition_id]
                 = fetch_state.assignment_epoch;
+
+              // if theres no previously fetched offset, list offsets to get the
+              // current offset
               if (!fetch_state.fetch_offset.has_value()) {
                   to_process.to_list_offsets.push_back(fetch_state);
                   return;
               }
 
-              constexpr auto should_skip =
-                [](const partition_fetch_state& fetch_state) {
-                    return !fetch_state.incremental_include
-                           && fetch_state.fetch_offset.value()
-                                >= fetch_state.high_watermark.value_or(
-                                  kafka::offset::min());
-                };
-
-              if (inc && should_skip(fetch_state)) {
-                  logger().info(
-                    "[broker: {}] skipping ntp {}/{} litmus pid {} in fetch "
-                    "request"
-                    "incremental is enabled?: {}"
-                    "should_skip result: {}"
-                    "fetch state incremental include?: {}"
-                    "fetch offset: {}, hwm: {}",
-                    _id,
+              // if incremental fetch is enabled, its possible to skip this
+              // partition in the request
+              if (is_incremental_enabled && fetcher::should_skip(fetch_state)) {
+                  logger.info(
+                    "[broker: {}] skipping ntp {}/{} in fetch "
+                    "request "
+                    "incremental is enabled?: {} "
+                    "should_skip result: {} "
+                    "fetch state incremental include?: {} "
+                    "fetch offset: {}, hwm: {} ",
+                    broker_id,
                     topic,
                     fetch_state.partition_id,
-                    p_fs.first,
-                    inc,
-                    should_skip(fetch_state),
+                    is_incremental_enabled,
+                    fetcher::should_skip(fetch_state),
                     fetch_state.incremental_include,
                     fetch_state.fetch_offset,
                     fetch_state.high_watermark);
@@ -186,16 +214,35 @@ ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitions() {
                   // partition from the request
                   return;
               }
+
+              logger.info(
+                "[broker: {}] including ntp {}/{} in fetch "
+                "request "
+                "incremental is enabled?: {} "
+                "should_skip result: {} "
+                "fetch state incremental include?: {} "
+                "fetch offset: {}, hwm: {} ",
+                broker_id,
+                topic,
+                fetch_state.partition_id,
+                is_incremental_enabled,
+                fetcher::should_skip(fetch_state),
+                fetch_state.incremental_include,
+                fetch_state.fetch_offset,
+                fetch_state.high_watermark);
+
               to_process.to_include_in_fetch.push_back(fetch_state);
           });
 
         if (!to_process.empty()) {
-            ret.partitions.push_back(std::move(to_process));
+            collected_partitions.partitions.push_back(std::move(to_process));
         }
     }
 
-    for (auto& [topic, partitions] : _partitions_to_forget) {
-        partitions_to_process to_process;
+    // for every partition to be forgotten, append to the forget list in the
+    // request
+    for (auto& [topic, partitions] : partitions_to_forget) {
+        fetcher::partitions_to_process to_process;
         to_process.topic = topic;
         ssx::async_counter cnt;
         // TODO(oren): maybe the async isn't so necessary here and we can
@@ -205,11 +252,21 @@ ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitions() {
               to_process.to_forget.push_back(p_fs.second);
           });
         if (!to_process.empty()) {
-            ret.partitions.push_back(std::move(to_process));
+            collected_partitions.partitions.push_back(std::move(to_process));
         }
     }
 
-    co_return ret;
+    co_return collected_partitions;
+}
+
+ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitions() {
+    auto lock = co_await _state_lock.get_units();
+    co_return co_await collect_partitons_inner(
+      _assigned_ntps,
+      _partitions_to_forget,
+      _session_state.incremental(),
+      logger(),
+      _id);
 }
 
 ss::future<fetch_request> fetcher::make_fetch_request(
@@ -293,8 +350,8 @@ bool fetcher::maybe_update_fetch_offset(
   kafka::offset last_received,
   kafka::offset high_watermark,
   std::optional<assignment_epoch> maybe_response_epoch) {
-    auto t_it = _partitions.find(topic);
-    if (t_it == _partitions.end()) {
+    auto t_it = _assigned_ntps.find(topic);
+    if (t_it == _assigned_ntps.end()) {
         return false;
     }
     auto p_it = t_it->second.find(partition_id);
@@ -354,6 +411,12 @@ bool fetcher::maybe_update_fetch_offset(
 }
 
 ss::future<> fetcher::do_fetch() {
+    vassert(
+      is_in_fetch_loop == false,
+      "cannot have multiple fetch loops running concurrently");
+    is_in_fetch_loop = true;
+    auto fetch_loop_tracker_holder = ss::defer(
+      [this] { is_in_fetch_loop = false; });
     vlog(logger().info, "[broker: {}] starting do_fetch", _id);
     bool needs_backoff = false;
     try {
@@ -396,8 +459,15 @@ ss::future<> fetcher::do_fetch() {
         }
         // TODO: cache the version of the fetch request
         auto version = co_await get_fetch_request_version();
+        vassert(
+          is_fetching == false,
+          "cannot have multiple fetches ongoing at the same time");
+        is_fetching = true;
+
+        logger().info("[broker: {}] fetching with request: {}", _id, req);
         auto response = co_await _parent->_cluster->dispatch_to(
           _id, std::move(req), version);
+        is_fetching = false;
         auto fetch_result = co_await process_fetch_response(
           std::move(response),
           assignment_epochs,
@@ -426,8 +496,8 @@ ss::future<> fetcher::do_fetch() {
             for (auto& topic_list : fetch_result_value.topics) {
                 for (auto& partition : topic_list.partitions) {
                     std::optional<assignment_epoch> maybe_epoch{};
-                    auto t_it = _partitions.find(topic_list.topic);
-                    if (t_it != _partitions.end()) {
+                    auto t_it = _assigned_ntps.find(topic_list.topic);
+                    if (t_it != _assigned_ntps.end()) {
                         auto p_it = t_it->second.find(partition.partition_id);
                         if (p_it != t_it->second.end()) {
                             maybe_epoch = p_it->second.assignment_epoch;
@@ -644,8 +714,8 @@ fetcher::process_fetch_response(
             // _partitions maps topic -> parition map
             // partition map maps partition -> subscription info
             // get an iterator to the topic map
-            auto topic_iterator = _partitions.find(topic);
-            if (topic_iterator == _partitions.end()) {
+            auto topic_iterator = _assigned_ntps.find(topic);
+            if (topic_iterator == _assigned_ntps.end()) {
                 continue;
             }
 
@@ -733,41 +803,85 @@ model::timestamp timestamp_for_offset_reset_policy(offset_reset_policy policy) {
 }
 } // namespace
 
+// fetch state to list offset's partition element
+static list_offset_partition list_offset_partition_from_fetch_state(
+  const fetcher::partition_fetch_state& fetch_state,
+  const model::timestamp& timestamp) {
+    list_offset_partition partition_to_list;
+    partition_to_list.partition_index = fetch_state.partition_id;
+    partition_to_list.timestamp = timestamp;
+    partition_to_list.current_leader_epoch = fetch_state.current_leader_epoch;
+    return partition_to_list;
+}
+
+// snapshotted fetch state to list offset's topic element
+static std::optional<list_offset_topic> list_offset_topic_from_topic_to_process(
+  const fetcher::partitions_to_process& topic_to_process,
+  const model::timestamp& timestamp) {
+    if (topic_to_process.to_list_offsets.empty()) {
+        // no partitions to fetch offsets for
+        return std::nullopt;
+    }
+
+    list_offset_topic topic_to_list;
+    topic_to_list.name = topic_to_process.topic;
+    auto& partitions_to_list = topic_to_list.partitions;
+    partitions_to_list.reserve(topic_to_process.to_list_offsets.size());
+
+    // for all partition_fetch_states in the topic to process, assemble a
+    // list request element
+    for (auto& fetch_state : topic_to_process.to_list_offsets) {
+        // fetch state to request element
+        partitions_to_list.push_back(
+          list_offset_partition_from_fetch_state(fetch_state, timestamp));
+    }
+
+    return topic_to_list;
+}
+
+static std::optional<list_offsets_request> assemble_list_offsets_request(
+  const chunked_vector<fetcher::partitions_to_process>&
+    snapshotted_assignment_data,
+  model::timestamp timestamp) {
+    list_offsets_request list_offsets_request;
+    auto& topics_to_list = list_offsets_request.data.topics;
+    topics_to_list.reserve(snapshotted_assignment_data.size());
+
+    // for all topics found in data collection, gather those that that need
+    // their offsets initialized
+    for (auto& topic_to_process : snapshotted_assignment_data) {
+        auto maybe_topic_to_list = list_offset_topic_from_topic_to_process(
+          topic_to_process, timestamp);
+
+        if (maybe_topic_to_list.has_value()) {
+            topics_to_list.emplace_back(*std::move(maybe_topic_to_list));
+        }
+    }
+
+    if (topics_to_list.empty()) {
+        // no partitions to fetch offsets for
+        return std::nullopt;
+    }
+    return list_offsets_request;
+}
+
 ss::future<kafka::error_code> fetcher::maybe_initialise_fetch_offsets(
   const chunked_vector<partitions_to_process>& partitions,
   const topic_partition_map<assignment_epoch>& epochs) {
     const auto timestamp = timestamp_for_offset_reset_policy(
       _parent->_config.reset_policy);
 
-    list_offsets_request req;
-    req.data.topics.reserve(partitions.size());
-    for (auto& topic_partitions : partitions) {
-        if (topic_partitions.to_list_offsets.empty()) {
-            // no partitions to fetch offsets for
-            continue;
-        }
-        list_offset_topic l_topic;
-        l_topic.name = topic_partitions.topic;
-        l_topic.partitions.reserve(topic_partitions.to_list_offsets.size());
-        for (auto& fetch_state : topic_partitions.to_list_offsets) {
-            // we need to fetch the offset for this partition
-            list_offset_partition l_partition;
-            l_partition.partition_index = fetch_state.partition_id;
-            l_partition.timestamp = timestamp;
-            l_partition.current_leader_epoch = fetch_state.current_leader_epoch;
+    auto maybe_list_offsets_request = assemble_list_offsets_request(
+      partitions, timestamp);
 
-            l_topic.partitions.push_back(std::move(l_partition));
-        }
-
-        req.data.topics.push_back(std::move(l_topic));
+    // nothing to be done
+    if (!maybe_list_offsets_request.has_value()) {
+        co_return kafka::error_code::none;
     }
 
-    if (req.data.topics.empty()) {
-        // no partitions to fetch offsets for
-        co_return error_code::none;
-    }
+    auto list_offsets_response = co_await do_list_offsets(
+      *std::move(maybe_list_offsets_request));
 
-    auto list_offsets_response = co_await do_list_offsets(std::move(req));
     if (list_offsets_response.has_error()) {
         if (is_retriable_error(list_offsets_response.error())) {
             vlog(
@@ -806,16 +920,15 @@ ss::future<kafka::error_code> fetcher::maybe_initialise_fetch_offsets(
             }
 
             // global state may have changed, we're not locked
-            auto t_it = _partitions.find(response_topic.topic);
-            if (t_it == _partitions.end()) {
-                continue;
-            }
-            auto p_it = t_it->second.find(response_partition.partition_id);
-            if (p_it == t_it->second.end()) {
+            auto assigned_state = find_local_fetch_state(
+              response_topic.topic, response_partition.partition_id);
+
+            // no longer assigned, move on
+            if (!assigned_state.maybe_fetch_state) {
                 continue;
             }
 
-            const auto assigned_epoch = p_it->second.assignment_epoch;
+            auto& assigned_fetch_state = *assigned_state.maybe_fetch_state;
 
             auto maybe_response_epoch = find_assignment_epoch(
               response_topic.topic, response_partition.partition_id, epochs);
@@ -833,7 +946,7 @@ ss::future<kafka::error_code> fetcher::maybe_initialise_fetch_offsets(
 
             const auto request_epoch = maybe_response_epoch.value();
 
-            if (request_epoch != assigned_epoch) {
+            if (request_epoch != assigned_fetch_state.assignment_epoch) {
                 vlog(
                   logger().trace,
                   "[broker: {}] Skipping partition {}/{} list offset response "
@@ -844,7 +957,7 @@ ss::future<kafka::error_code> fetcher::maybe_initialise_fetch_offsets(
                   response_partition.partition_id,
                   response_partition.offset,
                   request_epoch,
-                  p_it->second.assignment_epoch);
+                  assigned_fetch_state.assignment_epoch);
                 continue;
             }
             vlog(
@@ -854,9 +967,9 @@ ss::future<kafka::error_code> fetcher::maybe_initialise_fetch_offsets(
               response_topic.topic,
               response_partition.partition_id,
               response_partition.offset);
-            p_it->second.fetch_offset = response_partition.offset;
-            p_it->second.high_watermark.reset();
-            p_it->second.incremental_include = true;
+            assigned_fetch_state.fetch_offset = response_partition.offset;
+            assigned_fetch_state.high_watermark.reset();
+            assigned_fetch_state.incremental_include = true;
         }
     }
 
@@ -894,7 +1007,7 @@ ss::future<> fetcher::assign_partition(
       tp,
       offset);
 
-    _partitions[tp.topic][tp.partition] = partition_fetch_state{
+    _assigned_ntps[tp.topic][tp.partition] = partition_fetch_state{
       .partition_id = tp.partition,
       .fetch_offset = offset,
       .assignment_epoch = next_epoch(),
@@ -927,8 +1040,8 @@ ss::future<> fetcher::assign_partition(
 ss::future<std::optional<kafka::offset>>
 fetcher::unassign_partition(model::topic_partition_view tp_v) {
     auto lock = co_await _state_lock.get_units();
-    auto it = _partitions.find(tp_v.topic);
-    if (it == _partitions.end()) {
+    auto it = _assigned_ntps.find(tp_v.topic);
+    if (it == _assigned_ntps.end()) {
         // partition not found, nothing to unassign
         co_return std::nullopt;
     }
@@ -948,7 +1061,7 @@ fetcher::unassign_partition(model::topic_partition_view tp_v) {
     partitions.erase(p_it);
     if (partitions.empty()) {
         // if there are no partitions left for this topic, remove the topic
-        _partitions.erase(it);
+        _assigned_ntps.erase(it);
     }
 
     _partitions_updated.signal();

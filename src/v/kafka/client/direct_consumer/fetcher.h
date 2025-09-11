@@ -178,19 +178,18 @@ public:
       unassign_partition(model::topic_partition_view);
 
     bool is_idle() const {
-        return _partitions.empty() && _partitions_to_forget.empty();
+        return _assigned_ntps.empty() && _partitions_to_forget.empty();
     }
 
     void toggle_sessions(fetch_sessions_enabled);
 
-private:
+public:
     using assignment_epoch = named_type<uint64_t, struct fetcher_epoch_tag>;
     struct partition_fetch_state {
         model::partition_id partition_id;
         std::optional<kafka::offset> fetch_offset;
         std::optional<kafka::offset> high_watermark;
         leader_epoch current_leader_epoch{kafka::invalid_leader_epoch};
-        intrusive_list_hook _hook;
         assignment_epoch assignment_epoch{0};
         bool incremental_include{false};
 
@@ -198,8 +197,9 @@ private:
             return fetch_offset.has_value();
         }
     };
-    using state_list
-      = intrusive_list<partition_fetch_state, &partition_fetch_state::_hook>;
+
+    using state_list = std::vector<partition_fetch_state>;
+
     struct partitions_to_process {
         model::topic topic;
         state_list to_include_in_fetch;
@@ -222,6 +222,7 @@ private:
         kafka::fetch_session_id session_id{0};
     };
 
+private:
     static std::optional<assignment_epoch> find_assignment_epoch(
       const model::topic& topic,
       model::partition_id partition,
@@ -242,6 +243,18 @@ private:
       fetch_response resp,
       const topic_partition_map<assignment_epoch>& epochs,
       const chunked_vector<partitions_to_process>& partitions);
+
+public:
+    static bool should_skip(const partition_fetch_state& fetch_state);
+
+    static ss::future<fetcher::partitions_with_epoch> collect_partitons_inner(
+      const topic_partition_map<partition_fetch_state>& assigned_ntps,
+      const topic_partition_map<model::partition_id>& partitions_to_forget,
+      bool is_incremental_enabled,
+      prefix_logger& logger,
+      model::node_id broker_id);
+
+private:
     /**
      * Returns false if the partition was not found or the fetch offset was
      * not updated.
@@ -264,13 +277,51 @@ private:
     direct_consumer* _parent;
     model::node_id _id;
     fetch_session_state _session_state;
-    topic_partition_map<partition_fetch_state> _partitions;
+    topic_partition_map<partition_fetch_state> _assigned_ntps;
     topic_partition_map<model::partition_id> _partitions_to_forget;
     ss::condition_variable _partitions_updated;
     ss::gate _gate;
     mutex _state_lock;
+    bool is_fetching{false};
+    bool is_in_fetch_loop{false};
     assignment_epoch _epoch{0};
     ss::abort_source _as;
+
+public:
+    using assigned_topic_iterator_t
+      = topic_partition_map<partition_fetch_state>::iterator;
+    using assigned_partition_iterator_t
+      = chunked_hash_map<model::partition_id, partition_fetch_state>::iterator;
+
+    struct find_local_state_tuple {
+        std::optional<assigned_topic_iterator_t> maybe_topic_iterator;
+        std::optional<assigned_partition_iterator_t> maybe_partition_iterator;
+        partition_fetch_state* maybe_fetch_state;
+    };
+
+    find_local_state_tuple find_local_fetch_state(
+      const model::topic& topic, model::partition_id partition_id) {
+        auto t_it = _assigned_ntps.find(topic);
+        if (t_it == _assigned_ntps.end()) {
+            return {
+              .maybe_topic_iterator = std::nullopt,
+              .maybe_partition_iterator = std::nullopt,
+              .maybe_fetch_state = nullptr};
+        }
+
+        auto p_it = t_it->second.find(partition_id);
+        if (p_it == t_it->second.end()) {
+            return {
+              .maybe_topic_iterator = t_it,
+              .maybe_partition_iterator = std::nullopt,
+              .maybe_fetch_state = nullptr};
+        }
+
+        return {
+          .maybe_topic_iterator = t_it,
+          .maybe_partition_iterator = p_it,
+          .maybe_fetch_state = std::addressof(p_it->second)};
+    }
 };
 } // namespace kafka::client
 
