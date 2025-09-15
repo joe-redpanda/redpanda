@@ -173,7 +173,8 @@ private:
       = std::nullopt);
     ss::future<> dispatch_metadata_request(
       std::optional<chunked_vector<model::topic>> topics_request_list
-      = std::nullopt);
+      = std::nullopt,
+      std::optional<api_version> requested_version = std::nullopt);
     ss::future<> initialize_metadata_with_seed();
     void update_timer_callback();
     ss::future<> apply_metadata(metadata_update reply);

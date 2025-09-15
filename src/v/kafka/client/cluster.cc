@@ -215,7 +215,8 @@ ss::future<> cluster::initialize_metadata_with_seed() {
 }
 
 ss::future<> cluster::dispatch_metadata_request(
-  std::optional<chunked_vector<model::topic>> topics_request_list) {
+  std::optional<chunked_vector<model::topic>> topics_request_list,
+  std::optional<api_version> requested_version) {
     auto h = _gate.hold();
     vlog(_logger.debug, "Dispatching metadata request");
     shared_broker_t broker;
@@ -245,13 +246,17 @@ ss::future<> cluster::dispatch_metadata_request(
 
         auto request_version = co_await get_metadata_request_version(
           broker, _as);
+        auto metadata_version
+          = requested_version.has_value()
+              ? std::min(requested_version.value(), request_version)
+              : request_version;
         // TODO: support topic subscription
         auto reply = co_await broker->dispatch(
           metadata_request{.data{
             .topics = std::move(topics_to_request),
             .allow_auto_topic_creation = false,
             .include_topic_authorized_operations = true}},
-          request_version);
+          metadata_version);
         vassert(
           std::holds_alternative<kafka::metadata_response>(reply),
           "Metadata response is required to be returned as a result of "
