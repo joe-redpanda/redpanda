@@ -127,6 +127,7 @@ private:
     struct subscription {
         std::optional<model::node_id> current_fetcher;
         std::optional<kafka::offset> fetch_offset;
+        assignment_epoch subscription_epoch;
     };
     friend class fetcher;
     void on_metadata_update(const metadata_response_data&);
@@ -151,6 +152,9 @@ private:
     chunked_hash_map<model::node_id, std::unique_ptr<fetcher>> _broker_fetchers;
     std::unique_ptr<data_queue> _fetched_data_queue;
     ss::condition_variable _data_available;
+
+    // inc on subscription changes to guard against vending stale data
+    assignment_epoch epoch{0};
 
     cluster::callback_id _metadata_callback_id;
     bool _started = false;

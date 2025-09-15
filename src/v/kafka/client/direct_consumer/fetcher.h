@@ -185,7 +185,6 @@ public:
     void toggle_sessions(fetch_sessions_enabled);
 
 private:
-    using assignment_epoch = named_type<uint64_t, struct fetcher_epoch_tag>;
     struct partition_fetch_state {
         model::partition_id partition_id;
         std::optional<kafka::offset> fetch_offset;

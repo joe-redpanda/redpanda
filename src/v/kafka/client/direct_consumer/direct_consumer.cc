@@ -10,6 +10,7 @@
  */
 #include "kafka/client/direct_consumer/direct_consumer.h"
 
+#include "kafka/client/direct_consumer/api_types.h"
 #include "kafka/client/direct_consumer/data_queue.h"
 #include "kafka/client/direct_consumer/fetcher.h"
 #include "model/validation.h"
@@ -190,6 +191,7 @@ direct_consumer::assign_partitions(chunked_vector<topic_assignment> topics) {
               p.next_offset);
             auto& sub = _subscriptions[t.topic][p.partition_id];
             sub.fetch_offset = p.next_offset;
+            sub.subscription_epoch = ++epoch;
         }
     }
     co_await update_fetchers(std::move(lock_holder));

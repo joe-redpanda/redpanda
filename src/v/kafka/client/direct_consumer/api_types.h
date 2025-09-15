@@ -95,4 +95,6 @@ using topic_partition_map = chunked_hash_map<
 using fetch_sessions_enabled
   = ss::bool_class<struct fetch_sessions_enabled_tag>;
 
+using assignment_epoch = named_type<uint64_t, struct fetcher_epoch_tag>;
+
 } // namespace kafka::client
