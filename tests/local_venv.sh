@@ -48,6 +48,9 @@ python3 -m venv $VENV
 # this should be closely aligned with the install step in ./docker/Dockerfile
 python3 -m pip install -e .
 
+# for type-checking/type-check.py
+python3 -m pip install -r type-checking/requirements.txt
+
 # Save the SHA of input files to mark this install as complete
 echo "$CURRENT_SHA" >"$SHA_FILE"
 
