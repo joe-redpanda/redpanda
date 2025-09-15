@@ -152,7 +152,7 @@ class SaramaLegacyProduceTest(RedpandaTest):
         if expected_log_line is None:
             # We shouldn't see any warning for an unset max_timestamp if it is not expected.
             pattern = "Produced batch has max_timestamp left unset ({-1}) by client"
-            assert not self.redpanda.search_log_all(expected_log_line), (
+            assert not self.redpanda.search_log_all(pattern), (
                 f"Saw unexpected log line in redpanda logs for {validation_mode=}, {compression_type=} when maximum timestamp is unset in a produced batch."
             )
         else:
