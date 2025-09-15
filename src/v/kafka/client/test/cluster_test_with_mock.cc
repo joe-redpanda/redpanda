@@ -71,7 +71,7 @@ TEST_F(cluster_mock_fixture, TestMetadataCallback) {
       model::node_id(1), net::unresolved_address{"localhost", 9092});
     cluster.start().get();
     auto cid = cluster.register_metadata_cb(
-      [&](const kafka::metadata_response_data&) { callback_invocations++; });
+      [&](const kafka::client::metadata_update&) { callback_invocations++; });
     RPTEST_REQUIRE_EVENTUALLY(30s, [&]() { return callback_invocations >= 5; });
     cluster.unregister_metadata_cb(cid);
 }

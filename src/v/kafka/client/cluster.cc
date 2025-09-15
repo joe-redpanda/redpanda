@@ -18,6 +18,33 @@
 #include <seastar/coroutine/as_future.hh>
 namespace kafka::client {
 
+namespace {
+using topic_metadata_included_t
+  = ss::bool_class<struct topic_metadata_included_tag>;
+metadata_update to_metadata_update(
+  metadata_response r, topic_metadata_included_t topic_metadata_included) {
+    metadata_update update;
+    update.brokers.reserve(r.data.brokers.size());
+    for (auto& b : r.data.brokers) {
+        update.brokers.push_back(
+          metadata_update::broker{
+            .node_id = b.node_id,
+            .host = std::move(b.host),
+            .port = b.port,
+            .rack = std::move(b.rack)});
+    }
+    update.cluster_id = std::move(r.data.cluster_id);
+    update.controller_id = r.data.controller_id;
+    if (topic_metadata_included) {
+        update.topics = std::move(r.data.topics);
+    }
+    // cluster_authorized_operations field was deprecated in v11
+    update.cluster_authorized_operations = r.data.cluster_authorized_operations;
+
+    return update;
+}
+} // namespace
+
 using namespace std::chrono_literals;
 cluster::cluster(connection_configuration config)
   : _config(std::move(config))
@@ -149,11 +176,12 @@ ss::future<> cluster::initialize_metadata_with_seed() {
             co_await broker->stop();
             continue;
         }
+        auto metadata_version = request_version_f.get();
         auto reply_f = co_await ss::coroutine::as_future(broker->dispatch(
           // use empty topic list not to request all topics, we are only
           // interested in brokers list
           metadata_request{.data = metadata_request_data{.topics = {}}},
-          request_version_f.get()));
+          metadata_version));
         /**
          * stop the broker after the request is done to ensure that
          * the broker is not left in a connected state. This is important
@@ -162,8 +190,8 @@ ss::future<> cluster::initialize_metadata_with_seed() {
          */
         co_await broker->stop();
         if (!reply_f.failed()) {
-            co_await apply_metadata(
-              std::get<metadata_response>(std::move(reply_f.get())));
+            co_await apply_metadata(to_metadata_update(
+              std::get<metadata_response>(std::move(reply_f.get()))));
             co_return;
         }
         auto ex = reply_f.get_exception();
@@ -210,8 +238,8 @@ ss::future<> cluster::dispatch_metadata_request() {
           "Metadata response is required to be returned as a result of "
           "metadata request");
 
-        co_await apply_metadata(
-          std::get<kafka::metadata_response>(std::move(reply)));
+        co_await apply_metadata(to_metadata_update(
+          std::get<kafka::metadata_response>(std::move(reply))));
     } catch (const broker_error& e) {
         vlog(
           _logger.warn, "Failed to dispatch metadata request - {}", e.what());
@@ -223,7 +251,7 @@ void cluster::set_sasl_configuration(std::optional<sasl_configuration> creds) {
     _config.sasl_cfg = std::move(creds);
 }
 
-ss::future<> cluster::apply_metadata(metadata_response reply) {
+ss::future<> cluster::apply_metadata(metadata_update reply) {
     /**
      * this is the only place where the cluster brokers are updated. It happens
      * under the metadata update lock.
@@ -233,22 +261,27 @@ ss::future<> cluster::apply_metadata(metadata_response reply) {
       _logger.debug,
       "Applying metadata response with {{ cluster_id: {}, "
       "controller_id: {}, brokers: {} and {} topics }}",
-      reply.data.cluster_id,
-      reply.data.controller_id,
-      reply.data.brokers,
-      reply.data.topics.size());
+      reply.cluster_id,
+      reply.controller_id,
+      reply.brokers,
+      reply.topics.has_value() ? reply.topics->size() : 0);
 
-    _cluster_id = reply.data.cluster_id;
-    if (reply.data.controller_id == unknown_node_id) {
+    _cluster_id = reply.cluster_id;
+    if (reply.controller_id == unknown_node_id) {
         _controller_id.reset();
     } else {
-        _controller_id = reply.data.controller_id;
+        _controller_id = reply.controller_id;
     }
-    _topic_cache.apply(reply.data.topics);
-    co_await _brokers.apply(reply.data.brokers);
+
+    if (reply.topics.has_value()) {
+        // Only apply topics if the response contains any, an empty list may be
+        // because none were requested
+        _topic_cache.apply(reply.topics.value());
+    }
+    co_await _brokers.apply(reply.brokers);
     _last_update_time = ss::lowres_clock::now();
     // trigger notification last, after the metadata is applied
-    _notifications.notify(reply.data);
+    _notifications.notify(reply);
 }
 
 ss::future<std::optional<api_version_range>> cluster::supported_api_versions(

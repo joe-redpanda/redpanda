@@ -12,6 +12,7 @@
 #include "base/seastarx.h"
 #include "kafka/client/brokers.h"
 #include "kafka/client/topic_cache.h"
+#include "kafka/client/types.h"
 #include "utils/notification_list.h"
 #include "utils/prefix_logger.h"
 namespace kafka::client {
@@ -24,7 +25,7 @@ class cluster {
 public:
     using callback_id = named_type<int16_t, struct callback_id_tag>;
     using metadata_callback
-      = ss::noncopyable_function<void(const metadata_response_data&)>;
+      = ss::noncopyable_function<void(const metadata_update&)>;
 
     explicit cluster(connection_configuration config);
 
@@ -165,7 +166,7 @@ private:
     ss::future<> dispatch_metadata_request();
     ss::future<> initialize_metadata_with_seed();
     void update_timer_callback();
-    ss::future<> apply_metadata(metadata_response reply);
+    ss::future<> apply_metadata(metadata_update reply);
 
     connection_configuration _config;
     prefix_logger _logger;
