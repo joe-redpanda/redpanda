@@ -809,10 +809,27 @@ ss::future<> fetcher::assign_partition(
     auto lock = co_await _state_lock.get_units();
     vlog(
       logger().debug,
-      "[broker: {}] Assigned partition: {} with offset: {}",
+      "[broker: {}] Assigned partition: {} with offset: {} subscription_epoch: "
+      "{}",
       _id,
       tp,
-      offset);
+      offset,
+      subscription_epoch);
+
+    auto maybe_existing_assignment = find_fetcher_state(tp.topic, tp.partition);
+    if (maybe_existing_assignment) {
+        auto& existing_assignment = maybe_existing_assignment->get();
+        vlog(
+          logger().warn,
+          "[broker: {}] "
+          "overwriting existing fetcher partition assignment "
+          "tp: {}, fetch_offset: {}, fetcher_epoch: {}, subscription epoch: {}",
+          _id,
+          tp,
+          existing_assignment.fetch_offset,
+          existing_assignment.fetcher_epoch,
+          existing_assignment.subscription_epoch);
+    }
 
     _partitions[tp.topic].insert_or_assign(
       tp.partition,
@@ -854,7 +871,11 @@ fetcher::unassign_partition(model::topic_partition_view tp_v) {
     auto& partitions = it->second;
     auto p_it = partitions.find(tp_v.partition);
     if (p_it == partitions.end()) {
-        // partition not found, nothing to unassign
+        vlog(
+          logger().warn,
+          "[broker: {}] Unassign called on tp: {} which is not owned",
+          _id,
+          tp_v);
         co_return std::nullopt;
     }
     vlog(
