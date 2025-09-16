@@ -360,6 +360,26 @@ uploader::maybe_upload_cluster_name_reference(retry_chain_node& retry_node) {
             co_return error_outcome::upload_failed;
         }
     } else {
+        // If check failed we don't want to block uploading. Warning is
+        // enough.
+        auto bucket_uses_cluster_names_res
+          = co_await check_bucket_contains_cluster_names(
+            _remote, _bucket, retry_node);
+        if (!bucket_uses_cluster_names_res.has_value()) {
+            vlog(
+              clusterlog.warn,
+              "Error checking for cluster names in bucket {}: {}",
+              _bucket(),
+              bucket_uses_cluster_names_res.error());
+        } else if (bucket_uses_cluster_names_res.value()) {
+            vlog(
+              clusterlog.warn,
+              "Bucket {} contains cluster_name/* keys, but "
+              "`cloud_storage_cluster_name` config property is not set. Please "
+              "set `cloud_storage_cluster_name` to ensure Whole Cluster "
+              "Restore functions correctly.",
+              _bucket());
+        }
     }
 
     co_return error_outcome::success;

@@ -256,4 +256,46 @@ ss::future<cluster_manifest_result> download_highest_manifest_in_bucket(
     co_return manifest;
 }
 
+ss::future<std::expected<bool, std::string>>
+check_bucket_contains_cluster_names(
+  cloud_storage::remote& remote,
+  const cloud_storage_clients::bucket_name& bucket,
+  retry_chain_node& retry_node) {
+    // Reasonably high number of attempts but bounded so we don't loop
+    // forever/overspend on cloud storage costs.
+    constexpr auto max_attempts = 100;
+
+    std::optional<ss::sstring> continuation_token;
+    for (auto attempt = 0; attempt < max_attempts; ++attempt) {
+        auto list_res = co_await remote.list_objects(
+          bucket,
+          retry_node,
+          cluster_name_prefix_key(),
+          std::nullopt,
+          std::nullopt,
+          1,
+          continuation_token);
+        if (list_res.has_error()) {
+            co_return std::unexpected(
+              fmt::format("Error listing cluster names: {}", list_res.error()));
+        }
+        if (list_res.value().next_continuation_token.empty()) {
+            // If there are no more pages then this result is final.
+            co_return !list_res.value().contents.empty();
+        }
+        if (!list_res.value().contents.empty()) {
+            // If there are any results at all then we know the bucket uses
+            // cluster ids.
+            co_return true;
+        }
+        // Otherwise, we need to keep looking. An empty page with a
+        // continuation token means there are more results to fetch.
+        continuation_token = list_res.value().next_continuation_token;
+    }
+
+    co_return std::unexpected(
+      "Exceeded maximum attempts at listing objects for determining use of WCR "
+      "cluster names");
+}
+
 } // namespace cluster::cloud_metadata

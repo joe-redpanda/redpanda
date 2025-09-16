@@ -17,6 +17,8 @@
 
 #include <seastar/core/future.hh>
 
+#include <expected>
+
 namespace cloud_storage {
 class remote;
 } // namespace cloud_storage
@@ -58,5 +60,13 @@ ss::future<cluster_manifest_result> download_highest_manifest_in_bucket(
   const cloud_storage_clients::bucket_name& bucket,
   retry_chain_node& retry_node,
   std::optional<model::cluster_uuid> ignore_uuid = std::nullopt);
+
+// Checks whether the given bucket contains any keys with the
+// `cluster_name/` prefix.
+ss::future<std::expected<bool, std::string>>
+check_bucket_contains_cluster_names(
+  cloud_storage::remote& remote,
+  const cloud_storage_clients::bucket_name& bucket,
+  retry_chain_node& retry_node);
 
 } // namespace cluster::cloud_metadata
