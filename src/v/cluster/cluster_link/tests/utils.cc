@@ -21,6 +21,7 @@ using ::cluster_link::model::metadata;
 using ::cluster_link::model::mirror_topic_metadata;
 using ::cluster_link::model::mirror_topic_state;
 using ::cluster_link::model::name_t;
+using ::cluster_link::model::update_cluster_link_configuration_cmd;
 using ::cluster_link::model::update_mirror_topic_state_cmd;
 
 model::record_batch create_upsert_command(model::offset offset, metadata link) {
@@ -51,6 +52,13 @@ model::record_batch create_update_mirror_topic_state_command(
 model::record_batch create_update_mirror_topic_properties_command(
   id_t id, ::cluster_link::model::update_mirror_topic_properties_cmd cmd) {
     cluster::cluster_link_update_mirror_topic_properties_cmd update_cmd(
+      id, std::move(cmd));
+    return cluster::serde_serialize_cmd(std::move(update_cmd));
+}
+
+model::record_batch create_update_cluster_link_configuration_command(
+  id_t id, update_cluster_link_configuration_cmd cmd) {
+    cluster::cluster_link_update_cluster_link_configuration_cmd update_cmd(
       id, std::move(cmd));
     return cluster::serde_serialize_cmd(std::move(update_cmd));
 }

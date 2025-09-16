@@ -7,6 +7,9 @@
 # the Business Source License, use of this software will be governed
 # by the Apache License, Version 2.0
 
+import ducktape.errors
+import google.protobuf.duration_pb2
+import google.protobuf.field_mask_pb2
 import random
 import re
 from contextlib import nullcontext
@@ -15,6 +18,9 @@ from contextlib import nullcontext
 from connectrpc.errors import ConnectError, ConnectErrorCode
 from ducktape.mark import matrix
 
+from rptest.clients.admin.proto.redpanda.core.admin.v2 import (
+    shadow_link_pb2,
+)
 from rptest.clients.rpk import RpkTool, RPKACLInput, RpkException
 from rptest.clients.types import TopicSpec
 from rptest.services.admin import Admin
@@ -291,6 +297,175 @@ class ShadowLinkBasicTests(ShadowLinkTestBase):
             pass
 
         superuser_rpk.create_topic(f"{topic_name_prefix}-3")
+
+    @cluster(num_nodes=6)
+    def test_update_link(self):
+        """
+        This is a simple test to verify that the UpdateShadowLink API works.
+
+        First the test creates 10 topics on the source cluster, then it creates
+        a shadow link with no topic filters
+
+        It then verifies that no topics were created, then updates the shadow
+        link to add two topic filters: one to select all by prefix and one to
+        exclude literally
+
+        Then it verifies that the included topics are replicated and the excluded
+        topic is not
+        """
+        topic_prefix = "source-topic-"
+        topics: list[TopicSpec] = []
+        for i in range(10):
+            topic = TopicSpec(
+                name=f"{topic_prefix}{i}", partition_count=3, replication_factor=3
+            )
+            self.source_default_client().create_topic(topic)
+            topics.append(topic)
+
+        shadow_link: shadow_link_pb2.ShadowLink = self.create_link(
+            "test-link", mirror_all_topics=False, mirror_all_groups=False
+        )
+
+        def _any_topics_are_present_in_target_cluster():
+            topics_in_target = {t for t in self.target_cluster_rpk.list_topics()}
+            for t in topics:
+                if t.name in topics_in_target:
+                    return True
+
+            return False
+
+        with expect_exception(ducktape.errors.TimeoutError, lambda _: True):
+            wait_until(_any_topics_are_present_in_target_cluster, timeout_sec=5)
+
+        shadow_link.configurations.topic_metadata_sync_options.topic_filters.extend(
+            [
+                shadow_link_pb2.NameFilter(
+                    pattern_type=shadow_link_pb2.PATTERN_TYPE_PREFIX,
+                    filter_type=shadow_link_pb2.FILTER_TYPE_INCLUDE,
+                    name=topic_prefix,
+                ),
+                shadow_link_pb2.NameFilter(
+                    pattern_type=shadow_link_pb2.PATTERN_TYPE_LITERAL,
+                    filter_type=shadow_link_pb2.FILTER_TYPE_EXCLUDE,
+                    name=f"{topic_prefix}0",
+                ),
+            ]
+        )
+
+        update_mask: google.protobuf.field_mask_pb2.FieldMask = (
+            google.protobuf.field_mask_pb2.FieldMask(
+                paths=["configurations.topic_metadata_sync_options.topic_filters"]
+            )
+        )
+
+        updated_link = self.update_link(
+            shadow_link=shadow_link, update_mask=update_mask
+        )
+
+        assert (
+            updated_link.configurations.topic_metadata_sync_options
+            == shadow_link.configurations.topic_metadata_sync_options
+        ), (
+            f"Expected updated link to be returned, {updated_link.configurations.topic_metadata_sync_options} != {shadow_link.configurations.topic_metadata_sync_options}"
+        )
+
+        def _all_but_one_topic_are_present_in_target_cluster():
+            topics_in_target = {t for t in self.target_cluster_rpk.list_topics()}
+            found_count = 0
+            for t in topics:
+                if t.name in topics_in_target:
+                    if t.name == f"{topic_prefix}0":
+                        assert False, f"{topic_prefix}0 should not be mirrored!"
+                    found_count += 1
+
+            self.logger.info(f"{found_count} == {len(topics) - 1}")
+            return found_count == (len(topics) - 1)
+
+        wait_until(
+            _all_but_one_topic_are_present_in_target_cluster,
+            timeout_sec=20,
+            backoff_sec=1,
+            err_msg="Not all topics were mirrored",
+        )
+
+    @cluster(num_nodes=6)
+    def test_update_not_in_field_mask(self):
+        shadow_link: shadow_link_pb2.ShadowLink = self.create_link(
+            "test-link", mirror_all_topics=False, mirror_all_groups=False
+        )
+
+        shadow_link.configurations.topic_metadata_sync_options.topic_filters.extend(
+            [
+                shadow_link_pb2.NameFilter(
+                    pattern_type=shadow_link_pb2.PATTERN_TYPE_PREFIX,
+                    filter_type=shadow_link_pb2.FILTER_TYPE_INCLUDE,
+                    name="*",
+                ),
+            ]
+        )
+        expected_duration = google.protobuf.duration_pb2.Duration(seconds=600)
+        shadow_link.configurations.topic_metadata_sync_options.interval.CopyFrom(
+            expected_duration
+        )
+
+        update_mask: google.protobuf.field_mask_pb2.FieldMask = (
+            google.protobuf.field_mask_pb2.FieldMask(
+                paths=["configurations.topic_metadata_sync_options.interval"]
+            )
+        )
+
+        updated_link = self.update_link(
+            shadow_link=shadow_link, update_mask=update_mask
+        )
+
+        assert (
+            updated_link.configurations.topic_metadata_sync_options.interval
+            == expected_duration
+        ), (
+            f"Expected duration to be {expected_duration}, got {updated_link.configurations.topic_metadata_sync_options.interval}"
+        )
+
+        assert (
+            len(updated_link.configurations.topic_metadata_sync_options.topic_filters)
+            == 0
+        ), (
+            f"Expected topic filters to not be updated, got {updated_link.configurations.topic_metadata_sync_options.topic_filters}"
+        )
+
+    @cluster(num_nodes=6)
+    def test_invalid_updates(self):
+        shadow_link: shadow_link_pb2.ShadowLink = self.create_link(
+            "test-link", mirror_all_topics=False, mirror_all_groups=False
+        )
+
+        update_mask: google.protobuf.field_mask_pb2.FieldMask = (
+            google.protobuf.field_mask_pb2.FieldMask(
+                paths=["configurations.client_options.bootstrap_servers"]
+            )
+        )
+
+        with expect_exception(
+            ConnectError, lambda e: e.code == ConnectErrorCode.INVALID_ARGUMENT
+        ):
+            self.update_link(shadow_link=shadow_link, update_mask=update_mask)
+
+        update_mask = google.protobuf.field_mask_pb2.FieldMask(
+            paths=["configurations.client_options.tls_settings"]
+        )
+
+        with expect_exception(
+            ConnectError, lambda e: e.code == ConnectErrorCode.INVALID_ARGUMENT
+        ):
+            self.update_link(shadow_link=shadow_link, update_mask=update_mask)
+
+        update_mask = google.protobuf.field_mask_pb2.FieldMask(
+            paths=["configurations.client_options.tls_settings.tls_file_settings"]
+        )
+
+        with expect_exception(
+            ConnectError, lambda e: e.code == ConnectErrorCode.INVALID_ARGUMENT
+        ):
+            self.update_link(shadow_link=shadow_link, update_mask=update_mask)
 
 
 class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):

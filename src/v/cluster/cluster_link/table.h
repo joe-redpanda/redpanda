@@ -101,6 +101,10 @@ private:
       ::cluster_link::model::id_t,
       const ::cluster_link::model::update_mirror_topic_properties_cmd&);
 
+    cluster::cluster_link::errc update_cluster_link_configuration(
+      ::cluster_link::model::id_t,
+      const ::cluster_link::model::update_cluster_link_configuration_cmd&);
+
     void run_callbacks(::cluster_link::model::id_t);
 
 private:
