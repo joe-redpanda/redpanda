@@ -479,6 +479,24 @@ fetcher::process_fetch_response(
 
     auto lock = co_await _state_lock.get_units();
 
+    // we allow for assignment updates to occur while a fetch is ongoing s.t.
+    // assignment updates are not blocked by a longstanding fetch. At this
+    // point, all inconsistent fetch responses should be discarded
+    for (auto& topic_response : resp.data.responses) {
+        auto consistent_subrange = std::ranges::partition(
+          topic_response.partitions,
+          [this, &topic_response, &epochs](partition_data& partition_response) {
+              return is_consistent_fetcher_epoch(
+                topic_response.topic,
+                partition_response.partition_index,
+                epochs);
+          });
+        topic_response.partitions.erase_to_end(
+          topic_response.partitions.end() - consistent_subrange.size());
+    }
+
+    // all responses now belong to consistent tps
+
     // For fetch session maintenance, the goal is to omit partitions from each
     // fetch request whenever possible. The incremental_include flag controls
     // whether a certain partition appears in the next fetch request, after
@@ -511,10 +529,10 @@ fetcher::process_fetch_response(
             part_data.error = part_response.error_code;
             part_data.partition_id = part_response.partition_index;
 
-            if (!is_consistent_fetcher_epoch(
-                  topic_data.topic, part_response.partition_index, epochs)) {
-                continue;
-            }
+            // if (!is_consistent_fetcher_epoch(
+            //       topic_data.topic, part_response.partition_index, epochs)) {
+            //     continue;
+            // }
 
             // after consistency check, guaranteed to be found
             auto snapped_epochs = *find_epoch_set(
@@ -656,10 +674,10 @@ fetcher::process_fetch_response(
 
             for (const auto& p : included) {
                 // if inconsistent, keep it in the next fetch
-                if (!is_consistent_fetcher_epoch(
-                      topic, p.partition_id, epochs)) {
-                    continue;
-                }
+                // if (!is_consistent_fetcher_epoch(
+                //      topic, p.partition_id, epochs)) {
+                //    continue;
+                //}
 
                 bool partition_err = topic_err
                                      && errs_it->second.contains(
@@ -670,8 +688,10 @@ fetcher::process_fetch_response(
                     continue;
                 }
 
-                // remove from next fetch
-                auto& fetcher_state = partition_map[p.partition_id];
+                // remove from next fetch, guaranteed to exist after consistency
+                // check
+                auto& fetcher_state
+                  = partition_map.find(p.partition_id)->second;
                 fetcher_state.incremental_include = false;
             }
         }
@@ -890,20 +910,33 @@ ss::future<> fetcher::assign_partition(
       tp,
       offset);
 
-    _partitions[tp.topic][tp.partition] = partition_fetch_state{
-      .partition_id = tp.partition,
-      .fetch_offset = offset,
-      .fetcher_epoch = next_epoch(),
-      .incremental_include = true,
-      .subscription_epoch = subscription_epoch};
+    auto maybe_existing_assignment = find_fetcher_state(tp.topic, tp.partition);
+    if (maybe_existing_assignment) {
+        auto& existing_assignment = maybe_existing_assignment->get();
+        vlog(
+          logger().warn,
+          "[broker: {}] "
+          "overwriting existing fetcher partition assignment "
+          "tp: {}, fetch_offset: {}, fetcher_epoch: {}, subscription epoch: {}",
+          _id,
+          tp,
+          existing_assignment.fetch_offset,
+          existing_assignment.fetcher_epoch,
+          existing_assignment.subscription_epoch);
+    }
+
+    _partitions[tp.topic].insert_or_assign(
+      tp.partition,
+      partition_fetch_state(
+        tp.partition, offset, next_epoch(), subscription_epoch));
 
     // in the case of fast leadership transfers, we may have a partition both
-    // being added and forgotten, in which case, make sure that it is only being
-    // added
+    // being added and forgotten, in which case, make sure that it is only
+    // being added
     auto forget_topic_iterator = _partitions_to_forget.find(tp.topic);
     if (forget_topic_iterator != _partitions_to_forget.end()) {
-        // topic is in the 'to forget map', now is the partition in the topic's
-        // map
+        // topic is in the 'to forget map', now is the partition in the
+        // topic's map
         auto& partitions_to_forget = forget_topic_iterator->second;
         auto forget_partition_iterator = partitions_to_forget.find(
           tp.partition);
@@ -944,7 +977,8 @@ fetcher::unassign_partition(model::topic_partition_view tp_v) {
     auto fetch_offset = p_it->second.fetch_offset;
     partitions.erase(p_it);
     if (partitions.empty()) {
-        // if there are no partitions left for this topic, remove the topic
+        // if there are no partitions left for this topic, remove the
+        // topic
         _partitions.erase(it);
     }
 
@@ -984,7 +1018,8 @@ fetcher::do_list_offsets(list_offsets_request req) {
     } catch (const broker_error& e) {
         vlog(
           logger().warn,
-          "list_offsets request to broker {} failed with broker error: {}",
+          "list_offsets request to broker {} failed with broker error: "
+          "{}",
           _id,
           e);
         co_return e.error;

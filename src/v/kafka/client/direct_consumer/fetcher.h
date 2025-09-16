@@ -190,15 +190,36 @@ public:
 private:
     using fetcher_epoch = named_type<uint64_t, struct fetcher_epoch_tag>;
     struct partition_fetch_state {
+        partition_fetch_state() = delete;
+        partition_fetch_state(
+          model::partition_id partition_id,
+          std::optional<kafka::offset> fetch_offset,
+          fetcher_epoch fetcher_epoch,
+          subscription_epoch subscription_epoch) noexcept
+          : partition_id{partition_id}
+          , fetch_offset{fetch_offset}
+          , high_watermark{std::nullopt}
+          , current_leader_epoch{kafka::invalid_leader_epoch}
+          , fetcher_epoch{fetcher_epoch}
+          , incremental_include{true}
+          , subscription_epoch{subscription_epoch} {}
+
+        partition_fetch_state(const partition_fetch_state&) = default;
+        partition_fetch_state(partition_fetch_state&&) = default;
+        partition_fetch_state& operator=(const partition_fetch_state&)
+          = default;
+        partition_fetch_state& operator=(partition_fetch_state&&) = default;
+        ~partition_fetch_state() = default;
+
         model::partition_id partition_id;
         std::optional<kafka::offset> fetch_offset;
         std::optional<kafka::offset> high_watermark;
-        leader_epoch current_leader_epoch{kafka::invalid_leader_epoch};
+        leader_epoch current_leader_epoch;
         // version of assignment to this fetcher
-        fetcher_epoch fetcher_epoch{0};
-        bool incremental_include{false};
+        fetcher_epoch fetcher_epoch;
+        bool incremental_include;
         // direct_consumer's subscription epoch
-        subscription_epoch subscription_epoch{0};
+        subscription_epoch subscription_epoch;
         bool include_in_fetch_request() const {
             return fetch_offset.has_value();
         }
