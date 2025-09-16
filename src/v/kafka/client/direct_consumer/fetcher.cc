@@ -511,12 +511,14 @@ fetcher::process_fetch_response(
             part_data.error = part_response.error_code;
             part_data.partition_id = part_response.partition_index;
 
-            // these were the snapshotted epochs at the time that the request
-            // was started
-            auto snapped_epochs
-              = find_epoch_set(topic_data.topic, part_data.partition_id, epochs)
-                  .value_or(
-                    epoch_set{fetcher_epoch(-1), subscription_epoch(-1)});
+            if (!is_consistent_fetcher_epoch(
+                  topic_data.topic, part_response.partition_index, epochs)) {
+                continue;
+            }
+
+            // after consistency check, guaranteed to be found
+            auto snapped_epochs = *find_epoch_set(
+              topic_data.topic, part_data.partition_id, epochs);
 
             part_data.subscription_epoch = snapped_epochs.subscription_epoch;
 
@@ -587,25 +589,22 @@ fetcher::process_fetch_response(
                   || part_response.records->is_end_of_stream()) {
                     continue;
                 }
+
+                // size calculation for the response payload
                 const auto partition_payload_size
                   = part_response.records->size_bytes();
                 part_data.size_bytes = partition_payload_size;
-                // TODO safe add size_t
                 topic_data.total_bytes += partition_payload_size;
+
                 part_data.data = co_await reader_to_chunked_vector(
                   std::move(part_response.records.value()));
-
-                // the snapshotted epochs from the point at which the request
-                // was started
-                auto maybe_snapped_epochs = find_epoch_set(
-                  topic_data.topic, part_data.partition_id, epochs);
 
                 bool updated_offset = maybe_update_fetch_offset(
                   topic_data.topic,
                   part_data.partition_id,
                   model::offset_cast(part_data.data.back().last_offset()),
                   part_data.high_watermark,
-                  maybe_snapped_epochs);
+                  snapped_epochs);
                 if (!updated_offset) {
                     // case when partition is either
                     // 1. partition is not assigned to this fetcher
@@ -642,7 +641,7 @@ fetcher::process_fetch_response(
           "partitions, not both");
 
         if (!included.empty()) {
-            // _partitions maps topic -> parition map
+            // _partitions maps topic -> partition map
             // partition map maps partition -> subscription info
             // get an iterator to the topic map
             auto topic_iterator = _partitions.find(topic);
@@ -656,45 +655,24 @@ fetcher::process_fetch_response(
             auto& partition_map = topic_iterator->second;
 
             for (const auto& p : included) {
+                // if inconsistent, keep it in the next fetch
+                if (!is_consistent_fetcher_epoch(
+                      topic, p.partition_id, epochs)) {
+                    continue;
+                }
+
                 bool partition_err = topic_err
                                      && errs_it->second.contains(
                                        p.partition_id);
-                auto partition_iterator = partition_map.find(p.partition_id);
-                if (
-                  partition_iterator != partition_map.end() && !partition_err) {
-                    // compare the epochs before we make an edit
-                    const auto assigned_epoch
-                      = partition_iterator->second.fetcher_epoch;
 
-                    auto maybe_request_epoch = find_epoch_set(
-                      topic, p.partition_id, epochs);
-
-                    if (!maybe_request_epoch) {
-                        // see maybe_update_fetch_offset for explanation
-                        vlog(
-                          logger().info,
-                          "unbidden response on ntp: {}/{}",
-                          topic,
-                          p.partition_id);
-                        continue;
-                    }
-
-                    const auto request_epoch
-                      = maybe_request_epoch.value().fetcher_epoch;
-
-                    if (assigned_epoch == request_epoch) {
-                        partition_iterator->second.incremental_include = false;
-                    } else {
-                        vlog(
-                          logger().trace,
-                          "disclusion epoch mismatch on ntp: {}, "
-                          "fetched_epoch, {}, current_epoch: {}",
-                          topic,
-                          p.partition_id,
-                          request_epoch,
-                          assigned_epoch);
-                    }
+                // if errored, keep it in the next fetch
+                if (partition_err) {
+                    continue;
                 }
+
+                // remove from next fetch
+                auto& fetcher_state = partition_map[p.partition_id];
+                fetcher_state.incremental_include = false;
             }
         }
 
