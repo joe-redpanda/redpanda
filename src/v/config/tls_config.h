@@ -116,6 +116,9 @@ private:
     bool _require_client_auth{false};
 };
 
+bool validate_tls_v1_2_cipher_suites(const ss::sstring& s);
+bool validate_tls_v1_3_cipher_suites(const ss::sstring& s);
+
 } // namespace config
 
 namespace YAML {

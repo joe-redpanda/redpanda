@@ -14,11 +14,14 @@
 #include "config/configuration.h"
 #include "config/convert.h"
 #include "net/tls.h"
+#include "thirdparty/openssl/err.h"
+#include "thirdparty/openssl/ssl.h"
 #include "utils/to_string.h"
 
 #include <seastar/core/do_with.hh>
 #include <seastar/core/shared_ptr.hh>
 #include <seastar/net/tls.hh>
+#include <seastar/util/defer.hh>
 #include <seastar/util/variant_utils.hh>
 
 namespace config {
@@ -39,7 +42,24 @@ net::key_store create_key_store(const key_cert_container& container) {
           }};
       });
 }
+
+template<typename T, auto fn>
+struct ssl_deleter {
+    void operator()(T* ptr) { fn(ptr); }
+};
+
+template<typename T, auto fn>
+using ssl_handle = std::unique_ptr<T, ssl_deleter<T, fn>>;
+
+using ssl_ctx_ptr = ssl_handle<SSL_CTX, SSL_CTX_free>;
+
+bool ssl_clean_room(auto func) {
+    auto cleanup = ss::defer([] { ERR_clear_error(); });
+    ssl_ctx_ptr ctx{SSL_CTX_new(TLS_method())};
+    return ctx && func(ctx.get());
+}
 } // namespace
+
 ss::future<std::optional<ss::tls::credentials_builder>>
 tls_config::get_credentials_builder() const& {
     if (_enabled) {
@@ -107,6 +127,17 @@ std::ostream& operator<<(std::ostream& o, const config::tls_config& c) {
       << " }";
     return o;
 }
+
+bool validate_tls_v1_2_cipher_suites(const ss::sstring& s) {
+    return ssl_clean_room(
+      [&](auto ctx) { return SSL_CTX_set_cipher_list(ctx, s.data()) == 1; });
+}
+
+bool validate_tls_v1_3_cipher_suites(const ss::sstring& s) {
+    return ssl_clean_room(
+      [&](auto ctx) { return SSL_CTX_set_ciphersuites(ctx, s.data()) == 1; });
+}
+
 } // namespace config
 
 namespace YAML {
