@@ -126,6 +126,21 @@ public:
 
 private:
     struct subscription {
+        subscription() = delete;
+        subscription(
+          std::optional<model::node_id> current_fetcher,
+          std::optional<kafka::offset> fetch_offset,
+          subscription_epoch subscription_epoch) noexcept
+          : current_fetcher{current_fetcher}
+          , fetch_offset{fetch_offset}
+          , subscription_epoch{subscription_epoch} {}
+
+        subscription(const subscription&) = default;
+        subscription(subscription&&) = default;
+        subscription& operator=(const subscription&) = default;
+        subscription& operator=(subscription&&) = default;
+        ~subscription() = default;
+
         std::optional<model::node_id> current_fetcher;
         std::optional<kafka::offset> fetch_offset;
         subscription_epoch subscription_epoch;
@@ -141,19 +156,10 @@ private:
     fetcher& get_fetcher(model::node_id id);
 
     std::optional<subscription_epoch> find_subscription_epoch(
-      const model::topic& topic, model::partition_id partition_id) {
-        auto t_it = _subscriptions.find(topic);
-        if (t_it == _subscriptions.end()) {
-            return std::nullopt;
-        }
+      const model::topic& topic, model::partition_id partition_id);
 
-        auto& p_map = t_it->second;
-        auto p_it = p_map.find(partition_id);
-        if (p_it == p_map.end()) {
-            return std::nullopt;
-        }
-        return p_it->second.subscription_epoch;
-    }
+    void filter_stale_subscriptions(
+      chunked_vector<fetched_topic_data>& responses_to_filter);
 
     cluster* _cluster;
 
@@ -169,7 +175,7 @@ private:
     std::unique_ptr<data_queue> _fetched_data_queue;
     ss::condition_variable _data_available;
 
-    // inc on subscription changes to guard against vending stale data
+    // tracks the version of a subscribed ntp
     subscription_epoch epoch{0};
 
     cluster::callback_id _metadata_callback_id;

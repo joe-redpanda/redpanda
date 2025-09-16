@@ -27,6 +27,7 @@
 
 #include <fmt/format.h>
 
+#include <functional>
 #include <optional>
 
 namespace kafka::client {
@@ -187,16 +188,16 @@ public:
     void toggle_sessions(fetch_sessions_enabled);
 
 private:
-    using assignment_epoch = named_type<uint64_t, struct fetcher_epoch_tag>;
+    using fetcher_epoch = named_type<uint64_t, struct fetcher_epoch_tag>;
     struct partition_fetch_state {
         model::partition_id partition_id;
         std::optional<kafka::offset> fetch_offset;
         std::optional<kafka::offset> high_watermark;
         leader_epoch current_leader_epoch{kafka::invalid_leader_epoch};
-        // assignment version for this fetcher
-        assignment_epoch assignment_epoch{0};
+        // version of assignment to this fetcher
+        fetcher_epoch fetcher_epoch{0};
         bool incremental_include{false};
-        // differentiate different assignments to the direct consumer as a whole
+        // direct_consumer's subscription epoch
         subscription_epoch subscription_epoch{0};
         bool include_in_fetch_request() const {
             return fetch_offset.has_value();
@@ -216,11 +217,27 @@ private:
     };
 
     struct epoch_set {
-        assignment_epoch fetcher_epoch;
+        epoch_set() = delete;
+
+        epoch_set(
+          fetcher_epoch fetcher_epoch,
+          subscription_epoch subscription_epoch) noexcept
+          : fetcher_epoch{fetcher_epoch}
+          , subscription_epoch{subscription_epoch} {}
+
+        epoch_set(const epoch_set&) = default;
+        epoch_set(epoch_set&&) = default;
+        epoch_set& operator=(const epoch_set&) = default;
+        epoch_set& operator=(epoch_set&&) = default;
+
+        ~epoch_set() = default;
+
+        fetcher_epoch fetcher_epoch;
         subscription_epoch subscription_epoch;
     };
+
     struct partitions_with_epoch {
-        topic_partition_map<epoch_set> assignment_epochs;
+        topic_partition_map<epoch_set> snapshotted_epochs;
         chunked_vector<partitions_to_process> partitions;
     };
     struct fetch_response_content {
@@ -236,6 +253,15 @@ private:
     static std::optional<epoch_set> find_epoch_set(
       const model::topic& topic,
       model::partition_id partition,
+      const topic_partition_map<epoch_set>& epochs);
+
+    std::optional<std::reference_wrapper<partition_fetch_state>>
+    find_fetcher_state(
+      const model::topic& topic, model::partition_id partition);
+
+    bool is_consistent_fetcher_epoch(
+      const model::topic& topic,
+      model::partition_id partition_id,
       const topic_partition_map<epoch_set>& epochs);
 
     ss::future<api_version> get_fetch_request_version() const;
@@ -270,7 +296,7 @@ private:
 
     data_queue& queue();
     prefix_logger& logger();
-    assignment_epoch next_epoch() { return ++_epoch; }
+    fetcher_epoch next_epoch() { return ++_epoch; }
 
     void reset_partition_offset(model::topic_partition_view);
 
@@ -282,7 +308,7 @@ private:
     ss::condition_variable _partitions_updated;
     ss::gate _gate;
     mutex _state_lock;
-    assignment_epoch _epoch{0};
+    fetcher_epoch _epoch{0};
     ss::abort_source _as;
 };
 } // namespace kafka::client
