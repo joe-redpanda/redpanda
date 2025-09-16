@@ -20,6 +20,9 @@
 
 #include <seastar/util/bool_class.hh>
 namespace kafka::client {
+
+using subscription_epoch = named_type<uint64_t, struct subscription_epoch_tag>;
+
 enum class offset_reset_policy : int8_t {
     // reset to the earliest offset
     earliest,
@@ -63,6 +66,7 @@ struct fetched_partition_data {
     chunked_vector<model::record_batch> data;
     kafka::error_code error = kafka::error_code::none;
     std::optional<chunked_vector<aborted_transaction>> aborted_transactions;
+    subscription_epoch subscription_epoch;
 };
 
 struct fetched_topic_data {
@@ -94,7 +98,5 @@ using topic_partition_map = chunked_hash_map<
 
 using fetch_sessions_enabled
   = ss::bool_class<struct fetch_sessions_enabled_tag>;
-
-using assignment_epoch = named_type<uint64_t, struct fetcher_epoch_tag>;
 
 } // namespace kafka::client

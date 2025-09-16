@@ -468,6 +468,76 @@ TEST_F(consumer_test_mock, TestLeadershipChange) {
     });
 }
 
+TEST_F(consumer_test_mock, TestEpochFiltering) {
+    prepare_cluster();
+    model::topic test_topic("panda-test");
+    cluster_mock.add_topic(test_topic, 1, 3);
+    topic_partition_map<chunked_vector<model::record_batch>> all_batches;
+    // 10 batches available in partition 0
+    make_data_available(test_topic, 0, 10);
+
+    auto client_cluster = create_client_cluster();
+    client_cluster.start().get();
+    direct_consumer consumer(client_cluster, direct_consumer::configuration{});
+    consumer.start().get();
+    auto deferred_stop = ss::defer([&] {
+        consumer.stop().get();
+        client_cluster.stop().get();
+    });
+
+    auto get_assignment = [test_topic] {
+        chunked_vector<topic_assignment> assignment;
+        assignment.push_back({
+          .topic = test_topic,
+        });
+        // only partition 0 is assigned
+        assignment.back().partitions.push_back(
+          partition_assignment{
+            .partition_id = model::partition_id(0),
+            .next_offset = kafka::offset(0),
+          });
+        return assignment;
+    };
+
+    consumer.assign_partitions(get_assignment()).get();
+
+    // TODO we need a way to force iterations to occur
+    ss::sleep(2s).get();
+
+    consumer.unassign_topics({test_topic}).get();
+
+    consumer.assign_partitions(get_assignment()).get();
+
+    auto filtered_fetch_result = consumer.fetch_next(5s).get();
+
+    ASSERT_TRUE(filtered_fetch_result.has_value());
+
+    auto filtered_fetch = std::move(filtered_fetch_result).value();
+
+    int found_partition_count{0};
+
+    for (auto& topic_data : filtered_fetch) {
+        for (auto& partition_data : topic_data.partitions) {
+            test_log.info(
+              "found data with ntp {}/{}, sub_id: {}",
+              topic_data.topic,
+              partition_data.partition_id,
+              partition_data.subscription_epoch);
+            std::ignore = partition_data;
+            ++found_partition_count;
+        }
+    }
+
+    ASSERT_EQ(found_partition_count, 0);
+
+    // wait for all data to be fetched
+    RPTEST_REQUIRE_EVENTUALLY(10s, [&] {
+        return fetch_and_append_to_map(all_batches, consumer).then([&] {
+            return all_batches[test_topic][model::partition_id(0)].size() == 10;
+        });
+    });
+}
+
 TEST_F(consumer_test_mock, TestOffsetResetPolicy) {
     prepare_cluster();
     model::topic test_topic("panda-test");

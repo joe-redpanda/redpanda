@@ -12,6 +12,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "base/format_to.h"
+#include "kafka/client/direct_consumer/api_types.h"
 #include "kafka/client/direct_consumer/data_queue.h"
 #include "kafka/client/direct_consumer/direct_consumer.h"
 #include "kafka/client/errors.h"
@@ -150,7 +151,10 @@ ss::future<fetcher::partitions_with_epoch> fetcher::collect_partitions() {
           [&to_process, &ret, inc = _session_state.incremental()](auto& p_fs) {
               partition_fetch_state& fetch_state = p_fs.second;
               ret.assignment_epochs[to_process.topic][fetch_state.partition_id]
-                = fetch_state.assignment_epoch;
+                = epoch_set{
+                  .fetcher_epoch = fetch_state.assignment_epoch,
+                  .subscription_epoch = fetch_state.subscription_epoch};
+
               if (!fetch_state.fetch_offset.has_value()) {
                   to_process.to_list_offsets.push_back(fetch_state);
                   return;
@@ -275,7 +279,7 @@ bool fetcher::maybe_update_fetch_offset(
   model::partition_id partition_id,
   kafka::offset last_received,
   kafka::offset high_watermark,
-  std::optional<assignment_epoch> maybe_response_epoch) {
+  std::optional<epoch_set> maybe_epochs) {
     auto t_it = _partitions.find(topic);
     if (t_it == _partitions.end()) {
         return false;
@@ -292,7 +296,7 @@ bool fetcher::maybe_update_fetch_offset(
     // 4. broker receives update
     // 5. the fetch will receive a response for which it did not have an epoch
     // this is logically the same as epoch mismatch
-    if (!maybe_response_epoch) {
+    if (!maybe_epochs) {
         vlog(
           logger().info,
           "[broker: {}] Ignoring unbidden {}/{} current epoch: {}",
@@ -303,7 +307,7 @@ bool fetcher::maybe_update_fetch_offset(
         return false;
     }
 
-    const auto response_epoch = maybe_response_epoch.value();
+    const auto response_epoch = maybe_epochs.value().fetcher_epoch;
 
     if (p_it->second.assignment_epoch != response_epoch) {
         vlog(
@@ -438,10 +442,10 @@ ss::future<> fetcher::do_fetch() {
     }
 }
 
-std::optional<fetcher::assignment_epoch> fetcher::find_assignment_epoch(
+std::optional<fetcher::epoch_set> fetcher::find_assignment_epoch(
   const model::topic& topic,
   model::partition_id partition,
-  const topic_partition_map<assignment_epoch>& epochs) {
+  const topic_partition_map<epoch_set>& epochs) {
     auto topic_iterator = epochs.find(topic);
 
     if (topic_iterator == epochs.end()) {
@@ -461,7 +465,7 @@ std::optional<fetcher::assignment_epoch> fetcher::find_assignment_epoch(
 ss::future<kafka_result<fetcher::fetch_response_content>>
 fetcher::process_fetch_response(
   fetch_response resp,
-  const topic_partition_map<assignment_epoch>& epochs,
+  const topic_partition_map<epoch_set>& epochs,
   const chunked_vector<partitions_to_process>& partitions) {
     if (resp.data.error_code != kafka::error_code::none) {
         co_return resp.data.error_code;
@@ -503,6 +507,16 @@ fetcher::process_fetch_response(
             fetched_partition_data part_data;
             part_data.error = part_response.error_code;
             part_data.partition_id = part_response.partition_index;
+
+            auto partition_epochs
+              = find_assignment_epoch(
+                  topic_data.topic, part_data.partition_id, epochs)
+                  .value_or(
+                    epoch_set{
+                      .fetcher_epoch = assignment_epoch(-1),
+                      .subscription_epoch = subscription_epoch(-1)});
+
+            part_data.subscription_epoch = partition_epochs.subscription_epoch;
 
             if (part_response.error_code != kafka::error_code::none) {
                 if (
@@ -657,7 +671,8 @@ fetcher::process_fetch_response(
                         continue;
                     }
 
-                    const auto request_epoch = maybe_request_epoch.value();
+                    const auto request_epoch
+                      = maybe_request_epoch.value().fetcher_epoch;
 
                     if (assigned_epoch == request_epoch) {
                         partition_iterator->second.incremental_include = false;
@@ -727,7 +742,7 @@ model::timestamp timestamp_for_offset_reset_policy(offset_reset_policy policy) {
 
 ss::future<kafka::error_code> fetcher::maybe_initialise_fetch_offsets(
   const chunked_vector<partitions_to_process>& partitions,
-  const topic_partition_map<assignment_epoch>& epochs) {
+  const topic_partition_map<epoch_set>& epochs) {
     const auto timestamp = timestamp_for_offset_reset_policy(
       _parent->_config.reset_policy);
 
@@ -809,10 +824,10 @@ ss::future<kafka::error_code> fetcher::maybe_initialise_fetch_offsets(
 
             const auto assigned_epoch = p_it->second.assignment_epoch;
 
-            auto maybe_response_epoch = find_assignment_epoch(
+            auto maybe_epoch_set = find_assignment_epoch(
               response_topic.topic, response_partition.partition_id, epochs);
 
-            if (!maybe_response_epoch) {
+            if (!maybe_epoch_set) {
                 vlog(
                   logger().warn,
                   "[broker: {} received a list topics response which was not "
@@ -823,7 +838,7 @@ ss::future<kafka::error_code> fetcher::maybe_initialise_fetch_offsets(
                 continue;
             }
 
-            const auto request_epoch = maybe_response_epoch.value();
+            const auto request_epoch = maybe_epoch_set.value().fetcher_epoch;
 
             if (request_epoch != assigned_epoch) {
                 vlog(
@@ -878,7 +893,9 @@ ss::future<api_version> fetcher::get_list_offsets_request_version() const {
 }
 
 ss::future<> fetcher::assign_partition(
-  model::topic_partition_view tp, std::optional<kafka::offset> offset) {
+  model::topic_partition_view tp,
+  std::optional<kafka::offset> offset,
+  subscription_epoch subscription_epoch) {
     auto lock = co_await _state_lock.get_units();
     vlog(
       logger().debug,
@@ -891,7 +908,8 @@ ss::future<> fetcher::assign_partition(
       .partition_id = tp.partition,
       .fetch_offset = offset,
       .assignment_epoch = next_epoch(),
-      .incremental_include = true};
+      .incremental_include = true,
+      .subscription_epoch = subscription_epoch};
 
     // in the case of fast leadership transfers, we may have a partition both
     // being added and forgotten, in which case, make sure that it is only being

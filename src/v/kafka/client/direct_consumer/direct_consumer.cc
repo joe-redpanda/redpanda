@@ -16,6 +16,9 @@
 #include "model/validation.h"
 #include "ssx/future-util.h"
 
+#include <algorithm>
+#include <iterator>
+
 namespace kafka::client {
 
 direct_consumer::direct_consumer(cluster& cluster, configuration cfg)
@@ -32,7 +35,46 @@ direct_consumer::fetch_next(std::chrono::milliseconds timeout) {
     }
     auto holder = _gate.hold();
     try {
-        co_return co_await _fetched_data_queue->pop(timeout);
+        auto maybe_response_to_filter = co_await _fetched_data_queue->pop(
+          timeout);
+        if (maybe_response_to_filter.has_error()) {
+            co_return maybe_response_to_filter;
+        }
+
+        // the remainder is synchronous, no lock is needed
+        auto lock_holder = co_await _subscriptions_lock.get_units();
+
+        auto& response_to_filter = maybe_response_to_filter.value();
+
+        for (auto& topic_data : response_to_filter) {
+            auto& partition_data = topic_data.partitions;
+            auto& topic = topic_data.topic;
+
+            auto consistent_subsegment = std::ranges::partition(
+              partition_data,
+              [this, &topic](const fetched_partition_data& data) {
+                  auto maybe_current_subscription_epoch
+                    = find_subscription_epoch(topic, data.partition_id);
+
+                  this->_cluster->logger().info(
+                    "current sub epoch: {}, found request epoch: {}",
+                    maybe_current_subscription_epoch,
+                    data.subscription_epoch);
+                  // no longer assigned
+                  if (!maybe_current_subscription_epoch) {
+                      return false;
+                  }
+                  return data.subscription_epoch
+                         == *maybe_current_subscription_epoch;
+              });
+
+            auto erase_iterator = partition_data.end()
+                                  - consistent_subsegment.size();
+
+            partition_data.erase_to_end(erase_iterator);
+        }
+
+        co_return maybe_response_to_filter;
     } catch (ss::condition_variable_timed_out&) {
         co_return chunked_vector<fetched_topic_data>{};
     }
@@ -104,13 +146,17 @@ ss::future<> direct_consumer::update_fetchers(
                 sub.current_fetcher = *leader_id;
                 auto& new_fetcher = get_fetcher(*leader_id);
                 co_await new_fetcher.assign_partition(
-                  model::topic_partition_view(topic, p_id), sub.fetch_offset);
+                  model::topic_partition_view(topic, p_id),
+                  sub.fetch_offset,
+                  sub.subscription_epoch);
 
             } else if (sub.fetch_offset) {
                 // If the fetch offset is set, update it
                 auto& current = get_fetcher(*sub.current_fetcher);
                 co_await current.assign_partition(
-                  model::topic_partition_view(topic, p_id), sub.fetch_offset);
+                  model::topic_partition_view(topic, p_id),
+                  sub.fetch_offset,
+                  sub.subscription_epoch);
             }
             sub.fetch_offset.reset();
         }
@@ -183,15 +229,17 @@ direct_consumer::assign_partitions(chunked_vector<topic_assignment> topics) {
                 "Invalid topic name: {}, error: {}", t.topic, ec.message()));
         }
         for (auto& p : t.partitions) {
+            auto epoch_to_assign = ++epoch;
             vlog(
               _cluster->logger().trace,
-              "Assigning partition: {}/{} with offset: {}",
+              "Assigning partition: {}/{} with offset: {} and epoch {}",
               t.topic,
               p.partition_id,
-              p.next_offset);
+              p.next_offset,
+              epoch_to_assign);
             auto& sub = _subscriptions[t.topic][p.partition_id];
             sub.fetch_offset = p.next_offset;
-            sub.subscription_epoch = ++epoch;
+            sub.subscription_epoch = epoch_to_assign;
         }
     }
     co_await update_fetchers(std::move(lock_holder));

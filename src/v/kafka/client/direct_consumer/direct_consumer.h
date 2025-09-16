@@ -13,6 +13,7 @@
 #include "container/chunked_hash_map.h"
 #include "kafka/client/cluster.h"
 #include "kafka/client/direct_consumer/api_types.h"
+#include "model/fundamental.h"
 
 namespace kafka {
 struct metadata_response_data;
@@ -127,7 +128,7 @@ private:
     struct subscription {
         std::optional<model::node_id> current_fetcher;
         std::optional<kafka::offset> fetch_offset;
-        assignment_epoch subscription_epoch;
+        subscription_epoch subscription_epoch;
     };
     friend class fetcher;
     void on_metadata_update(const metadata_response_data&);
@@ -138,6 +139,21 @@ private:
       topic_partition_map<subscription> removals = {});
 
     fetcher& get_fetcher(model::node_id id);
+
+    std::optional<subscription_epoch> find_subscription_epoch(
+      const model::topic& topic, model::partition_id partition_id) {
+        auto t_it = _subscriptions.find(topic);
+        if (t_it == _subscriptions.end()) {
+            return std::nullopt;
+        }
+
+        auto& p_map = t_it->second;
+        auto p_it = p_map.find(partition_id);
+        if (p_it == p_map.end()) {
+            return std::nullopt;
+        }
+        return p_it->second.subscription_epoch;
+    }
 
     cluster* _cluster;
 
@@ -154,7 +170,7 @@ private:
     ss::condition_variable _data_available;
 
     // inc on subscription changes to guard against vending stale data
-    assignment_epoch epoch{0};
+    subscription_epoch epoch{0};
 
     cluster::callback_id _metadata_callback_id;
     bool _started = false;

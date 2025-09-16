@@ -165,7 +165,9 @@ public:
      * update the fetch offsets for the already assigned partitions.
      */
     ss::future<> assign_partition(
-      model::topic_partition_view, std::optional<kafka::offset>);
+      model::topic_partition_view,
+      std::optional<kafka::offset>,
+      subscription_epoch);
     /**
      * Unassign partition from the fetcher, it will stop fetching data for the
      * partition and remove it from the fetcher state. After the unassignment
@@ -185,14 +187,17 @@ public:
     void toggle_sessions(fetch_sessions_enabled);
 
 private:
+    using assignment_epoch = named_type<uint64_t, struct fetcher_epoch_tag>;
     struct partition_fetch_state {
         model::partition_id partition_id;
         std::optional<kafka::offset> fetch_offset;
         std::optional<kafka::offset> high_watermark;
         leader_epoch current_leader_epoch{kafka::invalid_leader_epoch};
+        // assignment version for this fetcher
         assignment_epoch assignment_epoch{0};
         bool incremental_include{false};
-
+        // differentiate different assignments to the direct consumer as a whole
+        subscription_epoch subscription_epoch{0};
         bool include_in_fetch_request() const {
             return fetch_offset.has_value();
         }
@@ -209,8 +214,13 @@ private:
                    && to_forget.empty();
         }
     };
+
+    struct epoch_set {
+        assignment_epoch fetcher_epoch;
+        subscription_epoch subscription_epoch;
+    };
     struct partitions_with_epoch {
-        topic_partition_map<assignment_epoch> assignment_epochs;
+        topic_partition_map<epoch_set> assignment_epochs;
         chunked_vector<partitions_to_process> partitions;
     };
     struct fetch_response_content {
@@ -220,10 +230,13 @@ private:
         kafka::fetch_session_id session_id{0};
     };
 
-    static std::optional<assignment_epoch> find_assignment_epoch(
+    // given a topic and parition, fetch the set of epochs if they exist
+    // this is frequently used to check the assignment epoch of partition data
+    // witin a fetcher response
+    static std::optional<epoch_set> find_epoch_set(
       const model::topic& topic,
       model::partition_id partition,
-      const topic_partition_map<assignment_epoch>& epochs);
+      const topic_partition_map<epoch_set>& epochs);
 
     ss::future<api_version> get_fetch_request_version() const;
     ss::future<api_version> get_list_offsets_request_version() const;
@@ -231,14 +244,14 @@ private:
     ss::future<partitions_with_epoch> collect_partitions();
     ss::future<kafka::error_code> maybe_initialise_fetch_offsets(
       const chunked_vector<partitions_to_process>&,
-      const topic_partition_map<assignment_epoch>& epochs);
+      const topic_partition_map<epoch_set>& epochs);
 
     ss::future<fetch_request>
     make_fetch_request(const chunked_vector<partitions_to_process>&);
 
     ss::future<kafka_result<fetch_response_content>> process_fetch_response(
       fetch_response resp,
-      const topic_partition_map<assignment_epoch>& epochs,
+      const topic_partition_map<epoch_set>& epochs,
       const chunked_vector<partitions_to_process>& partitions);
     /**
      * Returns false if the partition was not found or the fetch offset was
@@ -250,7 +263,7 @@ private:
       model::partition_id,
       kafka::offset,
       kafka::offset,
-      std::optional<assignment_epoch>);
+      std::optional<epoch_set>);
 
     ss::future<kafka_result<chunked_vector<topic_partition_offsets>>>
       do_list_offsets(list_offsets_request);
