@@ -13,6 +13,7 @@
 #include "container/chunked_hash_map.h"
 #include "kafka/client/cluster.h"
 #include "kafka/client/direct_consumer/api_types.h"
+#include "model/fundamental.h"
 
 namespace kafka {
 struct metadata_response_data;
@@ -125,8 +126,24 @@ public:
 
 private:
     struct subscription {
+        subscription() = delete;
+        subscription(
+          std::optional<model::node_id> current_fetcher,
+          std::optional<kafka::offset> fetch_offset,
+          subscription_epoch subscription_epoch) noexcept
+          : current_fetcher{current_fetcher}
+          , fetch_offset{fetch_offset}
+          , subscription_epoch{subscription_epoch} {}
+
+        subscription(const subscription&) = default;
+        subscription(subscription&&) = default;
+        subscription& operator=(const subscription&) = default;
+        subscription& operator=(subscription&&) = default;
+        ~subscription() = default;
+
         std::optional<model::node_id> current_fetcher;
         std::optional<kafka::offset> fetch_offset;
+        subscription_epoch subscription_epoch;
     };
     friend class fetcher;
     void on_metadata_update(const metadata_response_data&);
@@ -137,6 +154,12 @@ private:
       topic_partition_map<subscription> removals = {});
 
     fetcher& get_fetcher(model::node_id id);
+
+    std::optional<subscription_epoch> find_subscription_epoch(
+      const model::topic& topic, model::partition_id partition_id);
+
+    void filter_stale_subscriptions(
+      chunked_vector<fetched_topic_data>& responses_to_filter);
 
     cluster* _cluster;
 
@@ -151,6 +174,9 @@ private:
     chunked_hash_map<model::node_id, std::unique_ptr<fetcher>> _broker_fetchers;
     std::unique_ptr<data_queue> _fetched_data_queue;
     ss::condition_variable _data_available;
+
+    // tracks the version of a subscribed ntp
+    subscription_epoch epoch{0};
 
     cluster::callback_id _metadata_callback_id;
     bool _started = false;

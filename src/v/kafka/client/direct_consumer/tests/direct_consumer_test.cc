@@ -15,6 +15,7 @@
 #include "kafka/client/test/cluster_mock.h"
 #include "kafka/client/types.h"
 #include "kafka/protocol/types.h"
+#include "model/fundamental.h"
 #include "model/tests/random_batch.h"
 #include "test_utils/async.h"
 #include "test_utils/test.h"
@@ -464,6 +465,85 @@ TEST_F(consumer_test_mock, TestLeadershipChange) {
     RPTEST_REQUIRE_EVENTUALLY(10s, [&] {
         return fetch_and_append_to_map(all_batches, consumer).then([&] {
             return all_batches[test_topic][model::partition_id(0)].size() == 33;
+        });
+    });
+}
+
+/**
+Checks stale subscription filtering.
+1. replicate [0,9], [10,19], [20,29]
+2. assign ntp at 0 to direct_consumer
+3. let dc fetch data
+4. unassign ntp
+5. assign ntp at 10
+6. check the first call to fetch_next is a empty fetch (was filtered)
+7. drain all fetches, check we see only 20 records
+*/
+TEST_F(consumer_test_mock, TestEpochFiltering) {
+    prepare_cluster();
+    model::topic test_topic("panda-test");
+    cluster_mock.add_topic(test_topic, 1, 3);
+    topic_partition_map<chunked_vector<model::record_batch>> all_batches;
+
+    // 1. replicate [0,9], [10,19], [20,29]
+    make_data_available(test_topic, 0, 10);
+    make_data_available(test_topic, 0, 10);
+    make_data_available(test_topic, 0, 10);
+
+    auto client_cluster = create_client_cluster();
+    client_cluster.start().get();
+    direct_consumer consumer(client_cluster, direct_consumer::configuration{});
+    consumer.start().get();
+    auto deferred_stop = ss::defer([&] {
+        consumer.stop().get();
+        client_cluster.stop().get();
+    });
+
+    auto get_assignment = [test_topic](kafka::offset begin) {
+        chunked_vector<topic_assignment> assignment;
+        assignment.push_back({
+          .topic = test_topic,
+        });
+        // only partition 0 is assigned
+        assignment.back().partitions.push_back(
+          partition_assignment{
+            .partition_id = model::partition_id(0),
+            .next_offset = kafka::offset(begin),
+          });
+        return assignment;
+    };
+
+    // 2. assign ntp at 0 to direct_consumer
+    consumer.assign_partitions(get_assignment(kafka::offset{0})).get();
+
+    // 3. let dc fetch data
+    // TODO we need a way to force iterations to occur
+    ss::sleep(2s).get();
+
+    // 4&5. unassign & reassign with offset 10 instead
+    consumer.unassign_topics({test_topic}).get();
+    consumer.assign_partitions(get_assignment(kafka::offset{10})).get();
+
+    // 6. check the first call to fetch_next is an empty fetch (was filtered)
+    auto filtered_fetch_result = consumer.fetch_next(5s).get();
+    ASSERT_TRUE(filtered_fetch_result.has_value());
+    auto filtered_fetch = std::move(filtered_fetch_result).value();
+    int found_partition_count{0};
+
+    for (auto& topic_data : filtered_fetch) {
+        for (auto& partition_data : topic_data.partitions) {
+            std::ignore = partition_data;
+            ++found_partition_count;
+        }
+    }
+    ASSERT_EQ(found_partition_count, 0);
+
+    // 7. drain all fetches, check we see only 20 records
+    RPTEST_REQUIRE_EVENTUALLY(10s, [&] {
+        return fetch_and_append_to_map(all_batches, consumer).then([&] {
+            auto& ntp_batches = all_batches[test_topic][model::partition_id(0)];
+            return ntp_batches.size() == 20
+                   && ntp_batches.back().last_offset() == model::offset(29);
         });
     });
 }
