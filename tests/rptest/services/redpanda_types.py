@@ -3,7 +3,7 @@ from copy import copy
 from dataclasses import astuple, dataclass
 from enum import Enum, auto
 from logging import Logger
-from typing import Iterator, Protocol, Sequence
+from typing import Any, Callable, Iterator, Protocol, Sequence
 
 from rptest.utils.allow_logs_on_predicate import AllowLogsOnPredicate
 
@@ -287,3 +287,25 @@ class RedpandaServiceForClients(Protocol):
     def kafka_client_security(self) -> KafkaClientSecurity: ...
 
     def brokers(self) -> str: ...
+
+    def brokers_list(self) -> list[str]: ...
+
+    def wait_until(
+        self,
+        fn: Callable[[], Any],
+        timeout_sec: int,
+        backoff_sec: int,
+        err_msg: str | Callable[[], str] = "",
+        retry_on_exc: bool = False,
+    ): ...
+
+    def wait_until_with_progress_check(
+        self,
+        check: Callable[[], Any],
+        condition: Callable[[], Any],
+        timeout_sec: int,
+        progress_sec: int,
+        backoff_sec: int,
+        err_msg: str | None = None,
+        logger: Logger | None = None,
+    ): ...

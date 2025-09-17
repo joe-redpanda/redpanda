@@ -1250,6 +1250,7 @@ class RedpandaServiceABC(ABC, RedpandaServiceConstants):
         timeout_sec: int,
         backoff_sec: int,
         err_msg: str | Callable[[], str] = "",
+        retry_on_exc: bool = False,
     ) -> None:
         """
         Cluster-aware variant of wait_until, which will fail out
@@ -1276,7 +1277,11 @@ class RedpandaServiceABC(ABC, RedpandaServiceConstants):
             return r
 
         wait_until(
-            wrapped, timeout_sec=timeout_sec, backoff_sec=backoff_sec, err_msg=err_msg
+            wrapped,
+            timeout_sec=timeout_sec,
+            backoff_sec=backoff_sec,
+            err_msg=err_msg,
+            retry_on_exc=retry_on_exc,
         )
 
     def wait_until_with_progress_check(
@@ -1982,6 +1987,9 @@ class RedpandaServiceCloud(KubeServiceMixin, RedpandaServiceABC):
         if self._is_serverless_cluster:
             return self._cloud_cluster.get_serverless_broker_address()
         return self._cloud_cluster.get_broker_address()
+
+    def brokers_list(self) -> list[str]:
+        return self.brokers().split(",")
 
     def install_pack_version(self) -> str:
         if self._is_serverless_cluster:
