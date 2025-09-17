@@ -28,7 +28,18 @@ redpanda_cc_library(
         "//src/v/cloud_topics/level_one:__subpackages__",
     ],
     deps = [
+        ":filter",
+        ":logger",
+        "//src/v/cloud_topics:log_reader_config",
+        "//src/v/cloud_topics/level_one/common:abstract_io",
+        "//src/v/cloud_topics/level_one/frontend_reader:reader",
+        "//src/v/cloud_topics/level_one/metastore",
+        "//src/v/cloud_topics/level_one/metastore:offset_interval_set",
+        "//src/v/compaction:key",
+        "//src/v/compaction:key_offset_map",
         "//src/v/compaction:reducer",
+        "//src/v/model",
+        "//src/v/model:batch_compression",
         "@seastar",
     ],
 )
