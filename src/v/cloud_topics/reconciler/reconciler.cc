@@ -180,6 +180,7 @@ ss::future<> reconciler::reconcile() {
                                          : ss::log_level::error,
           "Exception creating staging file: {}",
           ex);
+        co_return;
     }
     auto staging_file_result = staging_file_fut.get();
     if (!staging_file_result.has_value()) {
