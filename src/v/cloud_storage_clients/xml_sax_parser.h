@@ -54,7 +54,7 @@ struct parser_state {
         virtual void handle_start_element(std::string_view element_name) = 0;
         virtual void handle_end_element(std::string_view element_name) = 0;
         virtual void handle_characters(std::string_view characters) = 0;
-        client::list_bucket_result parsed_items() const;
+        client::list_bucket_result parsed_items() &&;
 
         virtual ~impl() = default;
 
@@ -81,8 +81,9 @@ struct parser_state {
         _impl->handle_characters(characters);
     }
 
-    client::list_bucket_result parsed_items() const {
-        return _impl->parsed_items();
+    client::list_bucket_result parsed_items() && {
+        auto impl = std::exchange(_impl, {});
+        return std::move(*impl).parsed_items();
     }
 
 private:
@@ -137,7 +138,7 @@ public:
     /// make sure that libxml2 parsing is finished.
     void end_parse();
 
-    client::list_bucket_result result() const;
+    client::list_bucket_result result() &&;
 
     /// \brief frees up the parser context pointer
     ~xml_sax_parser();

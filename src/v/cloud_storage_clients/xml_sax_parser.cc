@@ -295,8 +295,8 @@ void abs_parse_impl::handle_characters(std::string_view characters) {
     }
 }
 
-client::list_bucket_result parser_state::impl::parsed_items() const {
-    return _items;
+client::list_bucket_result parser_state::impl::parsed_items() && {
+    return std::move(_items);
 }
 
 xml_sax_parser::xml_sax_parser(xml_sax_parser&& other) noexcept {
@@ -348,8 +348,9 @@ void xml_sax_parser::end_parse() {
     }
 }
 
-client::list_bucket_result xml_sax_parser::result() const {
-    return _state->parsed_items();
+client::list_bucket_result xml_sax_parser::result() && {
+    auto state = std::exchange(_state, {});
+    return std::move(*state).parsed_items();
 }
 
 void xml_sax_parser::start_element(
@@ -406,7 +407,7 @@ seastar::future<client::list_bucket_result> parse_from_stream(
             .then([&stream] { return stream.close(); })
             .then([&p] {
                 p.end_parse();
-                return p.result();
+                return std::move(p).result();
             });
       });
 }
