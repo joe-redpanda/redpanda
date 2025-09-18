@@ -273,14 +273,17 @@ ss::future<> reconciler::reconcile() {
           reconcile_partitions(oid, partitions));
         if (object_fut.failed()) {
             auto ex = object_fut.get_exception();
+            const auto is_shutdown = ssx::is_shutdown_exception(ex);
             vlogl(
               lg,
-              ssx::is_shutdown_exception(ex) ? ss::log_level::debug
-                                             : ss::log_level::error,
+              is_shutdown ? ss::log_level::debug : ss::log_level::error,
               "Exception reconciling {} partitions into object {}: {}",
               partitions.size(),
               oid,
               ex);
+            if (is_shutdown) {
+                co_return;
+            }
             continue; // Skip this object and move to the next
         }
 
@@ -334,8 +337,27 @@ reconciler::reconcile_partitions(
       build_and_put_object(oid, ctx, partitions));
 
     // Always cleanup.
-    co_await ctx.close_builder();
-    co_await ctx.cleanup_staging();
+    auto close_fut = co_await ss::coroutine::as_future(ctx.close_builder());
+    if (close_fut.failed()) {
+        auto ex = close_fut.get_exception();
+        vlogl(
+          lg,
+          ssx::is_shutdown_exception(ex) ? ss::log_level::debug
+                                         : ss::log_level::warn,
+          "Exception while closing builder: {}",
+          ex);
+    }
+
+    auto cleanup_fut = co_await ss::coroutine::as_future(ctx.cleanup_staging());
+    if (cleanup_fut.failed()) {
+        auto ex = cleanup_fut.get_exception();
+        vlogl(
+          lg,
+          ssx::is_shutdown_exception(ex) ? ss::log_level::debug
+                                         : ss::log_level::warn,
+          "Exception while cleaning up staging: {}",
+          ex);
+    }
 
     if (fut.failed()) {
         auto ex = fut.get_exception();
