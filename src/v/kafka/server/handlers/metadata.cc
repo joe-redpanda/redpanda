@@ -93,7 +93,7 @@ std::optional<cluster::leader_term> get_leader_term(
      * cluster::topic_dispatcher before)
      */
     if (!leader_term) {
-        leader_term.emplace(replicas[0], model::term_id(0));
+        leader_term.emplace(replicas[0]);
         return leader_term;
     }
     if (!leader_term->leader.has_value()) {
