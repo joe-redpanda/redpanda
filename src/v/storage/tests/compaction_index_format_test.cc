@@ -402,13 +402,13 @@ TEST_F(compacted_topic_fixture, footer_v1_compatibility) {
         data.size_bytes() - storage::index_footer_v1::footer_size,
         storage::index_footer_v1::footer_size));
 
-    BOOST_CHECK_EQUAL(footer.size, footer.size_deprecated);
-    BOOST_CHECK_EQUAL(footer.size, footer_v1.size);
-    BOOST_CHECK_EQUAL(footer.keys, footer.keys_deprecated);
-    BOOST_CHECK_EQUAL(footer.keys, footer_v1.keys);
-    BOOST_CHECK(footer.flags == footer_v1.flags);
-    BOOST_CHECK_EQUAL(footer.crc, footer_v1.crc);
-    BOOST_CHECK_EQUAL(footer.version, footer_v1.version);
+    EXPECT_EQ(footer.size, footer.size_deprecated);
+    EXPECT_EQ(footer.size, footer_v1.size);
+    EXPECT_EQ(footer.keys, footer.keys_deprecated);
+    EXPECT_EQ(footer.keys, footer_v1.keys);
+    EXPECT_EQ(footer.flags, footer_v1.flags);
+    EXPECT_EQ(footer.crc, footer_v1.crc);
+    EXPECT_EQ(footer.version, footer_v1.version);
 }
 
 static iobuf substitute_index_for_older_ver(iobuf data, int8_t version) {
