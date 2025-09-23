@@ -13,6 +13,7 @@
 #include "cloud_topics/cluster_services.h"
 #include "cloud_topics/data_plane_api.h"
 #include "cloud_topics/data_plane_impl.h"
+#include "cloud_topics/level_zero/gc/level_zero_gc.h"
 #include "cloud_topics/manager/manager.h"
 #include "cluster/cluster_epoch_service.h"
 #include "cluster/controller.h"
@@ -88,12 +89,19 @@ ss::future<> app::construct(
       ss::sharded_parameter([this] { return &replicated_metastore.local(); }));
 
     co_await construct_service(
-      manager,
+      l0_gc,
       ss::sharded_parameter([&] { return &remote->local(); }),
       bucket,
+      &controller->get_health_monitor());
+
+    // Must be last to register so it will be first to be stopped in
+    // `app::stop`. This is to ensure that stopped services don't receive
+    // callbacks.
+    co_await construct_service(
+      manager,
       &controller->get_partition_manager(),
       &controller->get_raft_manager(),
-      &controller->get_health_monitor());
+      &controller->get_topics_state());
 }
 
 ss::future<> app::start() {
@@ -101,6 +109,28 @@ ss::future<> app::start() {
     co_await reconciler.invoke_on_all([](auto& r) { return r.start(); });
     co_await domain_supervisor.invoke_on_all(
       [](auto& ds) { return ds.start(); });
+
+    co_await l0_gc.invoke_on_all([this](auto& gc) {
+        // Tie the starting/stopping of L0 GC to the L1 domain partition 0 so
+        // that it's a cluster wide singleton.
+        manager.local().on_l1_domain_leader([&gc](
+                                              const model::ntp& ntp,
+                                              const auto&,
+                                              const auto& partition) noexcept {
+            if (ntp.tp.partition != model::partition_id{0}) {
+                return;
+            }
+            if (partition) {
+                gc.start();
+            } else {
+                gc.pause();
+            }
+        });
+    });
+
+    // When start is called, we must have registered all the callbacks before
+    // this as starting the manager will invoke callbacks for partitions already
+    // on the local shard.
     co_await manager.invoke_on_all([](auto& r) { return r.start(); });
 }
 
