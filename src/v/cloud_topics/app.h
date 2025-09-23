@@ -36,6 +36,7 @@ namespace cloud_topics {
 class data_plane_api;
 class cloud_topics_manager;
 class level_zero_gc;
+class housekeeper_manager;
 
 class app : public ssx::sharded_service_container {
 public:
@@ -82,6 +83,7 @@ private:
     ss::sharded<l1::frontend> l1_metastore_fe;
     ss::sharded<cloud_topics_manager> manager;
     ss::sharded<level_zero_gc> l0_gc;
+    ss::sharded<housekeeper_manager> housekeeper_manager;
 };
 
 } // namespace cloud_topics

@@ -13,6 +13,7 @@
 #include "cloud_topics/cluster_services.h"
 #include "cloud_topics/data_plane_api.h"
 #include "cloud_topics/data_plane_impl.h"
+#include "cloud_topics/housekeeper/manager.h"
 #include "cloud_topics/level_zero/gc/level_zero_gc.h"
 #include "cloud_topics/manager/manager.h"
 #include "cluster/cluster_epoch_service.h"
@@ -94,6 +95,10 @@ ss::future<> app::construct(
       bucket,
       &controller->get_health_monitor());
 
+    co_await construct_service(housekeeper_manager, ss::sharded_parameter([&] {
+                                   return &replicated_metastore.local();
+                               }));
+
     // Must be last to register so it will be first to be stopped in
     // `app::stop`. This is to ensure that stopped services don't receive
     // callbacks.
@@ -126,6 +131,20 @@ ss::future<> app::start() {
                 gc.pause();
             }
         });
+    });
+    co_await housekeeper_manager.invoke_on_all(&housekeeper_manager::start);
+    co_await housekeeper_manager.invoke_on_all([this](auto& hm) {
+        manager.local().on_ctp_partition_leader(
+          [&hm](
+            const model::ntp&,
+            const model::topic_id_partition& tidp,
+            auto partition) noexcept {
+              if (partition) {
+                  hm.start_housekeeper(tidp, std::move(*partition));
+              } else {
+                  hm.stop_housekeeper(tidp);
+              }
+          });
     });
 
     // When start is called, we must have registered all the callbacks before
