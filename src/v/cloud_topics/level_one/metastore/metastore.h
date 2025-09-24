@@ -107,9 +107,8 @@ public:
         // appropriate for the given partition. Potentially shares the object
         // with another partition, if the object is allowed by the metastore to
         // be shared by the other partition.
-        virtual object_id
-        get_or_create_object_for(const model::topic_id_partition&)
-          = 0;
+        virtual std::expected<object_id, error>
+        get_or_create_object_for(const model::topic_id_partition&) = 0;
 
         // Removes a pending object from the builder. The object must be in the
         // pending state. Further calls to get_or_create_object_for() will not
@@ -132,7 +131,9 @@ public:
         kafka::offset start_offset;
         kafka::offset next_offset;
     };
-    virtual std::unique_ptr<object_metadata_builder> object_builder() = 0;
+    virtual ss::future<
+      std::expected<std::unique_ptr<object_metadata_builder>, errc>>
+    object_builder() = 0;
 
     struct term_offset {
         model::term_id term;

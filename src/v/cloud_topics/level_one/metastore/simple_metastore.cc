@@ -35,7 +35,8 @@ term_state_update_t make_terms_update(const metastore::term_offset_map_t& m) {
 }
 } // namespace
 
-object_id simple_object_builder::get_or_create_object_for(
+std::expected<object_id, simple_object_builder::error>
+simple_object_builder::get_or_create_object_for(
   const model::topic_id_partition&) {
     // The simple metastore isn't partitioned at all, so have all partitions
     // blindly share any existing object.
@@ -121,9 +122,11 @@ new_object make_new_object(const metastore::object_metadata& o) {
     return new_o;
 }
 
-std::unique_ptr<metastore::object_metadata_builder>
+ss::future<std::expected<
+  std::unique_ptr<metastore::object_metadata_builder>,
+  metastore::errc>>
 simple_metastore::object_builder() {
-    return std::make_unique<simple_object_builder>();
+    co_return std::make_unique<simple_object_builder>();
 }
 
 ss::future<std::expected<metastore::offsets_response, metastore::errc>>

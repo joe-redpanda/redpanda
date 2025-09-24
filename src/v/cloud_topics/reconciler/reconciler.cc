@@ -216,12 +216,24 @@ ss::future<> reconciler::reconcile() {
     }
 
     // Begin by creating the set of objects to be built.
-    auto metadata_builder = _metastore->object_builder();
+    auto metadata_builder_res = co_await _metastore->object_builder();
+    if (!metadata_builder_res.has_value()) {
+        vlog(
+          lg.warn,
+          "Could not create object metadata builder: {}",
+          metadata_builder_res.error());
+        co_return;
+    }
+    auto& metadata_builder = metadata_builder_res.value();
     chunked_hash_map<l1::object_id, chunked_vector<attached_partition>>
       oid_to_partitions;
     for (const auto& p : partitions) {
         auto oid = metadata_builder->get_or_create_object_for(p->tidp);
-        oid_to_partitions[oid].push_back(p);
+        if (!oid.has_value()) {
+            vlog(lg.warn, "Could not get object: {}", oid.error());
+            co_return;
+        }
+        oid_to_partitions[oid.value()].push_back(p);
     }
 
     // Process partitions by their object. This should be easier to
