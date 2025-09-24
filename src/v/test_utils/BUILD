@@ -91,6 +91,21 @@ redpanda_test_cc_library(
 )
 
 redpanda_test_cc_library(
+    name = "async",
+    hdrs = [
+        "async.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":test_macros",
+        "//src/v/base",
+        "//src/v/model:timeout_clock",
+        "//src/v/ssx:sformat",
+        "@seastar",
+    ],
+)
+
+redpanda_test_cc_library(
     name = "random",
     hdrs = [
         "randoms.h",
