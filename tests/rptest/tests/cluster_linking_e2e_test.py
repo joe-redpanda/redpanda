@@ -1085,9 +1085,9 @@ class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):
         # Now the topic should be deletable, as it is not in the autocreate filters
         target_client.delete_topic(topic.name)
         link_state = self.get_link("test-link")
-        assert len(link_state.status.shadow_topic_statuses) == 0, (
-            "Expected empty shadow_topic_statuses. "
-            f"Instead got {link_state.status.shadow_topic_statuses}"
+        assert len(link_state.status.shadow_topics) == 0, (
+            "Expected empty shadow_topic list. "
+            f"Instead got {link_state.status.shadow_topics}"
         )
 
     @cluster(num_nodes=8)
@@ -1484,8 +1484,8 @@ class ShadowLinkTopicFailoverTests(ShadowLinkPreAllocTestBase):
                 self.logger.debug(f"Failover response: {metadata}")
 
                 topic_status = [
-                    s.state
-                    for s in metadata.status.shadow_topic_statuses
+                    s.status.state
+                    for s in metadata.status.shadow_topics
                     if s.name == topic.name
                 ]
                 assert next(iter(topic_status), None) in [

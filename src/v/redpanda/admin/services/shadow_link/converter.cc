@@ -35,6 +35,7 @@ using proto::admin::shadow_link;
 using proto::admin::shadow_link_client_options;
 using proto::admin::shadow_link_configurations;
 using proto::admin::shadow_link_status;
+using proto::admin::shadow_topic;
 using proto::admin::shadow_topic_status;
 using proto::admin::tls_file_settings;
 using proto::admin::tls_settings;
@@ -828,27 +829,38 @@ create_shadow_link_configuration(const cluster_link::model::metadata& md) {
     return configurations;
 }
 
-chunked_vector<shadow_topic_status>
-create_shadow_topic_statuses(const cluster_link::model::link_state& state) {
-    chunked_vector<shadow_topic_status> statuses;
-    statuses.reserve(state.mirror_topics.size());
+chunked_vector<shadow_topic>
+create_shadow_topics(const cluster_link::model::link_state& state) {
+    chunked_vector<shadow_topic> shadow_topics;
+    shadow_topics.reserve(state.mirror_topics.size());
 
     for (const auto& [topic, metadata] : state.mirror_topics) {
+        shadow_topic st;
+        st.set_name(ss::sstring{topic});
+        if (metadata.destination_topic_id != model::topic_id{}) {
+            st.set_topic_id(ssx::sformat("{}", metadata.destination_topic_id));
+        }
+        st.set_source_topic_name(ss::sstring{metadata.source_topic_name});
+        if (metadata.source_topic_id.has_value()) {
+            st.set_source_topic_id(
+              ssx::sformat("{}", metadata.source_topic_id.value()));
+        }
         shadow_topic_status status;
-        status.set_name(ss::sstring{topic});
         status.set_state(
           mirror_topic_state_to_shadow_topic_state(metadata.status));
-        statuses.emplace_back(std::move(status));
+        st.set_status(std::move(status));
+        shadow_topics.emplace_back(std::move(st));
     }
 
-    return statuses;
+    return shadow_topics;
 }
 
 shadow_link_status
 create_shadow_link_status(const cluster_link::model::metadata& md) {
     shadow_link_status status;
+
     status.set_state(convert_link_status(md.state.status));
-    status.set_shadow_topic_statuses(create_shadow_topic_statuses(md.state));
+    status.set_shadow_topics(create_shadow_topics(md.state));
 
     chunked_vector<ss::sstring> properties_synced;
     auto props = md.configuration.topic_metadata_mirroring_cfg

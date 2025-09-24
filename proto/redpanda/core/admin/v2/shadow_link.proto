@@ -82,6 +82,26 @@ message ShadowLink {
     ShadowLinkStatus status = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
+// A ShadowTopic resource contained by the ShadowLink
+message ShadowTopic {
+    // Name of the shadow topic
+    string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+    // The topic ID of the shadow topic
+    string topic_id = 2 [
+        (google.api.field_behavior) = OUTPUT_ONLY,
+        (google.api.field_info).format = UUID4
+    ];
+    // The name of the source topic
+    string source_topic_name = 3;
+    // The topic ID of the source topic
+    string source_topic_id = 4 [
+        (google.api.field_behavior) = OUTPUT_ONLY,
+        (google.api.field_info).format = UUID4
+    ];
+    // The status of the shadow topic
+    ShadowTopicStatus status = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
 /* RPC Requests and Responses */
 // Create a new shadow link
 message CreateShadowLinkRequest {
@@ -387,7 +407,7 @@ message ShadowLinkStatus {
     // Statuses of the running tasks
     repeated ShadowLinkTaskStatus task_statuses = 2;
     // Status of shadow topics
-    repeated ShadowTopicStatus shadow_topic_statuses = 3;
+    repeated ShadowTopic shadow_topics = 3;
     // List of topic properties that are being synced
     repeated string synced_shadow_topic_properties = 4;
 }
@@ -404,14 +424,10 @@ message ShadowLinkTaskStatus {
 }
 // Status of a ShadowTopic
 message ShadowTopicStatus {
-    // Name of the shadow topic
-    string name = 1;
-    // Topic ID of the shadow topic
-    string topic_id = 2;
     // State of the shadow topic
-    ShadowTopicState state = 3;
+    ShadowTopicState state = 1;
     // List of partition information for the shadow topic
-    repeated TopicPartitionInformation partition_information = 4;
+    repeated TopicPartitionInformation partition_information = 2;
 }
 // Topic partition information
 message TopicPartitionInformation {
@@ -423,6 +439,8 @@ message TopicPartitionInformation {
     int64 source_high_watermark = 3;
     // Shadowed partition's HWM
     int64 high_watermark = 4;
+    // Timestamp of the last time the source partition information was updated
+    google.protobuf.Timestamp source_last_updated_timestamp = 5;
 }
 
 /* Enums */

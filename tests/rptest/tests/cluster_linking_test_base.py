@@ -600,8 +600,8 @@ class ShadowLinkTestBase(PreallocNodesTest):
             try:
                 metadata = self.get_link(name=link)
                 topic_status = [
-                    s.state
-                    for s in metadata.status.shadow_topic_statuses
+                    s.status.state
+                    for s in metadata.status.shadow_topics
                     if s.name == topic
                 ]
                 self.target_cluster_service.logger.debug(
@@ -656,9 +656,9 @@ class ShadowLinkTestBase(PreallocNodesTest):
                 )
                 return all(
                     [
-                        s.state
+                        s.status.state
                         == shadow_link_pb2.ShadowTopicState.SHADOW_TOPIC_STATE_FAILED_OVER
-                        for s in metadata.status.shadow_topic_statuses
+                        for s in metadata.status.shadow_topics
                     ]
                 )
             except Exception as e:

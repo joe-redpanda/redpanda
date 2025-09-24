@@ -748,13 +748,16 @@ TEST(converter_test, metadata_to_shadow_link_topic_mirroring_cfg) {
     EXPECT_TRUE(topic_metadata_sync_options.get_exclude_default());
 }
 
-proto::admin::shadow_topic_status create_shadow_topic_status(
-  ss::sstring name, proto::admin::shadow_topic_state state) {
-    proto::admin::shadow_topic_status status;
-    status.set_name(std::move(name));
-    status.set_state(state);
+proto::admin::shadow_topic
+create_shadow_topic(ss::sstring name, proto::admin::shadow_topic_state state) {
+    proto::admin::shadow_topic st;
+    proto::admin::shadow_topic_status sts;
 
-    return status;
+    st.set_name(std::move(name));
+    sts.set_state(state);
+    st.set_status(std::move(sts));
+
+    return st;
 }
 
 TEST(converter_test, metadata_to_shadow_link_topic_status) {
@@ -777,17 +780,17 @@ TEST(converter_test, metadata_to_shadow_link_topic_status) {
 
     auto sl = admin::metadata_to_shadow_link(std::move(md));
 
-    auto& mirror_topics = sl.get_status().get_shadow_topic_statuses();
+    auto& mirror_topics = sl.get_status().get_shadow_topics();
 
-    chunked_vector<proto::admin::shadow_topic_status> expected;
+    chunked_vector<proto::admin::shadow_topic> expected;
     expected.reserve(4);
-    expected.emplace_back(create_shadow_topic_status(
-      "active", proto::admin::shadow_topic_state::active));
-    expected.emplace_back(create_shadow_topic_status(
-      "failed", proto::admin::shadow_topic_state::faulted));
-    expected.emplace_back(create_shadow_topic_status(
-      "paused", proto::admin::shadow_topic_state::paused));
-    expected.emplace_back(create_shadow_topic_status(
+    expected.emplace_back(
+      create_shadow_topic("active", proto::admin::shadow_topic_state::active));
+    expected.emplace_back(
+      create_shadow_topic("failed", proto::admin::shadow_topic_state::faulted));
+    expected.emplace_back(
+      create_shadow_topic("paused", proto::admin::shadow_topic_state::paused));
+    expected.emplace_back(create_shadow_topic(
       "promoted", proto::admin::shadow_topic_state::promoted));
 
     std::ranges::sort(mirror_topics, [](const auto& a, const auto& b) {

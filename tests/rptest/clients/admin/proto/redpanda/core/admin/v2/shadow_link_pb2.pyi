@@ -231,6 +231,38 @@ class ShadowLink(google.protobuf.message.Message):
 global___ShadowLink = ShadowLink
 
 @typing.final
+class ShadowTopic(google.protobuf.message.Message):
+    """A ShadowTopic resource contained by the ShadowLink"""
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+    NAME_FIELD_NUMBER: builtins.int
+    TOPIC_ID_FIELD_NUMBER: builtins.int
+    SOURCE_TOPIC_NAME_FIELD_NUMBER: builtins.int
+    SOURCE_TOPIC_ID_FIELD_NUMBER: builtins.int
+    STATUS_FIELD_NUMBER: builtins.int
+    name: builtins.str
+    'Name of the shadow topic'
+    topic_id: builtins.str
+    'The topic ID of the shadow topic'
+    source_topic_name: builtins.str
+    'The name of the source topic'
+    source_topic_id: builtins.str
+    'The topic ID of the source topic'
+
+    @property
+    def status(self) -> global___ShadowTopicStatus:
+        """The status of the shadow topic"""
+
+    def __init__(self, *, name: builtins.str=..., topic_id: builtins.str=..., source_topic_name: builtins.str=..., source_topic_id: builtins.str=..., status: global___ShadowTopicStatus | None=...) -> None:
+        ...
+
+    def HasField(self, field_name: typing.Literal['status', b'status']) -> builtins.bool:
+        ...
+
+    def ClearField(self, field_name: typing.Literal['name', b'name', 'source_topic_id', b'source_topic_id', 'source_topic_name', b'source_topic_name', 'status', b'status', 'topic_id', b'topic_id']) -> None:
+        ...
+global___ShadowTopic = ShadowTopic
+
+@typing.final
 class CreateShadowLinkRequest(google.protobuf.message.Message):
     """RPC Requests and Responses
 
@@ -902,7 +934,7 @@ class ShadowLinkStatus(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
     STATE_FIELD_NUMBER: builtins.int
     TASK_STATUSES_FIELD_NUMBER: builtins.int
-    SHADOW_TOPIC_STATUSES_FIELD_NUMBER: builtins.int
+    SHADOW_TOPICS_FIELD_NUMBER: builtins.int
     SYNCED_SHADOW_TOPIC_PROPERTIES_FIELD_NUMBER: builtins.int
     state: global___ShadowLinkState.ValueType
 
@@ -911,17 +943,17 @@ class ShadowLinkStatus(google.protobuf.message.Message):
         """Statuses of the running tasks"""
 
     @property
-    def shadow_topic_statuses(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___ShadowTopicStatus]:
+    def shadow_topics(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___ShadowTopic]:
         """Status of shadow topics"""
 
     @property
     def synced_shadow_topic_properties(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
         """List of topic properties that are being synced"""
 
-    def __init__(self, *, state: global___ShadowLinkState.ValueType=..., task_statuses: collections.abc.Iterable[global___ShadowLinkTaskStatus] | None=..., shadow_topic_statuses: collections.abc.Iterable[global___ShadowTopicStatus] | None=..., synced_shadow_topic_properties: collections.abc.Iterable[builtins.str] | None=...) -> None:
+    def __init__(self, *, state: global___ShadowLinkState.ValueType=..., task_statuses: collections.abc.Iterable[global___ShadowLinkTaskStatus] | None=..., shadow_topics: collections.abc.Iterable[global___ShadowTopic] | None=..., synced_shadow_topic_properties: collections.abc.Iterable[builtins.str] | None=...) -> None:
         ...
 
-    def ClearField(self, field_name: typing.Literal['shadow_topic_statuses', b'shadow_topic_statuses', 'state', b'state', 'synced_shadow_topic_properties', b'synced_shadow_topic_properties', 'task_statuses', b'task_statuses']) -> None:
+    def ClearField(self, field_name: typing.Literal['shadow_topics', b'shadow_topics', 'state', b'state', 'synced_shadow_topic_properties', b'synced_shadow_topic_properties', 'task_statuses', b'task_statuses']) -> None:
         ...
 global___ShadowLinkStatus = ShadowLinkStatus
 
@@ -953,14 +985,8 @@ global___ShadowLinkTaskStatus = ShadowLinkTaskStatus
 class ShadowTopicStatus(google.protobuf.message.Message):
     """Status of a ShadowTopic"""
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
-    NAME_FIELD_NUMBER: builtins.int
-    TOPIC_ID_FIELD_NUMBER: builtins.int
     STATE_FIELD_NUMBER: builtins.int
     PARTITION_INFORMATION_FIELD_NUMBER: builtins.int
-    name: builtins.str
-    'Name of the shadow topic'
-    topic_id: builtins.str
-    'Topic ID of the shadow topic'
     state: global___ShadowTopicState.ValueType
     'State of the shadow topic'
 
@@ -968,10 +994,10 @@ class ShadowTopicStatus(google.protobuf.message.Message):
     def partition_information(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___TopicPartitionInformation]:
         """List of partition information for the shadow topic"""
 
-    def __init__(self, *, name: builtins.str=..., topic_id: builtins.str=..., state: global___ShadowTopicState.ValueType=..., partition_information: collections.abc.Iterable[global___TopicPartitionInformation] | None=...) -> None:
+    def __init__(self, *, state: global___ShadowTopicState.ValueType=..., partition_information: collections.abc.Iterable[global___TopicPartitionInformation] | None=...) -> None:
         ...
 
-    def ClearField(self, field_name: typing.Literal['name', b'name', 'partition_information', b'partition_information', 'state', b'state', 'topic_id', b'topic_id']) -> None:
+    def ClearField(self, field_name: typing.Literal['partition_information', b'partition_information', 'state', b'state']) -> None:
         ...
 global___ShadowTopicStatus = ShadowTopicStatus
 
@@ -983,6 +1009,7 @@ class TopicPartitionInformation(google.protobuf.message.Message):
     SOURCE_LAST_STABLE_OFFSET_FIELD_NUMBER: builtins.int
     SOURCE_HIGH_WATERMARK_FIELD_NUMBER: builtins.int
     HIGH_WATERMARK_FIELD_NUMBER: builtins.int
+    SOURCE_LAST_UPDATED_TIMESTAMP_FIELD_NUMBER: builtins.int
     partition_id: builtins.int
     'Partition ID'
     source_last_stable_offset: builtins.int
@@ -992,9 +1019,16 @@ class TopicPartitionInformation(google.protobuf.message.Message):
     high_watermark: builtins.int
     "Shadowed partition's HWM"
 
-    def __init__(self, *, partition_id: builtins.int=..., source_last_stable_offset: builtins.int=..., source_high_watermark: builtins.int=..., high_watermark: builtins.int=...) -> None:
+    @property
+    def source_last_updated_timestamp(self) -> google.protobuf.timestamp_pb2.Timestamp:
+        """Timestamp of the last time the source partition information was updated"""
+
+    def __init__(self, *, partition_id: builtins.int=..., source_last_stable_offset: builtins.int=..., source_high_watermark: builtins.int=..., high_watermark: builtins.int=..., source_last_updated_timestamp: google.protobuf.timestamp_pb2.Timestamp | None=...) -> None:
         ...
 
-    def ClearField(self, field_name: typing.Literal['high_watermark', b'high_watermark', 'partition_id', b'partition_id', 'source_high_watermark', b'source_high_watermark', 'source_last_stable_offset', b'source_last_stable_offset']) -> None:
+    def HasField(self, field_name: typing.Literal['source_last_updated_timestamp', b'source_last_updated_timestamp']) -> builtins.bool:
+        ...
+
+    def ClearField(self, field_name: typing.Literal['high_watermark', b'high_watermark', 'partition_id', b'partition_id', 'source_high_watermark', b'source_high_watermark', 'source_last_stable_offset', b'source_last_stable_offset', 'source_last_updated_timestamp', b'source_last_updated_timestamp']) -> None:
         ...
 global___TopicPartitionInformation = TopicPartitionInformation
