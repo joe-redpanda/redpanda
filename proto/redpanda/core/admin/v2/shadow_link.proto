@@ -64,6 +64,24 @@ service ShadowLinkService {
             authz: SUPERUSER
         };
     }
+
+    // This operation returns information about a Shadow Topic on a Shadow Link.
+    // A Shadow Topic is a resource created automatically by a Shadow Link.  The
+    // Shadow Topic 'shadows' a topic on a source cluster, mirroring the data
+    // and properties of that topic.
+    rpc GetShadowTopic(GetShadowTopicRequest) returns (GetShadowTopicResponse) {
+        option (redpanda.core.pbgen.rpc) = {
+            authz: SUPERUSER
+        };
+    }
+    // This operation returns a list of all Shadow Topics on a Shadow Link and
+    // their status
+    rpc ListShadowTopics(ListShadowTopicsRequest)
+        returns (ListShadowTopicsResponse) {
+        option (redpanda.core.pbgen.rpc) = {
+            authz: SUPERUSER
+        };
+    }
 }
 
 /* Resources */
@@ -182,6 +200,25 @@ message FailOverRequest {
 message FailOverResponse {
     // The shadow link that was failed over
     ShadowLink shadow_link = 1;
+}
+// Request to get a shadow topic
+message GetShadowTopicRequest {
+    // The name of the shadow link the topic is contained in
+    string shadow_link_name = 1 [(google.api.field_behavior) = REQUIRED];
+    // The name of the shadow topic to get
+    string name = 2 [(google.api.field_behavior) = REQUIRED];
+}
+// Response of to getting a shadow topic
+message GetShadowTopicResponse {
+    ShadowTopic shadow_topic = 1;
+}
+// Request to list all shadow topics in a shadow link
+message ListShadowTopicsRequest {
+    string shadow_link_name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+// Response to listing all shadow topics in a shadow link
+message ListShadowTopicsResponse {
+    repeated ShadowTopic shadow_topics = 1;
 }
 
 /* Other Messages */

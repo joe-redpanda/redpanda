@@ -479,6 +479,75 @@ class FailOverResponse(google.protobuf.message.Message):
 global___FailOverResponse = FailOverResponse
 
 @typing.final
+class GetShadowTopicRequest(google.protobuf.message.Message):
+    """Request to get a shadow topic"""
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+    SHADOW_LINK_NAME_FIELD_NUMBER: builtins.int
+    NAME_FIELD_NUMBER: builtins.int
+    shadow_link_name: builtins.str
+    'The name of the shadow link the topic is contained in'
+    name: builtins.str
+    'The name of the shadow topic to get'
+
+    def __init__(self, *, shadow_link_name: builtins.str=..., name: builtins.str=...) -> None:
+        ...
+
+    def ClearField(self, field_name: typing.Literal['name', b'name', 'shadow_link_name', b'shadow_link_name']) -> None:
+        ...
+global___GetShadowTopicRequest = GetShadowTopicRequest
+
+@typing.final
+class GetShadowTopicResponse(google.protobuf.message.Message):
+    """Response of to getting a shadow topic"""
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+    SHADOW_TOPIC_FIELD_NUMBER: builtins.int
+
+    @property
+    def shadow_topic(self) -> global___ShadowTopic:
+        ...
+
+    def __init__(self, *, shadow_topic: global___ShadowTopic | None=...) -> None:
+        ...
+
+    def HasField(self, field_name: typing.Literal['shadow_topic', b'shadow_topic']) -> builtins.bool:
+        ...
+
+    def ClearField(self, field_name: typing.Literal['shadow_topic', b'shadow_topic']) -> None:
+        ...
+global___GetShadowTopicResponse = GetShadowTopicResponse
+
+@typing.final
+class ListShadowTopicsRequest(google.protobuf.message.Message):
+    """Request to list all shadow topics in a shadow link"""
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+    SHADOW_LINK_NAME_FIELD_NUMBER: builtins.int
+    shadow_link_name: builtins.str
+
+    def __init__(self, *, shadow_link_name: builtins.str=...) -> None:
+        ...
+
+    def ClearField(self, field_name: typing.Literal['shadow_link_name', b'shadow_link_name']) -> None:
+        ...
+global___ListShadowTopicsRequest = ListShadowTopicsRequest
+
+@typing.final
+class ListShadowTopicsResponse(google.protobuf.message.Message):
+    """Response to listing all shadow topics in a shadow link"""
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+    SHADOW_TOPICS_FIELD_NUMBER: builtins.int
+
+    @property
+    def shadow_topics(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___ShadowTopic]:
+        ...
+
+    def __init__(self, *, shadow_topics: collections.abc.Iterable[global___ShadowTopic] | None=...) -> None:
+        ...
+
+    def ClearField(self, field_name: typing.Literal['shadow_topics', b'shadow_topics']) -> None:
+        ...
+global___ListShadowTopicsResponse = ListShadowTopicsResponse
+
+@typing.final
 class ShadowLinkConfigurations(google.protobuf.message.Message):
     """Other Messages
 

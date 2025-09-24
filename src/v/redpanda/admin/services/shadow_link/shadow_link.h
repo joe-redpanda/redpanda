@@ -48,6 +48,12 @@ public:
     ss::future<proto::admin::fail_over_response> fail_over(
       serde::pb::rpc::context, proto::admin::fail_over_request) override;
 
+    ss::future<proto::admin::get_shadow_topic_response> get_shadow_topic(
+      serde::pb::rpc::context, proto::admin::get_shadow_topic_request) final;
+
+    ss::future<proto::admin::list_shadow_topics_response> list_shadow_topics(
+      serde::pb::rpc::context, proto::admin::list_shadow_topics_request) final;
+
 private:
     /**
      * @brief Returns a node to redirect the message to

@@ -287,6 +287,18 @@ shadow_link_service_impl::fail_over(
     co_return resp;
 }
 
+ss::future<proto::admin::get_shadow_topic_response>
+shadow_link_service_impl::get_shadow_topic(
+  serde::pb::rpc::context, proto::admin::get_shadow_topic_request) {
+    throw serde::pb::rpc::unimplemented_exception();
+}
+
+ss::future<proto::admin::list_shadow_topics_response>
+shadow_link_service_impl::list_shadow_topics(
+  serde::pb::rpc::context, proto::admin::list_shadow_topics_request) {
+    throw serde::pb::rpc::unimplemented_exception();
+}
+
 std::optional<model::node_id>
 shadow_link_service_impl::redirect_to(const model::ntp& ntp) {
     auto leader_node = _md_cache->local().get_leader_id(ntp);
