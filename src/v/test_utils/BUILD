@@ -80,6 +80,17 @@ redpanda_test_cc_library(
 )
 
 redpanda_test_cc_library(
+    name = "test_macros",
+    hdrs = [
+        "test_macros.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/v/base",
+    ],
+)
+
+redpanda_test_cc_library(
     name = "random",
     hdrs = [
         "randoms.h",
