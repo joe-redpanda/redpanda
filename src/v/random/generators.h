@@ -17,22 +17,121 @@
 
 #include <random>
 
+///
+/// @brief Forward declaration for accessor struct that can access
+/// private members of rng for testing or internal purposes.
+/// Only rng declares this as a friend.
+///
+struct random_state_accessor;
+
 // Random generators useful for testing.
 namespace random_generators {
 
+/**
+ * @brief Holds random generator state and allows generation of random values.
+ *
+ * Each object of this class encapsulates its own state. I.e., two objects
+ * created with the same seed will generate the same sequence of values.
+ *
+ * It is similar in principle to a std "random engine", but with methods to
+ * directly generate random values of various types, and with a default
+ * seeding policy that allows seeding to vary between fuzz and non-fuzz tests.
+ */
+class rng {
+public:
+    using seed_type = uint32_t;
+    using engine_type = std::default_random_engine;
+
+    // Initializes an rng object with using the "default" seed
+    // policy, which is fixed in most contexts, but random in
+    // fuzz test contexts.
+    rng();
+
+    // Initializes with a given seed.
+    explicit rng(seed_type seed);
+
+    // The initial seed used to create this rng object.
+    // If you create another object with the same seed it should
+    // generate the same sequence of values.
+    seed_type initial_seed() const { return initial_seed_; }
+
+    template<typename T>
+    T get_int() {
+        std::uniform_int_distribution<T> dist;
+        return dist(gen_);
+    }
+
+    template<typename T>
+    T get_int(T min, T max) {
+        std::uniform_int_distribution<T> dist(min, max);
+        return dist(gen_);
+    }
+
+    template<typename T>
+    T get_int(T max) {
+        return get_int<T>(0, max);
+    }
+
+    template<typename T>
+    const T& random_choice(const std::vector<T>& elements) {
+        auto idx = get_int<size_t>(0, elements.size() - 1);
+        return elements[idx];
+    }
+
+    template<typename T>
+    T& random_choice(std::vector<T>& elements) {
+        auto idx = get_int<size_t>(0, elements.size() - 1);
+        return elements[idx];
+    }
+
+    template<typename T>
+    T random_choice(std::initializer_list<T> choices) {
+        auto idx = get_int<size_t>(0, choices.size() - 1);
+        auto& choice = *(choices.begin() + idx);
+        return std::move(choice);
+    }
+
+    template<typename T>
+    T get_real() {
+        std::uniform_real_distribution<T> dist;
+        return dist(gen_);
+    }
+
+    template<typename T>
+    T get_real(T min, T max) {
+        std::uniform_real_distribution<T> dist(min, max);
+        return dist(gen_);
+    }
+
+    template<typename T>
+    T get_real(T max) {
+        std::uniform_real_distribution<T> dist(0, max);
+        return dist(gen_);
+    }
+
+    template<typename T>
+    std::vector<T> randomized_range(T min, T max) {
+        std::vector<T> r(max - min);
+        std::iota(r.begin(), r.end(), min);
+        std::shuffle(r.begin(), r.end(), gen_);
+        return r;
+    }
+
+    // Returns the underlying random engine, for use in
+    // algorithms that require one.
+    engine_type& engine() { return gen_; }
+
+private:
+    engine_type gen_;
+    seed_type initial_seed_;
+    friend random_state_accessor;
+};
+
+rng& global();
+
 namespace internal {
 
-inline std::random_device::result_type get_seed() {
-    std::random_device rd;
-    auto seed = rd();
-    return seed;
-}
-
-static const auto seed = get_seed();
-
-// NOLINTBEGIN
-static thread_local std::default_random_engine gen(internal::seed);
-// NOLINTEND
+void increment_seed_generation();
 
 static constexpr std::string_view chars
   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -60,64 +159,55 @@ void fill_buffer_randomchars(char* start, size_t amount);
 
 template<typename T>
 std::vector<T> randomized_range(T min, T max) {
-    std::vector<T> r(max - min);
-    std::iota(r.begin(), r.end(), min);
-    std::shuffle(r.begin(), r.end(), internal::gen);
-    return r;
+    return global().randomized_range(min, max);
 }
+
+// Global forwarding functions: each of these just calls the corresponding
+// method on the global() rng object.
 
 template<typename T>
 T get_int() {
-    std::uniform_int_distribution<T> dist;
-    return dist(internal::gen);
+    return global().get_int<T>();
 }
 
 template<typename T>
 T get_int(T min, T max) {
-    std::uniform_int_distribution<T> dist(min, max);
-    return dist(internal::gen);
+    return global().get_int(min, max);
 }
 
 template<typename T>
 T get_int(T max) {
-    return get_int<T>(0, max);
+    return global().get_int(max);
 }
 
 template<typename T>
 const T& random_choice(const std::vector<T>& elements) {
-    auto idx = get_int<size_t>(0, elements.size() - 1);
-    return elements[idx];
+    return global().random_choice(elements);
 }
 
 template<typename T>
 T& random_choice(std::vector<T>& elements) {
-    auto idx = get_int<size_t>(0, elements.size() - 1);
-    return elements[idx];
+    return global().random_choice(elements);
 }
 
 template<typename T>
 T random_choice(std::initializer_list<T> choices) {
-    auto idx = get_int<size_t>(0, choices.size() - 1);
-    auto& choice = *(choices.begin() + idx);
-    return std::move(choice);
+    return global().random_choice(choices);
 }
 
 template<typename T>
 T get_real() {
-    std::uniform_real_distribution<T> dist;
-    return dist(internal::gen);
+    return global().get_real<T>();
 }
 
 template<typename T>
 T get_real(T min, T max) {
-    std::uniform_real_distribution<T> dist(min, max);
-    return dist(internal::gen);
+    return global().get_real<T>(min, max);
 }
 
 template<typename T>
 T get_real(T max) {
-    std::uniform_real_distribution<T> dist(0, max);
-    return dist(internal::gen);
+    return global().get_real<T>(max);
 }
 
 } // namespace random_generators

@@ -11,14 +11,82 @@
 
 #include "random/generators.h"
 
+#include "base/vassert.h"
+
+#include <atomic>
+#include <random>
+#include <type_traits>
+
 namespace random_generators {
 
 using internal::chars;
 
+using seed_type = rng::seed_type;
+
+namespace {
+constexpr seed_type fixed_seed = 1234567891u;
+
+// if these aren't the same we need to think a bit more about the seeded API
+static_assert(std::is_same_v<rng::seed_type, std::random_device::result_type>);
+
+enum class seeding_mode {
+    random_seed = 1,
+    fixed_seed = 2,
+};
+
+std::atomic<int64_t> seed_generation = 0;
+
+// get the default seeding mode from the environment
+const seeding_mode global_seeding_mode = [] {
+    if (auto mode_cstr = std::getenv("REDPANDA_RNG_SEEDING_MODE")) {
+        std::string_view mode{mode_cstr};
+        if (mode == "random") {
+            return seeding_mode::random_seed;
+        } else if (mode == "fixed") {
+            return seeding_mode::fixed_seed;
+        }
+        vassert(false, "Invalid REDPANDA_RNG_SEEDING_MODE: {}", mode);
+    }
+    return seeding_mode::fixed_seed;
+}();
+
+seed_type random_seed() {
+    std::random_device rd;
+    auto seed = rd();
+    return seed;
+}
+
+// state to implement the global() rng object and its reseeding semantics
+thread_local rng global_instance;
+thread_local int64_t last_seed_gen = -1;
+} // namespace
+
+std::random_device::result_type get_initial_seed() {
+    return global_seeding_mode == seeding_mode::fixed_seed ? fixed_seed
+                                                           : random_seed();
+}
+
+rng::rng()
+  : rng(get_initial_seed()) {}
+
+rng::rng(seed_type seed)
+  : gen_(seed)
+  , initial_seed_(seed) {}
+
+rng& global() {
+    // if a reseeding has been requested, apply it here
+    if (last_seed_gen != seed_generation.load(std::memory_order_relaxed))
+      [[unlikely]] {
+        global_instance = rng{};
+        last_seed_gen = seed_generation;
+    }
+
+    return global_instance;
+}
 
 void fill_buffer_randomchars(char* start, size_t amount) {
     static std::uniform_int_distribution<int> rand_fill('@', '~');
-    memset(start, rand_fill(internal::gen), amount);
+    memset(start, rand_fill(global().engine()), amount);
 }
 
 ss::sstring gen_alphanum_string(size_t n) {
@@ -28,7 +96,7 @@ ss::sstring gen_alphanum_string(size_t n) {
     auto s = ss::uninitialized_string(n);
 
     std::generate_n(
-      s.begin(), n, [&dist] { return chars[dist(internal::gen)]; });
+      s.begin(), n, [&dist] { return chars[dist(global().engine())]; });
     return s;
 }
 
@@ -45,5 +113,9 @@ ss::sstring gen_alphanum_max_distinct(size_t cardinality) {
     });
     return s;
 }
+
+namespace internal {
+void increment_seed_generation() { ++seed_generation; }
+} // namespace internal
 
 } // namespace random_generators
