@@ -48,7 +48,7 @@ public:
       int partitions_count,
       int last_offset,
       std::unique_ptr<metastore::object_metadata_builder>* objs) {
-        auto ret = meta.object_builder();
+        auto ret = meta.object_builder().get().value();
         for (int i = 0; i < partitions_count; ++i) {
             auto tp = make_tp(i);
             auto oid = ret->get_or_create_object_for(tp).value();
@@ -89,7 +89,7 @@ public:
 TEST_F(ReplicatedMetastoreTest, TestMissingMetastore) {
     auto& app = get_ct_app(model::node_id{0});
     replicated_metastore meta(app.get_sharded_l1_metastore_fe()->local());
-    auto obj_builder = meta.object_builder();
+    auto obj_builder = meta.object_builder().get().value();
     auto& tp_fe = get_node_application(model::node_id{0})
                     ->controller->get_topics_frontend()
                     .local();
@@ -108,13 +108,20 @@ TEST_F(ReplicatedMetastoreTest, TestMissingMetastore) {
     auto tp = make_tp(0);
     auto oid = obj_builder->get_or_create_object_for(tp);
     ASSERT_FALSE(oid.has_value());
+
+    // Creating an object builder should attempt to create the metastore topic
+    // since it doesn't exist.
+    auto builder_res = meta.object_builder().get();
+    ASSERT_TRUE(builder_res.has_value());
+    oid = builder_res.value()->get_or_create_object_for(tp);
+    ASSERT_TRUE(oid.has_value());
 }
 
 TEST_F(ReplicatedMetastoreTest, TestAddNotFinished) {
     auto& app = get_ct_app(model::node_id{0});
     replicated_metastore meta(app.get_sharded_l1_metastore_fe()->local());
     auto tp = make_tp(0);
-    auto obj_builder = meta.object_builder();
+    auto obj_builder = meta.object_builder().get().value();
     auto oid = obj_builder->get_or_create_object_for(tp).value();
     auto add_res = obj_builder->add(
       oid,
@@ -136,7 +143,7 @@ TEST_F(ReplicatedMetastoreTest, TestBuilderRemovedObjects) {
     auto& app = get_ct_app(model::node_id{0});
     replicated_metastore m(app.get_sharded_l1_metastore_fe()->local());
     auto tp = make_tp(0);
-    auto ob = m.object_builder();
+    auto ob = m.object_builder().get().value();
 
     // pending object can be removed, but not twice
     auto oid = ob->get_or_create_object_for(tp).value();
@@ -367,7 +374,7 @@ TEST_F(ReplicatedMetastoreTest, TestNotLeader) {
             timed_out = true;
             break;
         }
-        auto obj_builder = meta.object_builder();
+        auto obj_builder = meta.object_builder().get().value();
         auto oid = obj_builder->get_or_create_object_for(tp).value();
         kafka::offset next_last{next_to_send() + 99};
         auto add_res = obj_builder->add(
@@ -464,7 +471,7 @@ TEST_F(ReplicatedMetastoreTest, TestGetTermForOffset) {
 
     auto tp = make_tp(0);
 
-    auto obj_builder = meta.object_builder();
+    auto obj_builder = meta.object_builder().get().value();
     auto oid1 = obj_builder->get_or_create_object_for(tp).value();
     auto add_res1 = obj_builder->add(
       oid1,
@@ -523,7 +530,7 @@ TEST_F(ReplicatedMetastoreTest, TestGetEndOffsetForTerm) {
     auto tp = make_tp(0);
 
     // Set up initial objects with multiple terms
-    auto obj_builder = meta.object_builder();
+    auto obj_builder = meta.object_builder().get().value();
     auto oid1 = obj_builder->get_or_create_object_for(tp).value();
     auto add_res1 = obj_builder->add(
       oid1,

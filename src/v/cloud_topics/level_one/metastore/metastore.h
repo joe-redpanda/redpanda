@@ -131,7 +131,9 @@ public:
         kafka::offset start_offset;
         kafka::offset next_offset;
     };
-    virtual std::unique_ptr<object_metadata_builder> object_builder() = 0;
+    virtual ss::future<
+      std::expected<std::unique_ptr<object_metadata_builder>, errc>>
+    object_builder() = 0;
 
     struct term_offset {
         model::term_id term;

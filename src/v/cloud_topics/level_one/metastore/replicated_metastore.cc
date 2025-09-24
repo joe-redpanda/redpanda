@@ -234,9 +234,23 @@ replicated_object_builder::release() {
 replicated_metastore::replicated_metastore(frontend& fe)
   : fe_(fe) {}
 
-std::unique_ptr<metastore::object_metadata_builder>
+ss::future<std::expected<
+  std::unique_ptr<metastore::object_metadata_builder>,
+  metastore::errc>>
 replicated_metastore::object_builder() {
-    return std::make_unique<replicated_object_builder>(fe_);
+    auto ensure_fut = co_await ss::coroutine::as_future(
+      fe_.ensure_topic_exists());
+    if (ensure_fut.failed()) {
+        auto ex = ensure_fut.get_exception();
+        vlog(cd_log.warn, "Error while ensuring metastore topic: {}", ex);
+        co_return std::unexpected(errc::transport_error);
+    }
+    auto success = ensure_fut.get();
+    if (!success) {
+        vlog(cd_log.warn, "Ensuring metastore topic did not succeed");
+        co_return std::unexpected(errc::transport_error);
+    }
+    co_return std::make_unique<replicated_object_builder>(fe_);
 }
 
 ss::future<std::expected<metastore::offsets_response, metastore::errc>>

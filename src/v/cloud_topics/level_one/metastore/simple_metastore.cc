@@ -122,9 +122,11 @@ new_object make_new_object(const metastore::object_metadata& o) {
     return new_o;
 }
 
-std::unique_ptr<metastore::object_metadata_builder>
+ss::future<std::expected<
+  std::unique_ptr<metastore::object_metadata_builder>,
+  metastore::errc>>
 simple_metastore::object_builder() {
-    return std::make_unique<simple_object_builder>();
+    co_return std::make_unique<simple_object_builder>();
 }
 
 ss::future<std::expected<metastore::offsets_response, metastore::errc>>

@@ -995,7 +995,7 @@ TEST(SimpleMetastoreTest, TestCompactionOffsetsNoTombstones) {
 
 TEST(SimpleMetastoreTest, TestObjectBuilder) {
     simple_metastore m;
-    auto ob = m.object_builder();
+    auto ob = m.object_builder().get().value();
     auto tp_a = model::topic_id_partition::from(tid_a);
 
     // Creating objects for the same partition will result in the same object.
@@ -1035,7 +1035,7 @@ TEST(SimpleMetastoreTest, TestObjectBuilder) {
 TEST(SimpleMetastoreTest, TestObjectBuilderBadObjects) {
     // Test calls for objects that don't exist in the builder.
     simple_metastore m;
-    auto ob = m.object_builder();
+    auto ob = m.object_builder().get().value();
     auto add_res = ob->add(create_object_id(), {});
     ASSERT_FALSE(add_res.has_value());
 
@@ -1051,7 +1051,7 @@ TEST(SimpleMetastoreTest, TestObjectBuilderBadObjects) {
 
 TEST(SimpleMetastoreTest, TestObjectBuilderRemovedObjects) {
     simple_metastore m;
-    auto ob = m.object_builder();
+    auto ob = m.object_builder().get().value();
     const auto topic_id = model::create_topic_id();
 
     auto gen_object_id = [&] {
@@ -1093,7 +1093,7 @@ TEST(SimpleMetastoreTest, TestUpdateWithObjectBuilder) {
     simple_metastore m;
     auto tp_a = model::topic_id_partition::from(tid_a);
     {
-        auto ob = m.object_builder();
+        auto ob = m.object_builder().get().value();
         auto o_a = ob->get_or_create_object_for(tp_a).value();
         auto add_res = ob->add(
           o_a,
@@ -1120,7 +1120,7 @@ TEST(SimpleMetastoreTest, TestUpdateWithObjectBuilder) {
         ASSERT_EQ(10_o, offsets_res->next_offset);
     }
     {
-        auto ob = m.object_builder();
+        auto ob = m.object_builder().get().value();
         auto o_a = ob->get_or_create_object_for(tp_a).value();
         auto add_res = ob->add(
           o_a,
@@ -1147,7 +1147,7 @@ TEST(SimpleMetastoreTest, TestUpdateWithObjectBuilder) {
         ASSERT_EQ(20_o, offsets_res->next_offset);
     }
     {
-        auto ob = m.object_builder();
+        auto ob = m.object_builder().get().value();
         auto o_a = ob->get_or_create_object_for(tp_a).value();
         auto add_res = ob->add(
           o_a,
@@ -1171,7 +1171,7 @@ TEST(SimpleMetastoreTest, TestUpdateWithObjectBuilder) {
         ASSERT_EQ(20_o, offsets_res->next_offset);
     }
     {
-        auto ob = m.object_builder();
+        auto ob = m.object_builder().get().value();
         auto o_a = ob->get_or_create_object_for(tp_a).value();
         auto add_res = ob->add(
           o_a,
