@@ -41,6 +41,7 @@ struct feature_table_snapshot;
 /// has been made available by another feature being retired.
 enum class feature : std::uint64_t {
     iceberg_schema_merging = 1ULL << 0U,
+    validated_batch_timestamps = 1ULL << 1U,
     topic_locations_in_outbound_migrations = 1ULL << 2U,
     schema_registry_authz = 1ULL << 3U,
     topic_ids_api = 1ULL << 4U,
@@ -496,6 +497,12 @@ inline constexpr std::array feature_schema{
     "shadow_linking",
     feature::shadow_linking,
     feature_spec::available_policy::always,
+    feature_spec::prepare_policy::always},
+  feature_spec{
+    release_version::v25_3_1,
+    "validated_batch_timestamps",
+    feature::validated_batch_timestamps,
+    feature_spec::available_policy::new_clusters_only,
     feature_spec::prepare_policy::always},
 };
 
