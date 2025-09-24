@@ -1,4 +1,5 @@
 load("//bazel:build.bzl", "redpanda_cc_library")
+load("//bazel:test.bzl", "redpanda_test_cc_library")
 
 redpanda_cc_library(
     name = "fast_prng",
@@ -38,11 +39,26 @@ redpanda_cc_library(
         ":generators",
         "//src/v/crypto",
     ],
-    include_prefix = "random",
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
         "@seastar",
+    ],
+)
+
+redpanda_test_cc_library(
+    name = "test_seeding",
+    srcs = [
+        "test_seeding.cc",
+    ],
+    hdrs = [
+        "test_seeding.h",
+    ],
+    implementation_deps = [
+        ":generators",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
     ],
 )
 
