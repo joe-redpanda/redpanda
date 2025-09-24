@@ -13,6 +13,7 @@
 
 #include "cluster_link/model/types.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 using namespace std::chrono_literals;
@@ -834,23 +835,10 @@ create_shadow_topics(const cluster_link::model::link_state& state) {
     chunked_vector<shadow_topic> shadow_topics;
     shadow_topics.reserve(state.mirror_topics.size());
 
-    for (const auto& [topic, metadata] : state.mirror_topics) {
-        shadow_topic st;
-        st.set_name(ss::sstring{topic});
-        if (metadata.destination_topic_id != model::topic_id{}) {
-            st.set_topic_id(ssx::sformat("{}", metadata.destination_topic_id));
-        }
-        st.set_source_topic_name(ss::sstring{metadata.source_topic_name});
-        if (metadata.source_topic_id.has_value()) {
-            st.set_source_topic_id(
-              ssx::sformat("{}", metadata.source_topic_id.value()));
-        }
-        shadow_topic_status status;
-        status.set_state(
-          mirror_topic_state_to_shadow_topic_state(metadata.status));
-        st.set_status(std::move(status));
-        shadow_topics.emplace_back(std::move(st));
-    }
+    std::ranges::transform(
+      state.mirror_topics,
+      std::back_inserter(shadow_topics),
+      [](const auto& p) { return model_to_shadow_topic(p.first, p.second); });
 
     return shadow_topics;
 }
@@ -1002,5 +990,25 @@ create_update_cluster_link_config_cmd(
           ssx::sformat(
             "Invalid shadow link update configuration: {}", e.what()));
     }
+}
+
+shadow_topic model_to_shadow_topic(
+  ::model::topic_view topic,
+  const cluster_link::model::mirror_topic_metadata& metadata) {
+    shadow_topic st;
+    st.set_name(ss::sstring{topic});
+    if (metadata.destination_topic_id != model::topic_id{}) {
+        st.set_topic_id(ssx::sformat("{}", metadata.destination_topic_id));
+    }
+    st.set_source_topic_name(ss::sstring{metadata.source_topic_name});
+    if (metadata.source_topic_id.has_value()) {
+        st.set_source_topic_id(
+          ssx::sformat("{}", metadata.source_topic_id.value()));
+    }
+    shadow_topic_status status;
+    status.set_state(mirror_topic_state_to_shadow_topic_state(metadata.status));
+    st.set_status(std::move(status));
+
+    return st;
 }
 } // namespace admin

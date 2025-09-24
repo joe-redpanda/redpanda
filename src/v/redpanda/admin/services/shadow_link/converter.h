@@ -43,4 +43,8 @@ cluster_link::model::update_cluster_link_configuration_cmd
 create_update_cluster_link_config_cmd(
   proto::admin::update_shadow_link_request req,
   cluster_link::model::metadata current_metadata);
+
+/// \brief Converts model data into a ShadowTopic resource
+proto::admin::shadow_topic model_to_shadow_topic(
+  ::model::topic_view, const cluster_link::model::mirror_topic_metadata& md);
 } // namespace admin

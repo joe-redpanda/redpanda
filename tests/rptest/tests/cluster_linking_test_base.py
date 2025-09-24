@@ -575,6 +575,26 @@ class ShadowLinkTestBase(PreallocNodesTest):
         )
         return resp.shadow_link
 
+    def get_shadow_topic(
+        self, shadow_link_name: str, shadow_topic_name: str
+    ) -> shadow_link_pb2.ShadowTopic:
+        resp = self.service_client.get_shadow_topic(
+            req=shadow_link_pb2.GetShadowTopicRequest(
+                shadow_link_name=shadow_link_name, name=shadow_topic_name
+            )
+        )
+        return resp.shadow_topic
+
+    def list_shadow_topics(
+        self, shadow_link_name: str
+    ) -> list[shadow_link_pb2.ShadowTopic]:
+        resp = self.service_client.list_shadow_topics(
+            req=shadow_link_pb2.ListShadowTopicsRequest(
+                shadow_link_name=shadow_link_name
+            )
+        )
+        return resp.shadow_topics
+
     def source_default_client(self):
         return DefaultClient(self.source_cluster.service)
 

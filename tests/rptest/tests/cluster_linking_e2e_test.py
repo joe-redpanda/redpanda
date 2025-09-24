@@ -261,6 +261,31 @@ class ShadowLinkBasicTests(ShadowLinkTestBase):
                 f"got {target_configs['cleanup.policy']}"
             )
 
+        shadow_topics = self.list_shadow_topics(shadow_link_name="test-link")
+        assert len(shadow_topics) == len(topics), (
+            f"Expected {len(topics)} shadow topics, got {len(shadow_topics)}"
+        )
+
+        for t in topics:
+            found = False
+            for st in shadow_topics:
+                if st.name == t.name:
+                    found = True
+                    break
+            assert found, f"Did not find shadow topic for {t.name}"
+
+        for t in topics:
+            self.get_shadow_topic(
+                shadow_link_name="test-link", shadow_topic_name=t.name
+            )
+
+        with expect_exception(
+            ConnectError, lambda e: e.code == ConnectErrorCode.NOT_FOUND
+        ):
+            self.get_shadow_topic(
+                shadow_link_name="test-link", shadow_topic_name="non-existent-topic"
+            )
+
     @cluster(num_nodes=6)
     def test_topic_creation_restriction(self):
         """

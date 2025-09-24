@@ -289,14 +289,72 @@ shadow_link_service_impl::fail_over(
 
 ss::future<proto::admin::get_shadow_topic_response>
 shadow_link_service_impl::get_shadow_topic(
-  serde::pb::rpc::context, proto::admin::get_shadow_topic_request) {
-    throw serde::pb::rpc::unimplemented_exception();
+  serde::pb::rpc::context ctx, proto::admin::get_shadow_topic_request req) {
+    vlog(sllog.trace, "get_shadow_topic: {}", req);
+    auto redirect_node = redirect_to(model::controller_ntp);
+    if (redirect_node) {
+        vlog(
+          sllog.debug,
+          "Redirecting to leader of {}: {}",
+          model::controller_ntp,
+          *redirect_node);
+        co_return co_await _proxy_client
+          .make_client_for_node<proto::admin::shadow_link_service_client>(
+            *redirect_node)
+          .get_shadow_topic(ctx, std::move(req));
+    }
+    auto resp = handle_error(_service->local().get_cluster_link(
+      cluster_link::model::name_t{req.get_shadow_link_name()}));
+
+    const auto& it = resp.state.mirror_topics.find(
+      model::topic_view{req.get_name()});
+    if (it == resp.state.mirror_topics.end()) {
+        throw serde::pb::rpc::not_found_exception(
+          ssx::sformat(
+            "Shadow topic {} not found on link {}",
+            req.get_name(),
+            req.get_shadow_link_name()));
+    }
+
+    proto::admin::get_shadow_topic_response get_resp;
+    get_resp.set_shadow_topic(model_to_shadow_topic(it->first, it->second));
+
+    vlog(sllog.trace, "get_shadow_topic response: {}", get_resp);
+    co_return get_resp;
 }
 
 ss::future<proto::admin::list_shadow_topics_response>
 shadow_link_service_impl::list_shadow_topics(
-  serde::pb::rpc::context, proto::admin::list_shadow_topics_request) {
-    throw serde::pb::rpc::unimplemented_exception();
+  serde::pb::rpc::context ctx, proto::admin::list_shadow_topics_request req) {
+    vlog(sllog.trace, "list_shadow_topics: {}", req);
+    auto redirect_node = redirect_to(model::controller_ntp);
+    if (redirect_node) {
+        vlog(
+          sllog.debug,
+          "Redirecting to leader of {}: {}",
+          model::controller_ntp,
+          *redirect_node);
+        co_return co_await _proxy_client
+          .make_client_for_node<proto::admin::shadow_link_service_client>(
+            *redirect_node)
+          .list_shadow_topics(ctx, std::move(req));
+    }
+
+    auto resp = handle_error(_service->local().get_cluster_link(
+      cluster_link::model::name_t{req.get_shadow_link_name()}));
+
+    chunked_vector<proto::admin::shadow_topic> shadow_topics;
+    shadow_topics.reserve(resp.state.mirror_topics.size());
+    std::ranges::transform(
+      resp.state.mirror_topics,
+      std::back_inserter(shadow_topics),
+      [](const auto& p) { return model_to_shadow_topic(p.first, p.second); });
+
+    proto::admin::list_shadow_topics_response list_resp;
+    list_resp.set_shadow_topics(std::move(shadow_topics));
+
+    vlog(sllog.trace, "list_shadow_topics response: {}", list_resp);
+    co_return list_resp;
 }
 
 std::optional<model::node_id>
