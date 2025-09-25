@@ -932,7 +932,6 @@ redpanda_cc_gtest(
         "//src/v/test_utils:fixture",
         "//src/v/test_utils:gtest",
         "//src/v/test_utils:scoped_config",
-        "//src/v/test_utils:seastar_boost",
         "//src/v/utils:adjustable_semaphore",
         "//src/v/utils:directory_walker",
         "@abseil-cpp//absl/container:btree",
