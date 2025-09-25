@@ -17,7 +17,6 @@
 #include "model/fundamental.h"
 #include "model/metadata.h"
 #include "model/timeout_clock.h"
-#include "test_utils/boost_fixture.h"
 #include "utils/retry_chain_node.h"
 
 #include <seastar/core/abort_source.hh>
