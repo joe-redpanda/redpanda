@@ -113,7 +113,7 @@ redpanda_test_cc_library(
         "//src/v/model/tests:random",
         "//src/v/random:generators",
         "//src/v/reflection:adl",
-        "//src/v/test_utils:fixture",
+        "//src/v/test_utils:test_macros",
         "//src/v/utils:vint",
         "@seastar",
     ],
