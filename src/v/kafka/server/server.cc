@@ -16,6 +16,7 @@
 #include "cluster/security_frontend.h"
 #include "cluster/topics_frontend.h"
 #include "cluster/tx_gateway_frontend.h"
+#include "cluster_link/model/filter_utils.h"
 #include "config/broker_authn_endpoint.h"
 #include "config/configuration.h"
 #include "config/node_config.h"
@@ -1488,6 +1489,16 @@ delete_topics_handler::handle(request_context ctx, ss::smp_service_group) {
     valid_topic_names = std::ranges::subrange(
       valid_topic_names.begin(), nodelete_topics.begin());
 
+    const auto& cl_frontend
+      = ctx.connection()->server().cluster_link_frontend();
+    const auto is_autocreate_mirror_topic = [&cl_frontend](const auto& topic) {
+        return !cl_frontend.is_autocreate_mirror_topic(topic);
+    };
+    auto autocreate_shadow_topics = std::ranges::partition(
+      valid_topic_names, is_autocreate_mirror_topic);
+    valid_topic_names = std::ranges::subrange(
+      valid_topic_names.begin(), autocreate_shadow_topics.begin());
+
     // Measure the partition mutation rate
     auto resp_delay = 0ms;
     const auto now = quota_manager::clock::now();
@@ -1531,6 +1542,15 @@ delete_topics_handler::handle(request_context ctx, ss::smp_service_group) {
             .name = std::move(topic),
             .error_code = error_code::topic_authorization_failed,
             .error_message = "Topic is protected by 'kafka_nodelete_topics'.",
+          });
+    }
+
+    for (auto& topic : autocreate_shadow_topics) {
+        resp.data.responses.push_back(
+          deletable_topic_result{
+            .name = std::move(topic),
+            .error_code = error_code::policy_violation,
+            .error_message = "Auto-mirrored topic cannot be deleted.",
           });
     }
 

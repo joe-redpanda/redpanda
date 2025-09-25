@@ -529,6 +529,9 @@ class ShadowLinkTestBase(PreallocNodesTest):
     def source_default_client(self):
         return DefaultClient(self.source_cluster.service)
 
+    def target_default_client(self):
+        return DefaultClient(self.target_cluster.service)
+
     def topic_exists_in_source(self, topic: str) -> bool:
         topics = RpkTool(self.source_cluster_service).list_topics()
         return topic in topics
