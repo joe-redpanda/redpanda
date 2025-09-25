@@ -77,6 +77,7 @@ redpanda_test_cc_library(
     deps = [
         ":cluster_test_fixture",
         "//src/v/container:chunked_circular_buffer",
+        "//src/v/model/tests:random",
     ],
 )
 
@@ -1096,6 +1097,7 @@ redpanda_cc_btest(
         "//src/v/base",
         "//src/v/cluster",
         "//src/v/config",
+        "//src/v/random:generators",
         "//src/v/redpanda/tests:fixture",
         "//src/v/storage",
         "//src/v/test_utils:seastar_boost",

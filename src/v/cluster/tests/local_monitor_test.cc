@@ -13,6 +13,7 @@
 #include "cluster/logger.h"
 #include "cluster/tests/local_monitor_fixture.h"
 #include "config/configuration.h"
+#include "random/generators.h"
 #include "redpanda/tests/fixture.h"
 
 #include <seastar/core/reactor.hh>

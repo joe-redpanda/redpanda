@@ -25,6 +25,7 @@
 #include "model/fundamental.h"
 #include "model/metadata.h"
 #include "model/namespace.h"
+#include "model/tests/random_batch.h"
 #include "model/timeout_clock.h"
 #include "random/generators.h"
 #include "test_utils/async.h"
