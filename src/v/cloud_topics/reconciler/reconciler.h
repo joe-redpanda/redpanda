@@ -253,14 +253,6 @@ private:
     ss::future<model::record_batch_reader>
     make_reader(frontend*, kafka::offset start_offset, size_t);
 
-    /*
-     * Convert an ntp to a topic_id_partition using the metadata cache.
-     * Returns nullopt if the topic doesn't exist or doesn't have a
-     * topic_id.
-     */
-    std::optional<model::topic_id_partition>
-    ntp_to_topic_id_partition(const model::ntp& ntp) const;
-
 private:
     data_plane_api* _data_plane;
     l1::io* _l1_io;
