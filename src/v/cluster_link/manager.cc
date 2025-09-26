@@ -585,7 +585,8 @@ ss::future<> manager::start_topic_reconciler() {
           _topic_metadata_cache.get(),
           _registry.get(),
           topic_reconciler_interval,
-          _default_topic_replication);
+          _default_topic_replication,
+          _scheduling_group);
     }
     try {
         co_await _topic_reconciler->start();
