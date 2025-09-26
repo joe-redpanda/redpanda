@@ -1152,12 +1152,12 @@ offset_fetch_handler::handle(request_context ctx, ss::smp_service_group) {
           offset_fetch_response(error_code::broker_not_available));
     }
 
-    std::vector<offset_fetch_request_topic> unauthorized(
+    chunked_vector<offset_fetch_request_topic> unauthorized(
       std::make_move_iterator(unauthorized_it),
       std::make_move_iterator(request.data.topics->end()));
 
     // remove unauthorized topics from request
-    request.data.topics->erase(unauthorized_it, request.data.topics->end());
+    request.data.topics->erase_to_end(unauthorized_it);
     auto resp = co_await ctx.groups().offset_fetch(std::move(request));
 
     // add requested (but unauthorized) topics into response
