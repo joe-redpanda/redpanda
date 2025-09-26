@@ -196,6 +196,8 @@ DEFAULT_LOG_ALLOW_LIST: list[CompiledLogAllowElem] = [
     re.compile(
         r"Accessing .*, unexpected REST API error \"http status: Bad Request, error body: 400 Bad Request\" detected, code: _unknown_error_code_, request_id: , resource:"
     ),
+    # Confuses our checks on asserts despite not being an assert
+    re.compile(r"assert-ref-snapshot-id"),
 ]
 
 # Log errors that are expected in tests that restart nodes mid-test
