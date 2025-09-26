@@ -615,6 +615,10 @@ ss::future<std::expected<void, reconcile_error>> reconciler::commit_objects(
             auto result = co_await partition.source->set_last_reconciled_offset(
               lro, _as);
             if (!result.has_value()) {
+                vlog(
+                  lg.warn,
+                  "Failed to update LRO: {}",
+                  std::to_underlying(result.error()));
                 // Don't fail early, just keep going until we're done.
                 reconcile_result = std::unexpected(
                   reconcile_error::metadata_failure);
