@@ -45,3 +45,21 @@ redpanda_cc_gtest(
         "@googletest//:gtest",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "aip_ordering_test",
+    timeout = "short",
+    srcs = [
+        "aip_ordering_test.cc",
+    ],
+    deps = [
+        ":aip_test_message_helpers",
+        ":aip_test_message_redpanda_proto",
+        "//src/v/redpanda/admin:aip_ordering",
+        "//src/v/serde/protobuf:rpc",
+        "//src/v/test_utils:gtest",
+        "@abseil-cpp//absl/time",
+        "@fmt",
+        "@googletest//:gtest",
+    ],
+)
