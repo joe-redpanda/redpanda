@@ -150,6 +150,7 @@ iobuf kafka_batch_adapter::adapt(iobuf&& kbatch) {
           "size of a header preamble (base offset and size_bytes), (current "
           "buffer size: {})",
           kbatch.size_bytes());
+        short_read = true;
         return iobuf{};
     }
     auto batch_length =
