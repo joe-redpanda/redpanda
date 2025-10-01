@@ -444,17 +444,16 @@ TEST_F(ReconcilerTest, MultipleSourcesWithFailures) {
 
     reconcile();
 
-    // When one source in an object fails, the entire object fails so none of
-    // the sources in that object get reconciled
+    // When one source in an object fails, then the entire object doesn't fail.
     // NB: This depends on the simple_metastore grouping all sources into the
     //     same object.
-    EXPECT_EQ(src1->last_reconciled_offset(), kafka::offset{});
+    EXPECT_EQ(src1->last_reconciled_offset(), kafka::offset{9});
     EXPECT_EQ(src2->last_reconciled_offset(), kafka::offset{});
-    EXPECT_EQ(src3->last_reconciled_offset(), kafka::offset{});
+    EXPECT_EQ(src3->last_reconciled_offset(), kafka::offset{29});
 
-    EXPECT_EQ(metastore_next_offset(src1), std::nullopt);
+    EXPECT_EQ(metastore_next_offset(src1), kafka::offset{10});
     EXPECT_EQ(metastore_next_offset(src2), std::nullopt);
-    EXPECT_EQ(metastore_next_offset(src3), std::nullopt);
+    EXPECT_EQ(metastore_next_offset(src3), kafka::offset{30});
 }
 
 TEST_F(ReconcilerTest, TermTracking) {
