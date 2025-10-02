@@ -108,7 +108,6 @@ static ss::future<read_result> read_from_partition(
   kafka::partition_proxy part,
   model::offset lso,
   fetch_config config,
-  bool foreign_read,
   std::optional<model::timeout_clock::time_point> deadline) {
     auto hw = part.high_watermark();
     auto start_o = part.start_offset();
@@ -190,16 +189,6 @@ static ss::future<read_result> read_from_partition(
         std::rethrow_exception(e);
     }
 
-    if (foreign_read) {
-        co_return read_result(
-          ss::make_foreign<read_result::data_t>(std::move(data)),
-          start_o,
-          hw,
-          lso,
-          delta_from_tip_ms,
-          std::move(aborted_transactions));
-    }
-
     co_return read_result(
       std::move(data),
       start_o,
@@ -218,7 +207,6 @@ static ss::future<read_result> do_read_from_ntp(
   const cluster::metadata_cache& md_cache,
   const replica_selector& replica_selector,
   ntp_fetch_config ntp_config,
-  bool foreign_read,
   std::optional<model::timeout_clock::time_point> deadline,
   const bool obligatory_batch_read,
   fetch_memory_units_manager& units_mgr) {
@@ -317,11 +305,7 @@ static ss::future<read_result> do_read_from_ntp(
         }
     }
     read_result result = co_await read_from_partition(
-      std::move(*kafka_partition),
-      maybe_lso.value(),
-      ntp_config.cfg,
-      foreign_read,
-      deadline);
+      std::move(*kafka_partition), maybe_lso.value(), ntp_config.cfg, deadline);
 
     // Note that units can be both increased and decreassed here. Increases
     // happen because there is no strict limit on read size when reading the
@@ -339,7 +323,6 @@ ss::future<read_result> read_from_ntp(
   const replica_selector& replica_selector,
   const model::ktp& ktp,
   fetch_config config,
-  bool foreign_read,
   std::optional<model::timeout_clock::time_point> deadline,
   const bool obligatory_batch_read,
   fetch_memory_units_manager& units_mgr) {
@@ -348,7 +331,6 @@ ss::future<read_result> read_from_ntp(
       md_cache,
       replica_selector,
       {{ktp.get_topic(), ktp.get_partition()}, std::move(config)},
-      foreign_read,
       deadline,
       obligatory_batch_read,
       units_mgr);
@@ -468,7 +450,6 @@ static ss::future<chunked_vector<read_result>> fetch_ntps(
   const replica_selector& replica_selector,
   chunked_vector<ntp_fetch_config> ntp_fetch_configs,
   read_distribution_probe& read_probe,
-  bool foreign_read,
   std::optional<model::timeout_clock::time_point> deadline,
   const size_t bytes_left,
   fetch_memory_units_manager& units_mgr) {
@@ -504,7 +485,6 @@ static ss::future<chunked_vector<read_result>> fetch_ntps(
           md_cache,
           replica_selector,
           ntp_cfg,
-          foreign_read,
           deadline,
           obligatory_batch_read,
           units_mgr);
@@ -548,8 +528,6 @@ public:
     // Contains either references to objects local to the fetch worker shard or
     // copies of data from the coordinator shard.
     struct shard_local_fetch_context {
-        // True if the results of this fetch will be read on a foreign shard.
-        bool foreign_read;
         size_t bytes_left;
         // Specifies the minimum number of bytes this sub-fetch should read
         // before returning.
@@ -670,7 +648,6 @@ private:
           _ctx.srv.get_replica_selector(),
           std::move(requests),
           _ctx.srv.read_probe(),
-          _ctx.foreign_read,
           _ctx.deadline,
           _ctx.bytes_left,
           _ctx.srv.fetch_units_manager());
@@ -1035,15 +1012,12 @@ private:
             co_return;
         }
 
-        const bool foreign_read = fetch.shard != ss::this_shard_id();
-
         fetch_worker::worker_result results
           = co_await octx.rctx.partition_manager().invoke_on(
             fetch.shard,
             [this,
              shard = fetch.shard,
              min_fetch_bytes,
-             foreign_read,
              configs = fetch.requests.copy(),
              &octx](cluster::partition_manager& mgr) mutable
               -> ss::future<fetch_worker::worker_result> {
@@ -1057,7 +1031,6 @@ private:
                 return ss::do_with(
                   fetch_worker(
                     fetch_worker::shard_local_fetch_context{
-                      .foreign_read = foreign_read,
                       .bytes_left = octx.bytes_left,
                       .min_bytes = min_fetch_bytes,
                       .deadline = octx.deadline,

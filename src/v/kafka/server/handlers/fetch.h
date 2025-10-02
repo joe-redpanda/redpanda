@@ -269,9 +269,7 @@ struct ntp_fetch_config {
  * Simple type aggregating either data or an error
  */
 struct read_result {
-    using foreign_data_t = ss::foreign_ptr<std::unique_ptr<iobuf>>;
     using data_t = std::unique_ptr<iobuf>;
-    using variant_t = std::variant<data_t, foreign_data_t>;
 
     explicit read_result(error_code e)
       : start_offset(-1)
@@ -298,7 +296,7 @@ struct read_result {
       , error(e) {}
 
     read_result(
-      variant_t data,
+      data_t data,
       model::offset start_offset,
       model::offset hw,
       model::offset lso,
@@ -323,38 +321,17 @@ struct read_result {
       , preferred_replica(preferred_replica)
       , error(error_code::none) {}
 
-    bool has_data() const {
-        return ss::visit(
-          data,
-          [](const data_t& d) { return d != nullptr; },
-          [](const foreign_data_t& d) { return !d->empty(); });
-    }
+    bool has_data() const { return data != nullptr; }
 
-    const iobuf& get_data() const {
-        if (std::holds_alternative<data_t>(data)) {
-            return *std::get<data_t>(data);
-        } else {
-            return *std::get<foreign_data_t>(data);
-        }
-    }
+    const iobuf& get_data() const { return *data; }
 
     size_t data_size_bytes() const {
-        return ss::visit(
-          data,
-          [](const data_t& d) { return d == nullptr ? 0 : d->size_bytes(); },
-          [](const foreign_data_t& d) {
-              return d->empty() ? 0 : d->size_bytes();
-          });
+        return data == nullptr ? 0 : data->size_bytes();
     }
 
-    iobuf release_data() && {
-        return ss::visit(
-          data,
-          [](data_t& d) { return std::move(*d); },
-          [](foreign_data_t& d) { return std::move(*d); });
-    }
+    iobuf release_data() && { return std::move(*data); }
 
-    variant_t data;
+    data_t data;
     model::offset start_offset;
     model::offset high_watermark;
     model::offset last_stable_offset;
@@ -451,7 +428,6 @@ ss::future<read_result> read_from_ntp(
   const replica_selector&,
   const model::ktp&,
   fetch_config,
-  bool,
   std::optional<model::timeout_clock::time_point>,
   bool obligatory_batch_read,
   fetch_memory_units_manager& units_mgr);
