@@ -154,6 +154,7 @@ type driverSupport struct {
 
 var supportedDrivers = []driverSupport{
 	{"ena", func() func(IrqInfo) int { return intelIrqToQueueIdx }},
+	{"virtio", func() func(IrqInfo) int { return virtioIrqToQueueIdx }},
 }
 
 func getQueueIndexFunc(driverName string) func(IrqInfo) int {
@@ -199,7 +200,7 @@ func (n *nic) GetIRQs() ([]IrqInfo, error) {
 		return nil, err
 	}
 
-	fastPathIRQsPattern := regexp.MustCompile(`-TxRx-|-fp-|-Tx-Rx-|mlx\d+-\d+@`)
+	fastPathIRQsPattern := regexp.MustCompile(`-TxRx-|-fp-|virtio\d+-(input|output)|-Tx-Rx-|mlx\d+-\d+@`)
 	var fastPathIRQNums []int
 	for _, irq := range IRQNums {
 		if fastPathIRQsPattern.MatchString(procFileLines[irq]) {
@@ -240,6 +241,17 @@ func intelIrqToQueueIdx(irq IrqInfo) int {
 
 	if len(intelFastPathMatch) > 0 && len(fdirPatternMatch) == 0 {
 		idx, _ := strconv.Atoi(intelFastPathMatch[1])
+		return idx
+	}
+	return MaxInt
+}
+
+func virtioIrqToQueueIdx(irq IrqInfo) int {
+	virtioFastPathIrqPattern := regexp.MustCompile(`virtio\d+-(input|output)\.(\d+)$`)
+
+	virtioMatch := virtioFastPathIrqPattern.FindStringSubmatch(irq.ProcLine)
+	if len(virtioMatch) == 3 {
+		idx, _ := strconv.Atoi(virtioMatch[2])
 		return idx
 	}
 	return MaxInt
