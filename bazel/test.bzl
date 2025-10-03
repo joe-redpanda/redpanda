@@ -438,6 +438,12 @@ def redpanda_cc_bench(
         "resources:memory:{}".format(_parse_bytes(memory) / (1 << 20)),
     ]
 
+    # all benches must include the hooks
+    deps.append(
+        "//src/v/test_utils:rpbench_hooks",
+    )
+
+
     tags = tags + ["bench"]
 
     binary_name = name + "_binary"
