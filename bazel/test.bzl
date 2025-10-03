@@ -355,7 +355,8 @@ def redpanda_test_cc_library(
         local_defines = [],
         visibility = None,
         implementation_deps = [],
-        deps = []):
+        deps = [],
+        alwayslink = False):
     cc_library(
         name = name,
         srcs = srcs,
@@ -371,6 +372,7 @@ def redpanda_test_cc_library(
         features = [
             "layering_check",
         ],
+        alwayslink = alwayslink,
     )
 
 def redpanda_cc_bench(
