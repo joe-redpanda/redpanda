@@ -402,9 +402,9 @@ service::failover_link_topics(model::name_t link_name) {
     return _manager->failover_link_topics(std::move(link_name));
 }
 
-ss::future<cl_result<void>>
-service::delete_cluster_link(const model::name_t& name) {
-    return _manager->delete_cluster_link(name);
+ss::future<cl_result<void>> service::delete_cluster_link(
+  const model::name_t& name, bool force_delete_link) {
+    return _manager->delete_cluster_link(name, force_delete_link);
 }
 
 void service::register_notifications() {

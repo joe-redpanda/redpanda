@@ -116,7 +116,7 @@ shadow_link_service_impl::delete_shadow_link(
 
     handle_error(
       co_await _service->local().delete_cluster_link(
-        cluster_link::model::name_t{req.get_name()}));
+        cluster_link::model::name_t{req.get_name()}, false));
 
     proto::admin::delete_shadow_link_response dsl_resp;
     co_return dsl_resp;
