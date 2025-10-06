@@ -269,6 +269,66 @@ func Test_nic_GetIRQs(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:       "gvnic legacy",
+			driverName: "gve",
+			irqProcFile: &procFileMock{
+				getIRQProcFileLinesMap: func() (map[int]string, error) {
+					return map[int]string{
+						26: "26:        134          0   ITS-MSI   0 Edge      eth%d-ntfy-block.0",
+						27: "27:          0        201   ITS-MSI   1 Edge      eth%d-ntfy-block.1",
+						58: "58:          0          0   ITS-MSI  32 Edge      eth%d-mgmnt",
+					}, nil
+				},
+			},
+			irqDeviceInfo: &deviceInfoMock{
+				getIRQs: func(string, string) ([]int, error) {
+					return []int{26, 27, 58}, nil
+				},
+			},
+			want: []IrqInfoRes{
+				{
+					Num:        26,
+					ProcLine:   "26:        134          0   ITS-MSI   0 Edge      eth%d-ntfy-block.0",
+					QueueIndex: 0,
+				},
+				{
+					Num:        27,
+					ProcLine:   "27:          0        201   ITS-MSI   1 Edge      eth%d-ntfy-block.1",
+					QueueIndex: 0,
+				},
+			},
+		},
+		{
+			name:       "gvnic",
+			driverName: "gve",
+			irqProcFile: &procFileMock{
+				getIRQProcFileLinesMap: func() (map[int]string, error) {
+					return map[int]string{
+						168: "168:          0          0 PCI-MSIX-0000:00:08.0  30-edge      gve-ntfy-blk0@pci:0000:00:08.0",
+						169: "169:          0          0 PCI-MSIX-0000:00:08.0  31-edge      gve-ntfy-blk1@pci:0000:00:08.0",
+						170: "170:          0          0 PCI-MSIX-0000:00:08.0  32-edge      gve-mgmnt@pci:0000:00:08.0",
+					}, nil
+				},
+			},
+			irqDeviceInfo: &deviceInfoMock{
+				getIRQs: func(string, string) ([]int, error) {
+					return []int{168, 169, 170}, nil
+				},
+			},
+			want: []IrqInfoRes{
+				{
+					Num:        168,
+					ProcLine:   "168:          0          0 PCI-MSIX-0000:00:08.0  30-edge      gve-ntfy-blk0@pci:0000:00:08.0",
+					QueueIndex: 0,
+				},
+				{
+					Num:        169,
+					ProcLine:   "169:          0          0 PCI-MSIX-0000:00:08.0  31-edge      gve-ntfy-blk1@pci:0000:00:08.0",
+					QueueIndex: 0,
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -512,6 +572,54 @@ func Test_virtioIrqToQueueIdx(t *testing.T) {
 			Num:       27,
 			ProcLine:  "27:          0         68   PCI-MSI 65539-edge      virtio1-config",
 			indexFunc: virtioIrqToQueueIdx,
+		}
+		require.Equal(t, math.MaxInt64, irq.QueueIndex())
+	}
+}
+
+func Test_gvnicIrqToQueueIdx(t *testing.T) {
+	{
+		irq := IrqInfo{
+			Num:       26,
+			ProcLine:  "26:        134          0   ITS-MSI   0 Edge      eth%d-ntfy-block.1",
+			indexFunc: func(irq IrqInfo) int { return gvnicIrqToQueueIdx(irq, 4) },
+		}
+		require.Equal(t, 1, irq.QueueIndex())
+	}
+
+	{
+		irq := IrqInfo{
+			Num:       26,
+			ProcLine:  "26:        134          0   ITS-MSI   0 Edge      eth%d-ntfy-block.18",
+			indexFunc: func(irq IrqInfo) int { return gvnicIrqToQueueIdx(irq, 16) },
+		}
+		require.Equal(t, 2, irq.QueueIndex())
+	}
+
+	{
+		irq := IrqInfo{
+			Num:       26,
+			ProcLine:  "26:        134          0   ITS-MSI   0 Edge      gve-ntfy-blk1@pci:0000:00:08.0",
+			indexFunc: func(irq IrqInfo) int { return gvnicIrqToQueueIdx(irq, 4) },
+		}
+		require.Equal(t, 1, irq.QueueIndex())
+	}
+
+	{
+		irq := IrqInfo{
+			Num:       26,
+			ProcLine:  "26:        134          0   ITS-MSI   0 Edge      gve-ntfy-blk18@pci:0000:00:08.0",
+			indexFunc: func(irq IrqInfo) int { return gvnicIrqToQueueIdx(irq, 16) },
+		}
+		require.Equal(t, 2, irq.QueueIndex())
+	}
+
+	{
+
+		irq := IrqInfo{
+			Num:       26,
+			ProcLine:  "26:        134          0   ITS-MSI   0 Edge      eth%d-mgmnt",
+			indexFunc: func(irq IrqInfo) int { return gvnicIrqToQueueIdx(irq, 4) },
 		}
 		require.Equal(t, math.MaxInt64, irq.QueueIndex())
 	}
