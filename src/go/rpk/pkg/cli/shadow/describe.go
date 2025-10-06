@@ -58,7 +58,7 @@ func newDescribeCommand(fs afero.Fs, p *config.Params) *cobra.Command {
 	cmd.Flags().BoolVarP(&opts.overview, "print-overview", "o", false, "Print the overview section")
 	cmd.Flags().BoolVarP(&opts.client, "print-client", "c", false, "Print the client configuration section")
 	cmd.Flags().BoolVarP(&opts.topic, "print-topic", "t", false, "Print the detailed topic configuration section")
-	cmd.Flags().BoolVarP(&opts.co, "print-consumer", "k", false, "Print the detailed consumer offset configuration section")
+	cmd.Flags().BoolVarP(&opts.co, "print-consumer", "r", false, "Print the detailed consumer offset configuration section")
 	cmd.Flags().BoolVarP(&opts.sec, "print-security", "s", false, "Print the detailed security configuration section")
 	cmd.Flags().BoolVarP(&opts.all, "print-all", "a", false, "Print all sections")
 	return cmd
