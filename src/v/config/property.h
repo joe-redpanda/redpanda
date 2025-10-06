@@ -135,6 +135,8 @@ public:
 
     bool is_default() const override { return _value == _default; }
 
+    bool is_set() const override { return _is_set; }
+
     bool is_hidden() const override {
         return get_visibility() == visibility::deprecated;
     }
@@ -254,7 +256,8 @@ public:
         }
 
         if (
-          ov <= _legacy_default.value().max_original_version && is_default()) {
+          ov <= _legacy_default.value().max_original_version && is_default()
+          && !is_set()) {
             _default = _legacy_default.value().value;
             _value = _default;
             // In case someone already made a binding to us early in startup
@@ -289,6 +292,9 @@ protected:
     }
 
     bool update_value(value_type&& new_value) {
+        // Set flag even if the value won't be updated. This is to mark that
+        // someone tried to explicitly set this property
+        _is_set = true;
         if (new_value != _value) {
             // Update the main value first, in case one of the binding updates
             // throws.
@@ -320,6 +326,8 @@ private:
     friend class mock_property<value_type>;
     intrusive_list<binding_base<value_type>, &binding_base<value_type>::_hook>
       _bindings;
+
+    bool _is_set = false;
 };
 
 template<class T>
