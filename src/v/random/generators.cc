@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <random>
+#include <sstream>
 
 namespace random_generators {
 
@@ -72,8 +73,16 @@ std::seed_seq seed_to_seq(seed_type seed) {
 }
 
 // state to implement the global() rng object and its reseeding semantics
-thread_local rng global_instance;
-thread_local int64_t last_seed_gen = -1;
+struct global_state_state {
+    rng global_instance;
+    int64_t last_seed_gen = -1;
+    // the number of times global() has been called, since process start
+    size_t access_count = 0;
+    // the value of access_count at the last reseeding event
+    size_t access_count_at_reseed = 0;
+};
+
+static thread_local global_state_state global_state;
 
 seed_type get_initial_seed() {
     return global_seeding_mode == seeding_mode::fixed_seed ? fixed_seed
@@ -97,15 +106,57 @@ rng::rng(seed_type seed)
 
 rng with_random_seed() { return rng{random_seed_tag{}}; }
 
-rng& global() {
-    // if a reseeding has been requested, apply it here
-    if (last_seed_gen != seed_generation.load(std::memory_order_relaxed))
-      [[unlikely]] {
-        global_instance = rng{};
-        last_seed_gen = seed_generation;
+fmt::iterator rng::format_to(fmt::iterator it) const {
+    it = fmt::format_to(
+      it, "rng{{initial_seed: {:08X}, state: ", initial_seed_);
+
+    // the only way to get the internal pcg64 state is to parse it out of the
+    // ostream<< output for the engine
+    auto gen_state = fmt::format("{}", gen_);
+    std::stringstream ss(gen_state);
+    std::vector<uint64_t> state_vector;
+    uint64_t temp{};
+
+    // Use the extraction operator >> to read numbers one by one
+    while (ss >> temp) {
+        state_vector.emplace_back(temp);
     }
 
-    return global_instance;
+    if (state_vector.size() == 6) {
+        // only the last two numbers are the variable engine state, the first 4
+        // are fixed
+        it = fmt::format_to(
+          it, "[{:016X}, {:016X}]}}", state_vector[4], state_vector[5]);
+    } else {
+        // unexpected format, just print the raw output
+        it = fmt::format_to(it, " (raw) {}}}", gen_state);
+    }
+
+    return it;
+}
+
+rng& global() {
+    auto& gs = global_state;
+    // if a reseeding has been requested, apply it here
+    if (gs.last_seed_gen != seed_generation.load(std::memory_order_relaxed))
+      [[unlikely]] {
+        gs.global_instance = rng{};
+        gs.last_seed_gen = seed_generation;
+        gs.access_count_at_reseed = gs.access_count;
+    }
+
+    ++gs.access_count;
+
+    return gs.global_instance;
+}
+
+ss::sstring global_state_string() {
+    // avoid global() here to avoid incrementing access_count
+    return fmt::format(
+      "global rng state: accesses: {}, accesses since reseed: {}, rng: {}",
+      global_state.access_count,
+      global_state.access_count - global_state.access_count_at_reseed,
+      global_state.global_instance);
 }
 
 void fill_buffer_randomchars(char* start, size_t amount) {

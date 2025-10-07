@@ -12,6 +12,7 @@
 #pragma once
 
 #include "absl/random/random.h"
+#include "base/format_to.h"
 #include "base/seastarx.h"
 
 #include <seastar/core/sstring.hh>
@@ -169,6 +170,10 @@ public:
     /// @return A reference to the underlying PCG64 engine
     engine_type& engine() { return gen_; }
 
+    /// Print internal state and other information for this rng to the
+    /// given formatter iterator.
+    fmt::iterator format_to(fmt::iterator) const;
+
 private:
     engine_type gen_;
     seed_type initial_seed_;
@@ -182,6 +187,12 @@ rng with_random_seed();
 /// Get the global rng instance, creating and seeding it if necessary.
 /// @return A reference to the global rng object
 rng& global();
+
+/// Return a string, suitable for logging, which describes the current
+/// state of the global rng instance: this is the state of the underlying
+/// rng object returned by global() and some additional information about
+/// how many times it has been accessed.
+ss::sstring global_state_string();
 
 namespace internal {
 
