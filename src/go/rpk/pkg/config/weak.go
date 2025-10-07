@@ -435,6 +435,7 @@ func (rpkc *RpkNodeConfig) UnmarshalYAML(n *yaml.Node) error {
 		WellKnownIo                    weakString           `yaml:"well_known_io"`
 		Overprovisioned                weakBool             `yaml:"overprovisioned"`
 		SMP                            *weakInt             `yaml:"smp"`
+		AllowRpsRfsTuner               *weakBool            `yaml:"allow_rps_rfs_tuner"`
 		CoresPerDedicatedInterruptCore *weakInt             `yaml:"cores_per_dedicated_interrupt_core"`
 		AllowDedicatedInterruptMode    *weakBool            `yaml:"allow_dedicated_interrupt_mode"`
 		AllowRxQueueTuner              *weakBool            `yaml:"allow_rx_queue_tuner"`
@@ -480,6 +481,7 @@ func (rpkc *RpkNodeConfig) UnmarshalYAML(n *yaml.Node) error {
 	rpkc.Tuners.BallastFilePath = string(internal.BallastFilePath)
 	rpkc.Tuners.BallastFileSize = string(internal.BallastFileSize)
 	rpkc.Tuners.WellKnownIo = string(internal.WellKnownIo)
+	rpkc.Tuners.AllowRpsRfsTuner = (*bool)(internal.AllowRpsRfsTuner)
 	if internal.CoresPerDedicatedInterruptCore != nil && *internal.CoresPerDedicatedInterruptCore <= 1 {
 		return errors.New("cores_per_dedicated_interrupt_core must be greater than 1")
 	}

@@ -83,6 +83,10 @@ func getEffectiveMode(mode irq.Mode, nic Nic, effectiveCPUMask string, cpuMasks 
 func GetRpsCPUMask(
 	nic Nic, mode irq.Mode, cpuMask string, cpuMasks irq.CPUMasks, t config.RpkNodeTuners,
 ) (string, error) {
+	if !t.GetAllowRpsRfsTuner() {
+		return "0x0", nil
+	}
+
 	effectiveCPUMask, err := cpuMasks.BaseCPUMask(cpuMask)
 	if err != nil {
 		return "", err
@@ -354,6 +358,9 @@ func OneRPSQueueLimit(limits []string, nic Nic, mode irq.Mode, cpuMask string, c
 
 	// In MQ mode, with at least one hardware RX queue per core just disable RFS as it adds no benefit.
 	if queueCount >= int(puCount) && effectiveMode == irq.Mq {
+		return 0, nil
+	}
+	if !t.GetAllowRpsRfsTuner() {
 		return 0, nil
 	}
 	return RfsTableSize / len(limits), nil

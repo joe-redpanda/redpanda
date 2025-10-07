@@ -192,6 +192,26 @@ class NetTunerTest(RedpandaTest):
         self._test_interrupt_config(self.node, self.rpk, expected_interrupt_setup)
 
     @cluster(num_nodes=1)
+    def test_tune_net_dedicated_1_core_no_rps_rfs(self):
+        self.rpk.config_set("rpk.cores_per_dedicated_interrupt_core", "4")
+        self.rpk.config_set("rpk.allow_dedicated_interrupt_mode", "true")
+        self.rpk.config_set("rpk.allow_rps_rfs_tuner", "false")
+
+        self.rpk.tune("net")
+
+        self.start_rp()
+
+        expected_interrupt_setup = self.ExpectedInterruptSetup(
+            interrupts_masks=["8"],
+            redpanda_cores={0, 1, 2},
+            rps_cpu_mask="0",
+            rps_cpu_flow_count=0,
+            rfs_table_size=self.TARGET_RFS_TABLE_SIZE,
+        )
+
+        self._test_interrupt_config(self.node, self.rpk, expected_interrupt_setup)
+
+    @cluster(num_nodes=1)
     def test_tune_net_dedicated_2_cores(self):
         self.rpk.config_set("rpk.cores_per_dedicated_interrupt_core", "2")
         self.rpk.config_set("rpk.allow_dedicated_interrupt_mode", "true")
