@@ -60,6 +60,9 @@ class ClusterLinkingProgressVerifier:
         topic: str,
         preallocated_nodes: list,
         logger,
+        use_transactions: bool = False,
+        transaction_abort_rate: float = 0.3,
+        msgs_per_transaction=10,
         msg_count: int = 40000,
         msg_size: int = 4 * 1024,
         timeout_sec: int = 600,
@@ -73,6 +76,9 @@ class ClusterLinkingProgressVerifier:
         self.target_rpk = RpkTool(self.target_cluster.service)
         self.preallocated_nodes = preallocated_nodes
         self.logger = logger
+        self.use_transactions = use_transactions
+        self.transaction_abort_rate = transaction_abort_rate
+        self.msgs_per_transaction = msgs_per_transaction
         self.msg_count = msg_count
         self.msg_size = msg_size
 
@@ -85,6 +91,9 @@ class ClusterLinkingProgressVerifier:
             topic=self.topic,
             msg_size=self.msg_size,
             msg_count=self.msg_count,
+            use_transactions=self.use_transactions,
+            transaction_abort_rate=self.transaction_abort_rate,
+            msgs_per_transaction=self.msgs_per_transaction,
             custom_node=self.preallocated_nodes,
         )
         self.producer.start(clean=False)
@@ -99,6 +108,7 @@ class ClusterLinkingProgressVerifier:
             readers=readers,
             group_name="source-cg",
             continuous=True,
+            use_transactions=self.use_transactions,
         )
         self.source_consumer.start(clean=False)
 
@@ -112,21 +122,30 @@ class ClusterLinkingProgressVerifier:
             group_name="test-kgo-consumer-group",
             nodes=self.preallocated_nodes,
             continuous=True,
+            use_transactions=self.use_transactions,
         )
 
         self.target_consumer.start(clean=False)
+
+    def expected_read_messages(self):
+        return (
+            self.producer.produce_status.acked
+            - self.producer.produce_status.aborted_transaction_messages
+        )
 
     def producer_finished(self):
         return self.producer.produce_status.acked >= self.msg_count
 
     def source_consumer_finished(self):
-        return (
-            self.source_consumer.consumer_status.validator.total_reads >= self.msg_count
+        return self.producer_finished() and (
+            self.source_consumer.consumer_status.validator.total_reads
+            >= self.expected_read_messages()
         )
 
     def target_consumer_finished(self):
-        return (
-            self.target_consumer.consumer_status.validator.total_reads >= self.msg_count
+        return self.producer_finished() and (
+            self.target_consumer.consumer_status.validator.total_reads
+            >= self.expected_read_messages()
         )
 
     def workload_finished(self):
@@ -312,6 +331,7 @@ class ShadowLinkTestBase(PreallocNodesTest):
                     "cluster_link": "trace",
                     "kafka/client": "trace",
                     "kafka": "trace",
+                    "tx": "trace",
                 },
             ),
             *args,
@@ -674,6 +694,8 @@ class ShadowLinkPreAllocTestBase(ShadowLinkTestBase):
         topic: str = "test-topic",
         msg_size: int = 128,
         msg_cnt: int = 10000,
+        use_transactions: bool = False,
+        transaction_abort_rate: float = 0.3,
     ):
         self.verifier = ClusterLinkingProgressVerifier(
             self.test_context,
@@ -684,6 +706,8 @@ class ShadowLinkPreAllocTestBase(ShadowLinkTestBase):
             self.logger,
             msg_count=msg_cnt,
             msg_size=msg_size,
+            use_transactions=use_transactions,
+            transaction_abort_rate=transaction_abort_rate,
             timeout_sec=180,
         )
         self.verifier.start()

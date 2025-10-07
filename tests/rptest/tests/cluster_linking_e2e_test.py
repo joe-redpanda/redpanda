@@ -680,6 +680,25 @@ class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):
             f"Instead got {link_state.status.shadow_topic_statuses}"
         )
 
+    @cluster(num_nodes=8)
+    def test_replication_with_transactions(self):
+        topic = TopicSpec(name="source-topic", partition_count=1, replication_factor=3)
+
+        self.source_default_client().create_topic(topic)
+        self.create_link("test-link")
+
+        self.target_cluster.service.wait_until(
+            lambda: self.topic_exists_in_target(topic.name),
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg=f"Topic {topic.name} not found in target cluster",
+        )
+
+        self.start_producer_consumer(
+            topic=topic.name, msg_size=128, msg_cnt=10000, use_transactions=True
+        )
+        self.verify()
+
 
 class ShadowLinkConsumeGroupsMirroringTest(ShadowLinkTestBase):
     def create_source_consumer(self, topic, group_name="test_group", consumer_count=1):
