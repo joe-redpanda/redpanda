@@ -330,6 +330,15 @@ frontend::metastore_partition(const model::topic_id_partition& tp) const {
     return model::partition_id{static_cast<int32_t>(partition)};
 }
 
+std::optional<int> frontend::num_metastore_partitions() const {
+    const auto md = _metadata->local().get_topic_metadata_ref(
+      model::l1_metastore_nt);
+    if (!md) {
+        return std::nullopt;
+    }
+    return md->get().get_configuration().partition_count;
+}
+
 ss::future<rpc::add_objects_reply> frontend::add_objects_locally(
   rpc::add_objects_request request,
   const model::ntp& metastore_ntp,

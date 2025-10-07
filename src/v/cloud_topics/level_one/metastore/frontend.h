@@ -92,6 +92,8 @@ public:
     std::optional<model::partition_id>
     metastore_partition(const model::topic_id_partition&) const;
 
+    std::optional<int> num_metastore_partitions() const;
+
     ss::future<bool> ensure_topic_exists();
 
 private:
