@@ -144,6 +144,18 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "aip_common_config",
+    hdrs = ["aip_common_config.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/v/serde/protobuf:base",
+        "//src/v/serde/protobuf:rpc",
+        "@fmt",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "aip_filter",
     srcs = [
         "aip_filter.cc",
@@ -153,13 +165,37 @@ redpanda_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":aip_common_config",
         "//src/v/base",
         "//src/v/serde/protobuf:base",
         "//src/v/serde/protobuf:field_mask",
+        "//src/v/serde/protobuf:rpc",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/time",
         "@fmt",
         "@lexy",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
+    name = "aip_ordering",
+    srcs = [
+        "aip_ordering.cc",
+    ],
+    hdrs = [
+        "aip_ordering.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":aip_common_config",
+        "//src/v/base",
+        "//src/v/serde/protobuf:base",
+        "//src/v/serde/protobuf:field_mask",
+        "//src/v/serde/protobuf:rpc",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/time",
+        "@fmt",
         "@seastar",
     ],
 )
