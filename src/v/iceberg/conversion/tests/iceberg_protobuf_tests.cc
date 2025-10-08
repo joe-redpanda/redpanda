@@ -147,8 +147,8 @@ TEST(SchemaProtobuf, TestComplexSchema) {
     auto& replica_list_type = std::get<list_type>(
       partition_type.fields[1]->type);
 
-    // enum is mapped to signed integer
-    EXPECT_THAT(partition_type.fields[2], IsField(3, "state", int_type{}));
+    // Enum is mapped to string.
+    EXPECT_THAT(partition_type.fields[2], IsField(3, "state", string_type{}));
 
     auto& broker_shard_type = std::get<struct_type>(
       replica_list_type.element_field->type);
@@ -337,7 +337,7 @@ TEST_CORO(values_protobuf, TestComplexValueConversion) {
                     IcebergStruct(
                       OptionalIcebergPrimitive<iceberg::long_value>(11),
                       OptionalIcebergPrimitive<iceberg::int_value>(0)))),
-                  OptionalIcebergPrimitive<int_value>(0)))))),
+                  OptionalIcebergPrimitive<string_value>("ACTIVE")))))),
           IcebergKeyValue(
             IcebergPrimitive<string_value>("topic_1"),
             // topic
@@ -450,8 +450,8 @@ TEST_CORO(values_protobuf, TestEmptyMessage) {
                 case google::protobuf::FieldDescriptor::TYPE_ENUM:
                     EXPECT_THAT(
                       field_value,
-                      OptionalIcebergPrimitive<int_value>(
-                        field_descriptor->default_value_enum()->number()));
+                      OptionalIcebergPrimitive<string_value>(
+                        field_descriptor->default_value_enum()->name()));
                     break;
                 }
             }
