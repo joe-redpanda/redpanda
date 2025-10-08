@@ -932,6 +932,10 @@ ss::future<response_ptr> end_txn_handler::handle(
         end_txn_request request;
         request.decode(ctx.reader(), ctx.header().version);
         log_request(ctx.header(), request);
+
+        ctx.connection()->attributes().last_transactional_id.update(
+          request.data.transactional_id);
+
         if (ctx.recovery_mode_enabled()) {
             end_txn_response response;
             response.data.error_code = error_code::policy_violation;
@@ -975,6 +979,9 @@ add_offsets_to_txn_handler::handle(request_context ctx, ss::smp_service_group) {
         add_offsets_to_txn_request request;
         request.decode(ctx.reader(), ctx.header().version);
         log_request(ctx.header(), request);
+
+        ctx.connection()->attributes().last_transactional_id.update(
+          request.data.transactional_id);
 
         if (unlikely(ctx.recovery_mode_enabled())) {
             add_offsets_to_txn_response response;
@@ -1028,6 +1035,9 @@ ss::future<response_ptr> add_partitions_to_txn_handler::handle(
         add_partitions_to_txn_request request;
         request.decode(ctx.reader(), ctx.header().version);
         log_request(ctx.header(), request);
+
+        ctx.connection()->attributes().last_transactional_id.update(
+          request.data.transactional_id);
 
         if (ctx.recovery_mode_enabled()) {
             add_partitions_to_txn_response response{
@@ -1759,6 +1769,9 @@ ss::future<response_ptr> init_producer_id_handler::handle(
         init_producer_id_request request;
         request.decode(ctx.reader(), ctx.header().version);
         log_request(ctx.header(), request);
+
+        ctx.connection()->attributes().last_transactional_id.update(
+          request.data.transactional_id);
 
         if (unlikely(ctx.recovery_mode_enabled())) {
             init_producer_id_response reply;

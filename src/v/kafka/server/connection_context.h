@@ -148,6 +148,16 @@ struct virtual_connection_id {
 class last_value {
 public:
     void update(std::optional<std::string_view> new_value);
+    template<typename Tag>
+    void update(const named_type<ss::sstring, Tag>& new_value) {
+        update(new_value());
+    }
+    template<typename Tag>
+    void update(const std::optional<named_type<ss::sstring, Tag>>& new_value) {
+        if (new_value) {
+            update((*new_value)());
+        }
+    }
     const std::optional<ss::sstring>& get() const { return value; }
 
 private:
@@ -180,6 +190,7 @@ struct connection_attributes {
     last_value last_client_id{};
     last_value last_client_software_name{};
     last_value last_client_software_version{};
+    last_value last_transactional_id{};
 };
 
 class connection_context final
