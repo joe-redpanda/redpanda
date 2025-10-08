@@ -729,6 +729,7 @@ service::shadow_topic_report(model::id_t link_id, const ::model::topic& topic) {
                           "Error getting shadow topic report from node {}: {}",
                           node_id,
                           r.err_code);
+                        return ss::now();
                     }
                     ::cluster_link::model::aggregated_shadow_topic_report::
                       broker_report broker_report;
