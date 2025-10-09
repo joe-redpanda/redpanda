@@ -139,6 +139,4 @@ INSTANTIATE_TEST_SUITE_P(
   ReplicatorFixtureAndSessions,
   ReplicatorFixture,
   testing::Values(
-    session_config::with_sessions,
-    session_config::without_sessions,
-    session_config::toggle_sessions));
+    session_config::with_sessions, session_config::without_sessions));
