@@ -4278,7 +4278,7 @@ configuration::configuration()
   , iceberg_throttle_backlog_size_ratio(
       *this,
       "iceberg_throttle_backlog_size_ratio",
-      "Ration of the total backlog size to the disk space at which the "
+      "Ratio of the total backlog size to the disk space at which the "
       "throttle to iceberg producers is applied. If set `null`, then "
       "throttling is disabled.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
