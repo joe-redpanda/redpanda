@@ -34,6 +34,7 @@ class service : public ss::peering_sharded_service<service> {
 public:
     service(
       ::model::node_id self,
+      config::binding<bool> enable_shadow_linking,
       ss::sharded<::cluster::cluster_link::frontend>* plf,
       std::unique_ptr<cluster::partition_change_notifier> notifications,
       ss::sharded<cluster::partition_manager>* partition_manager,
@@ -151,6 +152,7 @@ private:
     ss::gate _gate;
     // Need explicit namespace due to having a `cluster_link::model` namespace
     ::model::node_id _self;
+    config::binding<bool> _enable_shadow_linking;
     ss::sharded<::cluster::cluster_link::frontend>* _plf;
     std::unique_ptr<cluster::partition_change_notifier> _notifications;
     ss::sharded<cluster::partition_manager>* _partition_manager;

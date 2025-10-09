@@ -314,6 +314,7 @@ public:
 
 service::service(
   ::model::node_id self,
+  config::binding<bool> enable_shadow_linking,
   ss::sharded<frontend>* plf,
   std::unique_ptr<cluster::partition_change_notifier> notifications,
   ss::sharded<cluster::partition_manager>* partition_manager,
@@ -329,6 +330,7 @@ service::service(
   ss::smp_service_group smp_group,
   ss::scheduling_group scheduling_group)
   : _self(self)
+  , _enable_shadow_linking(std::move(enable_shadow_linking))
   , _plf(plf)
   , _notifications(std::move(notifications))
   , _partition_manager(partition_manager)
