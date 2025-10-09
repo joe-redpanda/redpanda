@@ -455,6 +455,7 @@ ss::future<> connection_context::process_one_request() {
     _server.handler_probe(h->key).add_bytes_received(sz.value());
     _attributes.last_client_id.update(h->client_id);
     _attributes.record_api_version(h->key, h->version);
+    _attributes.in_flight_requests.record_begin_request(h->key);
     /**
      * An entry point for the MPX serverless extensions. If the first request
      * for a given connection has a special client_id then MPX extensions are
@@ -921,8 +922,10 @@ proto::admin::kafka_connection connection_context::to_proto() const {
       chunked_hash_map<int32_t, int32_t>{
         _attributes.api_versions.cbegin(), _attributes.api_versions.cend()});
 
-    using tracker_t = connection_attributes::request_state::tracker_t;
-    auto now = tracker_t::clock::now();
+    auto now = ss::lowres_clock::now();
+    res.set_in_flight_requests(_attributes.in_flight_requests.to_proto(now));
+    res.set_idle_duration(
+      absl::FromChrono(_attributes.in_flight_requests.get_idle_duration(now)));
 
     auto make_stats = [this](auto&& get_value) {
         auto stats = proto::admin::request_statistics{};
@@ -938,8 +941,6 @@ proto::admin::kafka_connection connection_context::to_proto() const {
       [now](auto& attr) { return attr.recent_stat.window_total(now); }));
     res.set_total_request_statistics(
       make_stats([](auto& attr) { return attr.total_stat; }));
-
-    // TODO: fill out the response with the remaining fields
 
     return res;
 }
@@ -1118,6 +1119,8 @@ connection_context::client_protocol_state::do_process_responses(
 
     _responses.erase(it);
 
+    connection_ctx->attributes().in_flight_requests.record_end_request();
+
     if (resp_and_res.response->is_noop()) {
         co_return ss::stop_iteration::no;
     }
@@ -1193,6 +1196,50 @@ void connection_attributes::record_api_version(
     if (!inserted) {
         it->second = std::max(it->second, version);
     }
+}
+
+void connection_attributes::in_flight_request_tracker::record_begin_request(
+  api_key key) {
+    while (_in_flight_request_samples.size() >= max_count) {
+        _in_flight_request_samples.pop_front();
+    }
+    ++_total_in_flight_count;
+    _in_flight_request_samples.emplace_back(key, clock::now());
+    _idle_since.reset();
+}
+void connection_attributes::in_flight_request_tracker::record_end_request() {
+    --_total_in_flight_count;
+
+    // We can rely on the assumption here that responses are sent in
+    // request-order to always pop_front instead of having to search for the
+    // request corresponding to the response
+
+    if (!_in_flight_request_samples.empty()) {
+        _in_flight_request_samples.pop_front();
+    }
+
+    if (_total_in_flight_count == 0) {
+        _idle_since = clock::now();
+    }
+}
+
+proto::admin::in_flight_requests
+connection_attributes::in_flight_request_tracker::to_proto(
+  clock::time_point now) const {
+    proto::admin::in_flight_requests res;
+
+    chunked_vector<proto::admin::in_flight_requests_request> reqs;
+    for (auto& req : _in_flight_request_samples) {
+        auto& proto_req = reqs.emplace_back();
+        proto_req.set_api_key(req.key);
+        proto_req.set_in_flight_duration(absl::FromChrono(now - req.recv_time));
+    }
+    res.set_sampled_in_flight_requests(std::move(reqs));
+
+    res.set_has_more_requests(
+      _in_flight_request_samples.size() < _total_in_flight_count);
+
+    return res;
 }
 
 } // namespace kafka

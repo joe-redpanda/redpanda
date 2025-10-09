@@ -181,6 +181,35 @@ struct connection_attributes {
         }
     };
 
+    class in_flight_request_tracker {
+    public:
+        using clock = ss::lowres_clock;
+        constexpr static auto max_count = size_t{5};
+
+        explicit in_flight_request_tracker(
+          std::optional<clock::time_point> idle_since = clock::now())
+          : _idle_since(idle_since) {}
+
+        void record_begin_request(api_key key);
+        void record_end_request();
+
+        proto::admin::in_flight_requests to_proto(clock::time_point now) const;
+        clock::duration get_idle_duration(clock::time_point now) const {
+            return _idle_since ? (now - *_idle_since) : clock::duration::zero();
+        }
+
+    private:
+        struct in_flight_request {
+            api_key key;
+            clock::time_point recv_time;
+        };
+        using queue_t = std::deque<in_flight_request>;
+
+        queue_t _in_flight_request_samples{};
+        size_t _total_in_flight_count{0};
+        std::optional<clock::time_point> _idle_since;
+    };
+
     void record_api_version(api_key key, api_version);
 
     request_state request_count;
@@ -199,6 +228,7 @@ struct connection_attributes {
     last_value last_group_member_id{};
 
     chunked_hash_map<api_key, api_version> api_versions{};
+    in_flight_request_tracker in_flight_requests;
 };
 
 class connection_context final
