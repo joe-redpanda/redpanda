@@ -95,6 +95,12 @@ frontend::frontend(
 ss::future<errc> frontend::upsert_cluster_link(
   ::cluster_link::model::metadata meta,
   model::timeout_clock::time_point timeout) {
+    if (is_sanctioned()) {
+        vlog(
+          clusterlog.warn,
+          "Missing license - unable to create new shadow link");
+        co_return errc::license_required;
+    }
     cluster_link_cmd c{cluster::cluster_link_upsert_cmd{0, std::move(meta)}};
     co_return co_await do_mutation(std::move(c), timeout);
 }
@@ -510,6 +516,8 @@ errc frontend::validate_mutation(const cluster_link_cmd& cmd) const {
        "redpanda.remote.allowgaps"}};
     return v.validate_mutation(cmd);
 }
+
+bool frontend::is_sanctioned() { return _features->should_sanction(); }
 
 frontend::validator::validator(
   table* table,

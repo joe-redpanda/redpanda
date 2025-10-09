@@ -657,6 +657,28 @@ class ShadowLinkBasicTests(ShadowLinkTestBase):
 
         toggle_thread.join()
 
+    @cluster(num_nodes=6)
+    def test_shadow_link_sanctioning(self):
+        self.target_cluster.service.set_environment(
+            {"__REDPANDA_DISABLE_BUILTIN_TRIAL_LICENSE": "true"}
+        )
+        self.target_cluster.service.restart_nodes(self.target_cluster.service.nodes)
+        self.target_cluster.service.wait_until(
+            self.target_cluster_service.healthy,
+            timeout_sec=60,
+            backoff_sec=1,
+            err_msg="Cluster hasn't stabilized",
+        )
+
+        Admin(self.target_cluster_service).await_stable_leader(
+            namespace="redpanda", topic="controller", partition=0
+        )
+
+        with expect_exception(
+            ConnectError, lambda e: e.code == ConnectErrorCode.FAILED_PRECONDITION
+        ):
+            self.create_link("test-link")
+
 
 class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):
     def leadership_shuffler(self, redpanda, topic: str, enabled: bool):
