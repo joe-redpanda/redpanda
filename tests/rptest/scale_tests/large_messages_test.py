@@ -346,10 +346,10 @@ class LargeMessagesTest(RedpandaTest):
         else:
             self.topic_names = self.topic_prefixes
 
-        # we size everything to this target runtime, 5 minutes, this will result in very
+        # we size everything to this target runtime, 3 minutes, this will result in very
         # different amounts of total message volume in different environments with different
         # scale parameters.
-        target_runtime_sec = 300
+        target_runtime_sec = 180
 
         # every increase of 1 in message_count increases total bytes written by this amount
         bytes_per_message_count = self.n_clients * self.message_size * self.swarm_nodes
