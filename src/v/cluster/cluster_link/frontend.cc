@@ -95,9 +95,6 @@ frontend::frontend(
 ss::future<errc> frontend::upsert_cluster_link(
   ::cluster_link::model::metadata meta,
   model::timeout_clock::time_point timeout) {
-    if (!cluster_linking_enabled()) {
-        co_return errc::feature_disabled;
-    }
     cluster_link_cmd c{cluster::cluster_link_upsert_cmd{0, std::move(meta)}};
     co_return co_await do_mutation(std::move(c), timeout);
 }
@@ -106,9 +103,6 @@ ss::future<errc> frontend::remove_cluster_link(
   ::cluster_link::model::name_t name,
   bool force,
   model::timeout_clock::time_point timeout) {
-    if (!cluster_linking_enabled()) {
-        co_return errc::feature_disabled;
-    }
     cluster_link_cmd c{cluster::cluster_link_remove_cmd(
       0,
       ::cluster_link::model::delete_shadow_link_cmd{
@@ -118,9 +112,6 @@ ss::future<errc> frontend::remove_cluster_link(
 
 ss::future<errc> frontend::add_mirror_topic(
   id_t id, add_mirror_topic_cmd cmd, model::timeout_clock::time_point timeout) {
-    if (!cluster_linking_enabled()) {
-        co_return errc::feature_disabled;
-    }
     cluster_link_cmd c{
       cluster::cluster_link_add_mirror_topic_cmd(id, std::move(cmd))};
     co_return co_await do_mutation(std::move(c), timeout);
@@ -130,9 +121,6 @@ ss::future<errc> frontend::delete_mirror_topic(
   id_t id,
   delete_mirror_topic_cmd cmd,
   model::timeout_clock::time_point timeout) {
-    if (!cluster_linking_enabled()) {
-        co_return errc::feature_disabled;
-    }
     cluster_link_cmd c{
       cluster::cluster_link_delete_mirror_topic_cmd(id, std::move(cmd))};
     co_return co_await do_mutation(std::move(c), timeout);
@@ -154,9 +142,6 @@ ss::future<errc> frontend::update_mirror_topic_properties(
   id_t id,
   update_mirror_topic_properties_cmd cmd,
   model::timeout_clock::time_point timeout) {
-    if (!cluster_linking_enabled()) {
-        co_return errc::feature_disabled;
-    }
     cluster_link_cmd c{cluster::cluster_link_update_mirror_topic_properties_cmd(
       id, std::move(cmd))};
     co_return co_await do_mutation(std::move(c), timeout);
@@ -166,9 +151,6 @@ ss::future<errc> frontend::update_cluster_link_configuration(
   id_t id,
   update_cluster_link_configuration_cmd cmd,
   model::timeout_clock::time_point timeout) {
-    if (!cluster_link_active()) {
-        co_return errc::feature_disabled;
-    }
     cluster_link_cmd c{
       cluster::cluster_link_update_cluster_link_configuration_cmd(
         id, std::move(cmd))};
@@ -517,6 +499,9 @@ ss::future<errc> frontend::do_local_mutation(
 errc frontend::validate_mutation(const cluster_link_cmd& cmd) const {
     // Initially for DR, we will only support a single cluster link at a time.
     static constexpr size_t max_links = 1;
+    if (!cluster_linking_enabled()) {
+        return errc::feature_disabled;
+    }
     validator v{
       _table,
       max_links,
