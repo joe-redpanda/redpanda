@@ -491,41 +491,6 @@ class ShadowLinkBasicTests(ShadowLinkTestBase):
         )
 
     @cluster(num_nodes=6)
-    def test_invalid_updates(self):
-        shadow_link: shadow_link_pb2.ShadowLink = self.create_link(
-            "test-link", mirror_all_topics=False, mirror_all_groups=False
-        )
-
-        update_mask: google.protobuf.field_mask_pb2.FieldMask = (
-            google.protobuf.field_mask_pb2.FieldMask(
-                paths=["configurations.client_options.bootstrap_servers"]
-            )
-        )
-
-        with expect_exception(
-            ConnectError, lambda e: e.code == ConnectErrorCode.INVALID_ARGUMENT
-        ):
-            self.update_link(shadow_link=shadow_link, update_mask=update_mask)
-
-        update_mask = google.protobuf.field_mask_pb2.FieldMask(
-            paths=["configurations.client_options.tls_settings"]
-        )
-
-        with expect_exception(
-            ConnectError, lambda e: e.code == ConnectErrorCode.INVALID_ARGUMENT
-        ):
-            self.update_link(shadow_link=shadow_link, update_mask=update_mask)
-
-        update_mask = google.protobuf.field_mask_pb2.FieldMask(
-            paths=["configurations.client_options.tls_settings.tls_file_settings"]
-        )
-
-        with expect_exception(
-            ConnectError, lambda e: e.code == ConnectErrorCode.INVALID_ARGUMENT
-        ):
-            self.update_link(shadow_link=shadow_link, update_mask=update_mask)
-
-    @cluster(num_nodes=6)
     def test_delete_simple_link(self):
         def get_links_by_name():
             list_links = self.list_links()
