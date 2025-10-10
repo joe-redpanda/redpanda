@@ -8,29 +8,21 @@
  * https://github.com/redpanda-data/redpanda/blob/master/licenses/rcl.md
  */
 
-#include "absl/container/flat_hash_set.h"
 #include "cloud_io/tests/s3_imposter.h"
-#include "cloud_storage/spillover_manifest.h"
 #include "cloud_storage/tests/produce_utils.h"
-#include "cluster/archival/archival_metadata_stm.h"
 #include "cluster/archival/ntp_archiver_service.h"
-#include "config/configuration.h"
 #include "kafka/server/tests/delete_records_utils.h"
 #include "kafka/server/tests/list_offsets_utils.h"
 #include "kafka/server/tests/offset_for_leader_epoch_utils.h"
 #include "kafka/server/tests/produce_consume_utils.h"
 #include "model/fundamental.h"
-#include "model/record.h"
 #include "redpanda/tests/fixture.h"
-#include "storage/disk_log_impl.h"
 #include "test_utils/async.h"
 #include "test_utils/boost_fixture.h"
 #include "test_utils/scoped_config.h"
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/test/tools/old/interface.hpp>
-
-#include <iterator>
 
 using tests::kafka_consume_transport;
 using tests::kafka_delete_records_transport;
