@@ -49,8 +49,6 @@ from rptest.tests.datalake.utils import supported_storage_types
 from rptest.tests.prealloc_nodes import PreallocNodesTest
 from rptest.utils.mode_checks import (
     cleanup_on_early_exit,
-    skip_debug_mode,
-    skip_fips_mode,
 )
 from rptest.utils.node_operations import (
     FailureInjectorBackgroundThread,
@@ -603,7 +601,7 @@ class RandomNodeOperationsBase(PreallocNodesTest):
         )
         fast_producer_consumer.start()
 
-        cloud_topics_consumer = RandomNodeOperationsTest.producer_consumer(
+        cloud_topics_consumer = RandomNodeOperationsBase.producer_consumer(
             test_context=self.test_context,
             logger=self.logger,
             topic_name="tp-workload-ct",
@@ -796,30 +794,6 @@ class RandomNodeOperationsBase(PreallocNodesTest):
             f"redpanda={getattr(self, 'redpanda', None)!r}",
         ]
         return f"<RandomNodeOperationsBase {', '.join(fields)}>"
-
-
-class RandomNodeOperationsTest(RandomNodeOperationsBase):
-    """
-    Main test for RNOT test with all the parameterization.
-    """
-
-    # before v24.2, dns query to s3 endpoint do not include the bucketname, which is required for AWS S3 fips endpoints
-    @skip_fips_mode
-    @skip_debug_mode
-    @cluster(num_nodes=9, log_allow_list=RNOT_ALLOW_LIST)
-    @matrix(
-        enable_failures=[True, False],
-        mixed_versions=[True, False],
-        with_iceberg=[True, False],
-        compaction_mode=[
-            CompactionMode.SLIDING_WINDOW,
-            CompactionMode.CHUNKED_SLIDING_WINDOW,
-            CompactionMode.ADJACENT_MERGE,
-        ],
-        cloud_storage_type=get_cloud_storage_type(),
-    )
-    def test_node_operations(self, **kwargs: Any):
-        self._do_test_node_operations(**kwargs)
 
 
 class RedpandaNodeOperationsSmokeTest(RandomNodeOperationsBase):
