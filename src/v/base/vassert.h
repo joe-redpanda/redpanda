@@ -83,10 +83,14 @@ inline void assert_failed_thunk0(
         }                                                                      \
     } while (0)
 
-/**
- * same as vassert but only debug mode. Use over assert for better
- * error messages.
- */
+/// Debug-only assertion that is compiled out in release builds.
+///
+/// This macro behaves identically to vassert() in debug builds but becomes
+/// a no-op in release builds (when NDEBUG is defined). Use dassert() for
+/// expensive checks that should only run during development and testing.
+///
+/// Prefer over standard assert() for consistent calling conventions and
+/// backtraces.
 #ifndef NDEBUG
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define dassert(x, msg, args...) vassert(x, msg, ##args)
