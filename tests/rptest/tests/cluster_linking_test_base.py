@@ -423,7 +423,7 @@ class ShadowLinkTestBase(PreallocNodesTest):
                         name="*",
                     )
                 ],
-                shadowed_topic_properties=["replication.factor"],
+                synced_shadow_topic_properties=["replication.factor"],
             )
 
         if mirror_all_groups:

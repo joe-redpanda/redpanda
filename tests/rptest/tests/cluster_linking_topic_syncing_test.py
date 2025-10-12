@@ -281,7 +281,7 @@ class ClusterLinkingTopicSyncingTestBase(ShadowLinkTestBase):
 
         shadow_link_req = self.create_default_link_request("test-link")
 
-        shadow_link_req.shadow_link.configurations.topic_metadata_sync_options.shadowed_topic_properties.append(
+        shadow_link_req.shadow_link.configurations.topic_metadata_sync_options.synced_shadow_topic_properties.append(
             "replication.factor"
         )
 

@@ -124,7 +124,7 @@ create_topic_metadata_mirroring_config(
       options.get_auto_create_shadow_topic_filters());
 
     std::ranges::copy(
-      options.get_shadowed_topic_properties(),
+      options.get_synced_shadow_topic_properties(),
       std::inserter(
         config.topic_properties_to_mirror,
         config.topic_properties_to_mirror.end()));
@@ -806,7 +806,7 @@ topic_metadata_sync_options create_topic_metadata_sync_options(
         mirrored_properties.push_back(ss::sstring{prop});
     }
 
-    options.set_shadowed_topic_properties(std::move(mirrored_properties));
+    options.set_synced_shadow_topic_properties(std::move(mirrored_properties));
 
     return options;
 }
