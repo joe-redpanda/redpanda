@@ -44,6 +44,7 @@ redpanda_cc_library(
     visibility = ["__subpackages__"],
     deps = [
         ":deps",
+        ":types",
         "//src/v/cluster_link:logger",
         "//src/v/container:chunked_vector",
         "//src/v/model",
@@ -107,6 +108,7 @@ redpanda_cc_library(
     visibility = ["//src/v/cluster_link:__subpackages__"],
     deps = [
         ":partition_data_queue",
+        ":types",
         "//src/v/cluster_link:logger",
         "//src/v/config",
         "//src/v/container:chunked_hash_map",
