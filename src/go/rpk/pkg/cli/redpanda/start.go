@@ -671,7 +671,7 @@ func tuneAll(
 	fs afero.Fs, cpuSet string, y *config.RedpandaYaml, timeout time.Duration,
 ) error {
 	params := &factory.TunerParams{}
-	tunerFactory := factory.NewDirectExecutorTunersFactory(fs, y.Rpk.Tuners, timeout)
+	tunerFactory := factory.NewDirectExecutorTunersFactory(fs, y.Rpk, timeout)
 	hw := hwloc.NewHwLocCmd(vos.NewProc(), timeout)
 	if cpuSet == "" {
 		cpuMask, err := hw.All()

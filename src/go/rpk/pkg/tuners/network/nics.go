@@ -28,7 +28,7 @@ type EffectiveNicConfig struct {
 }
 
 func GetEffectiveNicConfig(
-	nic Nic, mode irq.Mode, cpuMask string, cpuMasks irq.CPUMasks, t config.RpkNodeTuners,
+	nic Nic, mode irq.Mode, cpuMask string, cpuMasks irq.CPUMasks, rnc config.RpkNodeConfig,
 ) (EffectiveNicConfig, error) {
 	effectiveConfig := EffectiveNicConfig{}
 	effectiveCPUMask, err := cpuMasks.BaseCPUMask(cpuMask)
@@ -36,17 +36,17 @@ func GetEffectiveNicConfig(
 		return EffectiveNicConfig{}, err
 	}
 
-	effectiveConfig.Mode, err = getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, t)
+	effectiveConfig.Mode, err = getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, rnc)
 	if err != nil {
 		return EffectiveNicConfig{}, err
 	}
 
-	effectiveConfig.IRQCPUMask, err = cpuMasks.CPUMaskForIRQs(effectiveConfig.Mode, effectiveCPUMask, t)
+	effectiveConfig.IRQCPUMask, err = cpuMasks.CPUMaskForIRQs(effectiveConfig.Mode, effectiveCPUMask, rnc)
 	if err != nil {
 		return EffectiveNicConfig{}, err
 	}
 
-	effectiveConfig.ComputationsCPUMask, err = cpuMasks.CPUMaskForComputations(effectiveConfig.Mode, effectiveCPUMask, t)
+	effectiveConfig.ComputationsCPUMask, err = cpuMasks.CPUMaskForComputations(effectiveConfig.Mode, effectiveCPUMask, rnc)
 	if err != nil {
 		return EffectiveNicConfig{}, err
 	}
@@ -55,7 +55,7 @@ func GetEffectiveNicConfig(
 }
 
 func GetDefaultMode(
-	nic Nic, cpuMask string, cpuMasks irq.CPUMasks, t config.RpkNodeTuners,
+	nic Nic, cpuMask string, cpuMasks irq.CPUMasks, rnc config.RpkNodeConfig,
 ) (irq.Mode, error) {
 	if nic.IsHwInterface() {
 		numOfPUs, err := cpuMasks.GetNumberOfPUs(cpuMask)
@@ -67,7 +67,7 @@ func GetDefaultMode(
 		//   - no cpuset specified in config
 		//   - --smp is compatible
 		var mode irq.Mode
-		if numOfPUs >= uint(t.GetCoresPerDedicatedInterruptCore()) && t.GetAllowDedicatedInterruptMode() {
+		if numOfPUs >= uint(rnc.Tuners.GetCoresPerDedicatedInterruptCore()) && rnc.Tuners.GetAllowDedicatedInterruptMode() {
 			mode = irq.Dedicated
 		} else {
 			mode = irq.Mq
@@ -86,7 +86,7 @@ func GetDefaultMode(
 			return "", err
 		}
 		for _, slave := range slaves {
-			slaveDefaultMode, err := GetDefaultMode(slave, cpuMask, cpuMasks, t)
+			slaveDefaultMode, err := GetDefaultMode(slave, cpuMask, cpuMasks, rnc)
 			if err != nil {
 				return "", err
 			}
@@ -101,11 +101,11 @@ func GetDefaultMode(
 	return "", fmt.Errorf("virtual device %s is not supported", nic.Name())
 }
 
-func getEffectiveMode(mode irq.Mode, nic Nic, effectiveCPUMask string, cpuMasks irq.CPUMasks, t config.RpkNodeTuners) (irq.Mode, error) {
+func getEffectiveMode(mode irq.Mode, nic Nic, effectiveCPUMask string, cpuMasks irq.CPUMasks, rnc config.RpkNodeConfig) (irq.Mode, error) {
 	var err error
 	effectiveMode := mode
 	if mode == irq.Default {
-		effectiveMode, err = GetDefaultMode(nic, effectiveCPUMask, cpuMasks, t)
+		effectiveMode, err = GetDefaultMode(nic, effectiveCPUMask, cpuMasks, rnc)
 		if err != nil {
 			return "", err
 		}
@@ -114,9 +114,9 @@ func getEffectiveMode(mode irq.Mode, nic Nic, effectiveCPUMask string, cpuMasks 
 }
 
 func GetRpsCPUMask(
-	nic Nic, mode irq.Mode, cpuMask string, cpuMasks irq.CPUMasks, t config.RpkNodeTuners,
+	nic Nic, mode irq.Mode, cpuMask string, cpuMasks irq.CPUMasks, rnc config.RpkNodeConfig,
 ) (string, error) {
-	if !t.GetAllowRpsRfsTuner() {
+	if !rnc.Tuners.GetAllowRpsRfsTuner() {
 		return "0x0", nil
 	}
 
@@ -125,7 +125,7 @@ func GetRpsCPUMask(
 		return "", err
 	}
 
-	effectiveMode, err := getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, t)
+	effectiveMode, err := getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, rnc)
 	if err != nil {
 		return "", err
 	}
@@ -145,7 +145,7 @@ func GetRpsCPUMask(
 	}
 
 	computationsCPUMask, err := cpuMasks.CPUMaskForComputations(
-		effectiveMode, effectiveCPUMask, t)
+		effectiveMode, effectiveCPUMask, rnc)
 	if err != nil {
 		return "", err
 	}
@@ -153,14 +153,14 @@ func GetRpsCPUMask(
 }
 
 func GetHwInterfaceIRQsDistribution(
-	nic Nic, mode irq.Mode, cpuMask string, cpuMasks irq.CPUMasks, t config.RpkNodeTuners,
+	nic Nic, mode irq.Mode, cpuMask string, cpuMasks irq.CPUMasks, rnc config.RpkNodeConfig,
 ) (map[int]string, error) {
 	effectiveCPUMask, err := cpuMasks.BaseCPUMask(cpuMask)
 	if err != nil {
 		return nil, err
 	}
 
-	effectiveMode, err := getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, t)
+	effectiveMode, err := getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, rnc)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func GetHwInterfaceIRQsDistribution(
 		return nil, err
 	}
 
-	irqCPUMask, err := cpuMasks.CPUMaskForIRQs(effectiveMode, effectiveCPUMask, t)
+	irqCPUMask, err := cpuMasks.CPUMaskForIRQs(effectiveMode, effectiveCPUMask, rnc)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +308,7 @@ func GetCurrentAndTargetChannels(
 	mode irq.Mode,
 	cpuMask string,
 	cpuMasks irq.CPUMasks,
-	t config.RpkNodeTuners,
+	rnc config.RpkNodeConfig,
 	ethtool ethtool.EthtoolWrapper,
 ) (currentChannels et.Channels, targetChannels et.Channels, err error) {
 	effectiveCPUMask, err := cpuMasks.BaseCPUMask(cpuMask)
@@ -316,12 +316,12 @@ func GetCurrentAndTargetChannels(
 		return et.Channels{}, et.Channels{}, err
 	}
 
-	effectiveMode, err := getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, t)
+	effectiveMode, err := getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, rnc)
 	if err != nil {
 		return et.Channels{}, et.Channels{}, err
 	}
 
-	irqMask, err := cpuMasks.CPUMaskForIRQs(effectiveMode, effectiveCPUMask, t)
+	irqMask, err := cpuMasks.CPUMaskForIRQs(effectiveMode, effectiveCPUMask, rnc)
 	if err != nil {
 		return et.Channels{}, et.Channels{}, err
 	}
@@ -371,13 +371,13 @@ func CollectIRQs(nic Nic) ([]int, error) {
 	return IRQs, nil
 }
 
-func OneRPSQueueLimit(limits []string, nic Nic, mode irq.Mode, cpuMask string, cpuMasks irq.CPUMasks, t config.RpkNodeTuners) (int, error) {
+func OneRPSQueueLimit(limits []string, nic Nic, mode irq.Mode, cpuMask string, cpuMasks irq.CPUMasks, rnc config.RpkNodeConfig) (int, error) {
 	effectiveCPUMask, err := cpuMasks.BaseCPUMask(cpuMask)
 	if err != nil {
 		return 0, err
 	}
 
-	effectiveMode, err := getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, t)
+	effectiveMode, err := getEffectiveMode(mode, nic, effectiveCPUMask, cpuMasks, rnc)
 	if err != nil {
 		return 0, err
 	}
@@ -396,7 +396,7 @@ func OneRPSQueueLimit(limits []string, nic Nic, mode irq.Mode, cpuMask string, c
 	if queueCount >= int(puCount) && effectiveMode == irq.Mq {
 		return 0, nil
 	}
-	if !t.GetAllowRpsRfsTuner() {
+	if !rnc.Tuners.GetAllowRpsRfsTuner() {
 		return 0, nil
 	}
 	return RfsTableSize / len(limits), nil

@@ -41,7 +41,7 @@ type NodeTunerState struct {
 
 func NewNetTuner(
 	mode irq.Mode,
-	t config.RpkNodeTuners,
+	rnc config.RpkNodeConfig,
 	cpuMask string,
 	interfaces []string,
 	fs afero.Fs,
@@ -55,7 +55,7 @@ func NewNetTuner(
 	statePath string,
 ) Tunable {
 	factory := NewNetTunersFactory(
-		fs, t, irqProcFile, irqDeviceInfo, ethtool, irqBalanceService, cpuMasks, executor, proc, statePath)
+		fs, rnc, irqProcFile, irqDeviceInfo, ethtool, irqBalanceService, cpuMasks, executor, proc, statePath)
 	return NewAggregatedTunable(
 		[]Tunable{
 			factory.NewAllNicsSameModeTuner(interfaces, mode, cpuMask),
@@ -92,7 +92,7 @@ type NetTunersFactory interface {
 
 type netTunersFactory struct {
 	fs              afero.Fs
-	t               config.RpkNodeTuners
+	rnc             config.RpkNodeConfig
 	irqProcFile     irq.ProcFile
 	irqDeviceInfo   irq.DeviceInfo
 	ethtool         ethtool.EthtoolWrapper
@@ -106,7 +106,7 @@ type netTunersFactory struct {
 
 func NewNetTunersFactory(
 	fs afero.Fs,
-	t config.RpkNodeTuners,
+	rnc config.RpkNodeConfig,
 	irqProcFile irq.ProcFile,
 	irqDeviceInfo irq.DeviceInfo,
 	ethtool ethtool.EthtoolWrapper,
@@ -118,7 +118,7 @@ func NewNetTunersFactory(
 ) NetTunersFactory {
 	return &netTunersFactory{
 		fs:             fs,
-		t:              t,
+		rnc:            rnc,
 		irqProcFile:    irqProcFile,
 		irqDeviceInfo:  irqDeviceInfo,
 		ethtool:        ethtool,
@@ -128,7 +128,7 @@ func NewNetTunersFactory(
 		proc:           proc,
 		statePath:      statePath,
 		checkersFactory: NewNetCheckersFactory(
-			fs, t, irqProcFile, irqDeviceInfo, ethtool, balanceService, cpuMasks),
+			fs, rnc, irqProcFile, irqDeviceInfo, ethtool, balanceService, cpuMasks),
 	}
 }
 
@@ -153,7 +153,7 @@ func (net *NicsEqualTunable) Tune() TuneResult {
 			continue
 		}
 
-		effectiveConfig, err := network.GetEffectiveNicConfig(nic, net.mode, net.cpuMask, net.f.cpuMasks, net.f.t)
+		effectiveConfig, err := network.GetEffectiveNicConfig(nic, net.mode, net.cpuMask, net.f.cpuMasks, net.f.rnc)
 		if err != nil {
 			return NewTuneError(err)
 		}
@@ -187,7 +187,7 @@ func (f *netTunersFactory) NewRxTxQueueCountTuner(interfaces []string, mode irq.
 		},
 		func(nic network.Nic) TuneResult {
 			zap.L().Sugar().Debugf(out.WithLogBanner("Tuning '%s' queue counts", nic.Name()))
-			if !f.t.GetAllowRxTxQueueTuner() {
+			if !f.rnc.Tuners.GetAllowRxTxQueueTuner() {
 				zap.L().Sugar().Debugf("Skipping RX/TX Queue Tuner as it's disabled by configuration")
 				return NewTuneResult(false)
 			}
@@ -201,7 +201,7 @@ func (f *netTunersFactory) NewRxTxQueueCountTuner(interfaces []string, mode irq.
 				return NewTuneResult(false)
 			}
 
-			_, targetChannels, err := network.GetCurrentAndTargetChannels(nic, mode, cpuMask, f.cpuMasks, f.t, f.ethtool)
+			_, targetChannels, err := network.GetCurrentAndTargetChannels(nic, mode, cpuMask, f.cpuMasks, f.rnc, f.ethtool)
 			if err != nil {
 				return NewTuneError(err)
 			}
@@ -261,7 +261,7 @@ func (f *netTunersFactory) NewNICsIRQsAffinityTuner(
 		},
 		func(nic network.Nic) TuneResult {
 			zap.L().Sugar().Debugf(out.WithLogBanner("Tuning '%s' IRQs affinity", nic.Name()))
-			dist, err := network.GetHwInterfaceIRQsDistribution(nic, mode, cpuMask, f.cpuMasks, f.t)
+			dist, err := network.GetHwInterfaceIRQsDistribution(nic, mode, cpuMask, f.cpuMasks, f.rnc)
 			if err != nil {
 				return NewTuneError(err)
 			}
@@ -278,7 +278,7 @@ func (f *netTunersFactory) NewNICsIRQsAffinityTuner(
 }
 
 func (f *netTunersFactory) getNetTunerConfig(nic network.Nic, mode irq.Mode, cpuMask string) (NodeTunerState, error) {
-	networkConfig, err := network.GetEffectiveNicConfig(nic, mode, cpuMask, f.cpuMasks, f.t)
+	networkConfig, err := network.GetEffectiveNicConfig(nic, mode, cpuMask, f.cpuMasks, f.rnc)
 	if err != nil {
 		return NodeTunerState{}, err
 	}
@@ -458,7 +458,7 @@ func (f *netTunersFactory) NewNICsRpsTuner(
 			if err != nil {
 				return NewTuneError(err)
 			}
-			rpsMask, err := network.GetRpsCPUMask(nic, mode, cpuMask, f.cpuMasks, f.t)
+			rpsMask, err := network.GetRpsCPUMask(nic, mode, cpuMask, f.cpuMasks, f.rnc)
 			if err != nil {
 				return NewTuneError(err)
 			}
@@ -491,7 +491,7 @@ func (f *netTunersFactory) NewNICsRfsTuner(interfaces []string, mode irq.Mode, c
 			if err != nil {
 				return NewTuneError(err)
 			}
-			queueLimit, err := network.OneRPSQueueLimit(limits, nic, mode, cpuMask, f.cpuMasks, f.t)
+			queueLimit, err := network.OneRPSQueueLimit(limits, nic, mode, cpuMask, f.cpuMasks, f.rnc)
 			if err != nil {
 				return NewTuneError(err)
 			}

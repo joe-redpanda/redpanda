@@ -106,9 +106,9 @@ To learn more about a tuner, run 'rpk redpanda tune help <tuner name>'.
 				if isDir {
 					out.Die("please use a filename instead of a directory name in --output-script")
 				}
-				tunerFactory = factory.NewScriptRenderingTunersFactory(fs, y.Rpk.Tuners, outTuneScriptFile, timeout)
+				tunerFactory = factory.NewScriptRenderingTunersFactory(fs, y.Rpk, outTuneScriptFile, timeout)
 			} else {
-				tunerFactory = factory.NewDirectExecutorTunersFactory(fs, y.Rpk.Tuners, timeout)
+				tunerFactory = factory.NewDirectExecutorTunersFactory(fs, y.Rpk, timeout)
 			}
 			exit1, err := tune(y, tuners, tunerFactory, &tunerParams)
 			out.MaybeDieErr(err)

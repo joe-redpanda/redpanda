@@ -68,7 +68,7 @@ type TunersFactory interface {
 
 type tunersFactory struct {
 	fs                afero.Fs
-	t                 config.RpkNodeTuners
+	rnc               config.RpkNodeConfig
 	irqDeviceInfo     irq.DeviceInfo
 	cpuMasks          irq.CPUMasks
 	irqBalanceService irq.BalanceService
@@ -79,25 +79,25 @@ type tunersFactory struct {
 	executor          executors.Executor
 }
 
-func NewDirectExecutorTunersFactory(fs afero.Fs, t config.RpkNodeTuners, timeout time.Duration) TunersFactory {
+func NewDirectExecutorTunersFactory(fs afero.Fs, rnc config.RpkNodeConfig, timeout time.Duration) TunersFactory {
 	irqProcFile := irq.NewProcFile(fs)
 	proc := os.NewProc()
 	irqDeviceInfo := irq.NewDeviceInfo(fs, irqProcFile)
 	executor := executors.NewDirectExecutor()
-	return newTunersFactory(fs, t, irqProcFile, proc, irqDeviceInfo, executor, timeout)
+	return newTunersFactory(fs, rnc, irqProcFile, proc, irqDeviceInfo, executor, timeout)
 }
 
-func NewScriptRenderingTunersFactory(fs afero.Fs, t config.RpkNodeTuners, out string, timeout time.Duration) TunersFactory {
+func NewScriptRenderingTunersFactory(fs afero.Fs, rnc config.RpkNodeConfig, out string, timeout time.Duration) TunersFactory {
 	irqProcFile := irq.NewProcFile(fs)
 	proc := os.NewProc()
 	irqDeviceInfo := irq.NewDeviceInfo(fs, irqProcFile)
 	executor := executors.NewScriptRenderingExecutor(fs, out)
-	return newTunersFactory(fs, t, irqProcFile, proc, irqDeviceInfo, executor, timeout)
+	return newTunersFactory(fs, rnc, irqProcFile, proc, irqDeviceInfo, executor, timeout)
 }
 
 func newTunersFactory(
 	fs afero.Fs,
-	t config.RpkNodeTuners,
+	rnc config.RpkNodeConfig,
 	irqProcFile irq.ProcFile,
 	proc os.Proc,
 	irqDeviceInfo irq.DeviceInfo,
@@ -106,7 +106,7 @@ func newTunersFactory(
 ) TunersFactory {
 	return &tunersFactory{
 		fs:                fs,
-		t:                 t,
+		rnc:               rnc,
 		irqProcFile:       irqProcFile,
 		irqDeviceInfo:     irqDeviceInfo,
 		cpuMasks:          irq.NewCPUMasks(fs, hwloc.NewHwLocCmd(proc, timeout), executor),
@@ -238,7 +238,7 @@ func (factory *tunersFactory) newNetworkTuner(
 	}
 	return tuners.NewNetTuner(
 		irq.ModeFromString(params.Mode),
-		factory.t,
+		factory.rnc,
 		params.CPUMask,
 		params.Nics,
 		factory.fs,
@@ -286,13 +286,13 @@ func (factory *tunersFactory) newTHPTuner(_ *TunerParams) tuners.Tunable {
 }
 
 func (factory *tunersFactory) newCoredumpTuner(_ *TunerParams) tuners.Tunable {
-	return coredump.NewCoredumpTuner(factory.fs, factory.t.CoredumpDir, factory.executor)
+	return coredump.NewCoredumpTuner(factory.fs, factory.rnc.Tuners.CoredumpDir, factory.executor)
 }
 
 func (factory *tunersFactory) newBallastFileTuner(
 	_ *TunerParams,
 ) tuners.Tunable {
-	return ballast.NewBallastFileTuner(factory.t.BallastFilePath, factory.t.BallastFileSize, factory.executor)
+	return ballast.NewBallastFileTuner(factory.rnc.Tuners.BallastFilePath, factory.rnc.Tuners.BallastFileSize, factory.executor)
 }
 
 func MergeTunerParamsConfig(params *TunerParams, y *config.RedpandaYaml) (*TunerParams, error) {

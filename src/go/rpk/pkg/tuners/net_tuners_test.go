@@ -43,7 +43,7 @@ func mockNetTunersFactory(
 	}
 	return tuners.NewNetTunersFactory(
 		fs,
-		config.RpkNodeTuners{},
+		config.RpkNodeConfig{},
 		procFile,
 		irq.NewDeviceInfo(fs, procFile),
 		eth,
