@@ -112,6 +112,11 @@ get_enterprise_features(const cluster::topic_configuration& cfg) {
             features.emplace_back("iceberg");
         }
     }
+    if (config::shard_local_cfg().cloud_topics_enabled.is_restricted()) {
+        if (cfg.properties.cloud_topic_enabled) {
+            features.emplace_back("cloud topics");
+        }
+    }
     return features;
 }
 
@@ -209,6 +214,11 @@ std::vector<std::string_view> get_enterprise_features(
     if (config::shard_local_cfg().iceberg_enabled.is_restricted()) {
         if (properties.iceberg_mode != model::iceberg_mode::disabled) {
             features.emplace_back("iceberg");
+        }
+    }
+    if (config::shard_local_cfg().cloud_topics_enabled.is_restricted()) {
+        if (properties.cloud_topic_enabled) {
+            features.emplace_back("cloud topics");
         }
     }
     return features;
