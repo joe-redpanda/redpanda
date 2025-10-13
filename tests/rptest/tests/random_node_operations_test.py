@@ -288,6 +288,7 @@ class RandomNodeOperationsBase(PreallocNodesTest):
             self.redpanda.set_cluster_config(
                 values={
                     "development_enable_cloud_topics": True,
+                    "cloud_topics_disable_reconciliation_loop": True,
                 }
             )
             self.redpanda.restart_nodes(
@@ -461,7 +462,7 @@ class RandomNodeOperationsBase(PreallocNodesTest):
                     "Skipping test with iceberg and unsupported cloud storage type"
                 )
 
-        with_cloud_topics = False
+        with_cloud_topics = True
         if mixed_versions:
             with_cloud_topics = False
             self.logger.info("Disabling cloud topics in mixed version test")
