@@ -80,6 +80,18 @@ struct fetched_topic_data {
 
 using fetches = kafka_result<chunked_vector<fetched_topic_data>>;
 
+// Offsets of a source partition, reported by fetch responses
+struct source_partition_offsets {
+    // The start of the source partition's log
+    kafka::offset log_start_offset{-1};
+    // The source partition's log high watermark
+    kafka::offset high_watermark{-1};
+    // The source partition's log last stable offset
+    kafka::offset last_stable_offset{-1};
+    // The timestamp that the fetch response was received by the client
+    ss::lowres_clock::time_point last_offset_update_timestamp{};
+};
+
 struct partition_offset {
     model::partition_id partition_id;
     kafka::error_code error_code = kafka::error_code::none;

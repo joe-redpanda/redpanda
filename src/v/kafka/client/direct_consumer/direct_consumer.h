@@ -137,6 +137,7 @@ private:
         std::optional<model::node_id> current_fetcher;
         std::optional<kafka::offset> fetch_offset;
         subscription_epoch subscription_epoch;
+        source_partition_offsets last_known_source_offsets;
     };
     friend class fetcher;
     void on_metadata_update(const metadata_update&);
