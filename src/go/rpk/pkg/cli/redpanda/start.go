@@ -522,19 +522,7 @@ func buildRedpandaFlags(
 		)
 	}
 
-	preserve := make(map[string]bool, 2)
-
-	// Check if tuner config file exists and read redpanda cpuset from it
-	tunerConfigCpuset, err := readTunerConfigCpuset(fs, nodeTunerStatePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read tuner config file: %w", err)
-	}
-
-	if tunerConfigCpuset != "" {
-		sFlags.cpuSet = tunerConfigCpuset
-		preserve[cpuSetFlag] = true
-		fmt.Printf("Using cpuset from tuner config: %s\n", tunerConfigCpuset)
-	}
+	preserve := make(map[string]bool, 1)
 
 	// We want to preserve the IOProps flags in case we find them either by
 	// finding the file in the default location or by resolving to a well known
@@ -591,6 +579,18 @@ func buildRedpandaFlags(
 		}
 		finalFlags[n] = fmt.Sprint(v)
 	}
+
+	// Check if tuner config file exists and read redpanda cpuset from it
+	tunerConfigCpuset, err := readTunerConfigCpuset(fs, nodeTunerStatePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tuner config file: %w", err)
+	}
+
+	if tunerConfigCpuset != "" {
+		sFlags.cpuSet = tunerConfigCpuset
+		fmt.Printf("Using cpuset from tuner config: %s\n", tunerConfigCpuset)
+	}
+
 	return &rp.RedpandaArgs{
 		ConfigFilePath: y.FileLocation(),
 		SeastarFlags:   finalFlags,
