@@ -23,9 +23,14 @@ const PUCount = 8
 
 type fakeMasks struct {
 	irq.CPUMasks
+	pus int
 }
 
-func (f *fakeMasks) GetAllCpusMask() (string, error) { return "0xff", nil }
+func intPtr(i int) *int    { return &i }
+func boolPtr(b bool) *bool { return &b }
+
+func (f *fakeMasks) GetAllCpusMask() (string, error)          { return "0xff", nil }
+func (f *fakeMasks) GetNumberOfPUs(mask string) (uint, error) { return uint(f.pus), nil }
 
 func TestCanDefaultToDedicatedMode(t *testing.T) {
 	tests := []struct {
@@ -83,5 +88,67 @@ func TestCanDefaultToDedicatedMode(t *testing.T) {
 	}
 }
 
-func intPtr(i int) *int    { return &i }
-func boolPtr(b bool) *bool { return &b }
+func TestCheckDedicatedCompatibleConfig(t *testing.T) {
+	tests := []struct {
+		name       string
+		cpuMask    string
+		additional []string
+		pus        int
+		tuners     config.RpkNodeTuners
+		wantErr    bool
+	}{
+		{
+			name:       "additional flags has cpuset",
+			cpuMask:    "0xff",
+			additional: []string{"--cpuset", "0x1"},
+			pus:        PUCount,
+			tuners:     config.RpkNodeTuners{CoresPerDedicatedInterruptCore: intPtr(PUCount)},
+			wantErr:    true,
+		},
+		{
+			name:       "smp unacceptable",
+			cpuMask:    "0xff",
+			additional: []string{"--smp", "2"},
+			pus:        PUCount,
+			tuners:     config.RpkNodeTuners{CoresPerDedicatedInterruptCore: intPtr(PUCount)},
+			wantErr:    true,
+		},
+		{
+			name:       "tuner cpuset is acceptable",
+			cpuMask:    "0xf",
+			additional: []string{"--smp", "4"},
+			pus:        4,
+			tuners:     config.RpkNodeTuners{CoresPerDedicatedInterruptCore: intPtr(4)},
+			wantErr:    false,
+		},
+		{
+			name:       "smp acceptable",
+			cpuMask:    "0xff",
+			additional: []string{"--smp", "6"},
+			pus:        PUCount,
+			tuners:     config.RpkNodeTuners{CoresPerDedicatedInterruptCore: intPtr(4)},
+			wantErr:    false,
+		},
+		{
+			name:       "compatible config",
+			cpuMask:    "0xff",
+			additional: []string{},
+			pus:        PUCount,
+			tuners:     config.RpkNodeTuners{CoresPerDedicatedInterruptCore: intPtr(PUCount)},
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fm := &fakeMasks{pus: tt.pus}
+			rnc := config.RpkNodeConfig{AdditionalStartFlags: tt.additional, Tuners: tt.tuners}
+			err := checkDedicatedCompatibleConfig(tt.cpuMask, fm, rnc)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

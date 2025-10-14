@@ -202,11 +202,43 @@ func GetDefaultMode(
 	return "", fmt.Errorf("virtual device %s is not supported", nic.Name())
 }
 
+func checkDedicatedCompatibleConfig(cpuMask string, cpuMasks irq.CPUMasks, rnc config.RpkNodeConfig) error {
+	additionalFlags := config.ParseAdditionalStartFlags(rnc.AdditionalStartFlags)
+	numOfPUs, err := cpuMasks.GetNumberOfPUs(cpuMask)
+	if err != nil {
+		return err
+	}
+
+	// If there is a --cpuset specified in additional_start_flags we hard bail out. rpk:start doesn't support this
+	if checkAdditionalFlagsHasCpuset(additionalFlags) {
+		return fmt.Errorf("additional_start_flags contains cpuset which is incompatible with dedicated mode")
+	}
+
+	// Note, while for auto detection we don't allow a custom --cpu-set argument
+	// we do for explicit invocation. The user likely knows what they are doing
+
+	checkHasAcceptableSmp, reason, err := checkHasAcceptableSmp(int(numOfPUs), additionalFlags, rnc)
+	if err != nil {
+		return err
+	}
+	if !checkHasAcceptableSmp {
+		return fmt.Errorf("dedicated mode is only compatible with smp values that are lowered by less than the number of potential interrupt cores: %s", reason)
+	}
+
+	return nil
+}
+
 func getEffectiveMode(mode irq.Mode, nic Nic, effectiveCPUMask string, cpuMasks irq.CPUMasks, rnc config.RpkNodeConfig) (irq.Mode, error) {
 	var err error
 	effectiveMode := mode
 	if mode == irq.Default {
 		effectiveMode, err = GetDefaultMode(nic, effectiveCPUMask, cpuMasks, rnc)
+		if err != nil {
+			return "", err
+		}
+	} else if mode == irq.Dedicated {
+		// dedicated specified via cli arg --mode dedicated
+		err := checkDedicatedCompatibleConfig(effectiveCPUMask, cpuMasks, rnc)
 		if err != nil {
 			return "", err
 		}
