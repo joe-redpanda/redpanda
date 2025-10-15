@@ -219,9 +219,6 @@ ss::future<> connection_context::start() {
 }
 
 ss::future<> connection_context::stop() {
-    if (_hook && is_linked()) {
-        _hook.value().get().erase(_hook.value().get().iterator_to(*this));
-    }
     if (conn) {
         vlog(klog.trace, "stopping connection context for {}", conn->addr);
         conn->shutdown_input();
@@ -230,6 +227,10 @@ ss::future<> connection_context::stop() {
     co_await _as.request_abort_ex(ssx::connection_aborted_exception{});
     co_await _gate.close();
     co_await _as.stop();
+
+    if (_hook && is_linked()) {
+        _hook.value().get().erase(_hook.value().get().iterator_to(*this));
+    }
 
     if (conn) {
         vlog(klog.trace, "stopped connection context for {}", conn->addr);
@@ -375,7 +376,8 @@ connection_context::authorized_user<security::acl_cluster_name>(
 
 ss::future<> connection_context::revoke_credentials(std::string_view name) {
     if (
-      !_sasl.has_value() || !_sasl->has_mechanism()
+      !_as.local_is_initialized() || _as.abort_requested() || !_sasl.has_value()
+      || !_sasl->has_mechanism()
       || _sasl->mechanism().mechanism_name() != name) {
         return ss::now();
     }
@@ -841,9 +843,15 @@ proto::admin::kafka_connection connection_context::to_proto() const {
       config::node().node_id.value().value_or(model::unassigned_node_id));
     res.set_uid(ssx::sformat("{}", _attributes.connection_id));
     res.set_listener_name(ss::sstring{listener()});
-    res.set_state(
-      _as.abort_requested() ? kafka_connection_state::aborting
-                            : kafka_connection_state::open);
+    auto conn_state = [this]() {
+        if (!_as.local_is_initialized()) {
+            return kafka_connection_state::closed;
+        } else if (_as.abort_requested()) {
+            return kafka_connection_state::aborting;
+        }
+        return kafka_connection_state::open;
+    }();
+    res.set_state(conn_state);
     res.set_open_time(ss_sys_clock_to_absl(_attributes.open_time));
 
     auto src = proto::admin::source{};
