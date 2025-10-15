@@ -142,6 +142,21 @@ class AdminV2ListKafkaConnectionsTest(RedpandaTest):
 
         self.consumer.stop()
 
+        self.logger.info(
+            "Test that closed connections can also be included in the response"
+        )
+        closed_conns_resp = admin_v2.broker().list_kafka_connections(
+            broker_pb.ListKafkaConnectionsRequest(
+                node_id=-1,
+                filter="state = KAFKA_CONNECTION_STATE_CLOSED",
+            )
+        )
+        self.logger.debug(f"Closed connections response: {closed_conns_resp}")
+        assert len(closed_conns_resp.connections) > 0
+        conn = closed_conns_resp.connections[0]
+        assert conn.state == kafka_connections_pb.KAFKA_CONNECTION_STATE_CLOSED
+        assert conn.close_time.ToDatetime() > datetime(year=2025, month=1, day=1)
+
 
 class AdminV2ListKafkaConnectionsLicenseTest(RedpandaTest):
     """
