@@ -194,14 +194,14 @@ func createPackageDir(cfg pkgConfig, output string) error {
 
 	dir := func(path string) error {
 		if err := os.Mkdir(filepath.Join(output, path), 0755); err != nil {
-			return fmt.Errorf("Error creating directory %s: %v", path, err)
+			return fmt.Errorf("error creating directory %s: %v", path, err)
 		}
 		return nil
 	}
 
 	file := func(fileConfig fileConfig) error {
 		if err := copyFile(fileConfig.SourcePath, filepath.Join(output, fileConfig.Path, fileConfig.Name)); err != nil {
-			return fmt.Errorf("Error copying file %s: %v", fileConfig.SourcePath, err)
+			return fmt.Errorf("error copying file %s: %v", fileConfig.SourcePath, err)
 		}
 		return nil
 	}
