@@ -19,6 +19,8 @@ from rptest.clients.admin.proto.redpanda.core.admin.v2.internal import (
     datalake_pb2_connect,
     debug_pb2,
     debug_pb2_connect,
+    breakglass_pb2,
+    breakglass_pb2_connect,
 )
 
 
@@ -33,6 +35,7 @@ datalake_pb = datalake_pb2
 shadow_link_pb = shadow_link_pb2
 debug_pb = debug_pb2
 kafka_connections_pb = kafka_connections_pb2
+breakglass_pb = breakglass_pb2
 
 
 # A hacky workaround for https://github.com/connectrpc/connect-python/issues/37
@@ -112,4 +115,11 @@ class Admin:
     ) -> shadow_link_pb2_connect.ShadowLinkServiceClient:
         return self._make_service(
             shadow_link_pb2_connect.ShadowLinkServiceClient, **kwargs
+        )
+
+    def breakglass(
+        self, **kwargs: Any
+    ) -> breakglass_pb2_connect.BreakglassServiceClient:
+        return self._make_service(
+            breakglass_pb2_connect.BreakglassServiceClient, **kwargs
         )
