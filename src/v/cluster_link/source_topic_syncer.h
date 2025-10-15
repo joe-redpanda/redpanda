@@ -92,6 +92,7 @@ private:
 
 private:
     model::topic_metadata_mirroring_config _config;
+    model::schema_registry_sync_config _sr_config;
 };
 
 /**

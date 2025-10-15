@@ -188,6 +188,25 @@ std::optional<ss::sstring> is_valid_topic(
     }
     return std::nullopt;
 }
+
+bool shadowing_entire_sr(const model::schema_registry_sync_config& cfg) {
+    return cfg.sync_schema_registry_topic_mode.has_value()
+           && std::holds_alternative<
+             ::cluster_link::model::schema_registry_sync_config::
+               shadow_entire_schema_registry>(
+             *cfg.sync_schema_registry_topic_mode);
+}
+
+bool select_topic(
+  ::model::topic_view topic,
+  const model::topic_metadata_mirroring_config& cfg,
+  const model::schema_registry_sync_config& sr_cfg) {
+    if (topic == ::model::schema_registry_internal_tp.topic) [[unlikely]] {
+        return shadowing_entire_sr(sr_cfg);
+    }
+
+    return ::cluster_link::model::select_topic(topic, cfg.topic_name_filters);
+}
 } // namespace
 
 source_topic_syncer::source_topic_syncer(
@@ -196,10 +215,12 @@ source_topic_syncer::source_topic_syncer(
       link,
       config.configuration.topic_metadata_mirroring_cfg.get_task_interval(),
       source_topic_syncer::task_name)
-  , _config(config.configuration.topic_metadata_mirroring_cfg.copy()) {}
+  , _config(config.configuration.topic_metadata_mirroring_cfg.copy())
+  , _sr_config(config.configuration.schema_registry_sync_cfg) {}
 
 void source_topic_syncer::update_config(const model::metadata& config) {
     _config = config.configuration.topic_metadata_mirroring_cfg.copy();
+    _sr_config = config.configuration.schema_registry_sync_cfg;
     set_run_interval(
       config.configuration.topic_metadata_mirroring_cfg.get_task_interval());
 }
@@ -632,6 +653,14 @@ source_topic_syncer::find_candidate_topics_for_creation(
             continue;
         }
 
+        if (!select_topic(topic, _config, _sr_config)) {
+            vlog(
+              logger().trace,
+              "Topic {} does not match inclusion filters",
+              topic);
+            continue;
+        }
+
         auto metadata_value = validate_topic_cache_entry(
           logger(), topic_cache, topic);
         if (!metadata_value.has_value()) {
@@ -644,37 +673,6 @@ source_topic_syncer::find_candidate_topics_for_creation(
 
         auto [partition_count, rf, authorized_operations, topic_id]
           = metadata_value.value();
-
-        if (get_link()
-              ->topic_metadata_cache()
-              .find_topic_cfg({::model::kafka_namespace, topic})
-              .has_value()) {
-            vlog(logger().trace, "Topic {} already exists", topic);
-            continue;
-        }
-
-        if (get_link()->config().state.mirror_topics.contains(topic)) {
-            vlog(logger().trace, "Topic {} is already being mirrored", topic);
-            continue;
-        }
-
-        vlog(
-          logger().trace,
-          "Checking topic {} against filters {}",
-          topic,
-          fmt::join(
-            _config.topic_name_filters.begin(),
-            _config.topic_name_filters.end(),
-            ","));
-
-        if (!::cluster_link::model::select_topic(
-              topic, _config.topic_name_filters)) {
-            vlog(
-              logger().trace,
-              "Topic {} does not match inclusion filters",
-              topic);
-            continue;
-        }
 
         if (
           authorized_operations == kafka::topic_authorized_operations_not_set) {
@@ -691,6 +689,19 @@ source_topic_syncer::find_candidate_topics_for_creation(
               topic,
               required_permissions,
               authorized_operations);
+            continue;
+        }
+
+        if (get_link()->config().state.mirror_topics.contains(topic)) {
+            vlog(logger().trace, "Topic {} is already being mirrored", topic);
+            continue;
+        }
+
+        if (get_link()
+              ->topic_metadata_cache()
+              .find_topic_cfg({::model::kafka_namespace, topic})
+              .has_value()) {
+            vlog(logger().trace, "Topic {} already exists", topic);
             continue;
         }
 
