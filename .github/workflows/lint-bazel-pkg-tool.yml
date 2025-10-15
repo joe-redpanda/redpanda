@@ -12,6 +12,8 @@ on:
     paths:
       - '.github/workflows/lint-bazel-pkg-tool.yml'
       - 'bazel/packaging/tool.go'
+  merge_group:
+    types: [checks_requested]
 jobs:
   golangci-lint:
     runs-on: ubuntu-24.04
