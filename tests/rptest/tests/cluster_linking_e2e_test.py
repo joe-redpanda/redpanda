@@ -2263,6 +2263,14 @@ class ShadowLinkingMetricsTests(ShadowLinkPreAllocTestBase):
                     total_value += s.value
             return total_value > 0
 
+        def check_metric_exists(
+            node_samples: list[dict[str, MetricSamples]], metric_name: str
+        ) -> bool:
+            for samples in node_samples:
+                if metric_name not in samples:
+                    return False
+            return True
+
         def active_shadow_topics_1(samples: list[dict[str, MetricSamples]]):
             return check_shadow_topic_states(samples, 1)
 
@@ -2295,6 +2303,9 @@ class ShadowLinkingMetricsTests(ShadowLinkPreAllocTestBase):
         ) -> bool:
             return check_value_positive(node_samples, "shadow_lag")
 
+        def check_client_errors(node_samples: list[dict[str, MetricSamples]]) -> bool:
+            return check_metric_exists(node_samples, "client_errors")
+
         target_nodes = self.target_cluster.service.nodes
 
         metric_validators = [
@@ -2304,6 +2315,7 @@ class ShadowLinkingMetricsTests(ShadowLinkPreAllocTestBase):
             ("total_bytes_fetched", check_bytes_fetched),
             ("total_bytes_written", check_bytes_written),
             ("shadow_lag", check_shadow_lag_zero),
+            ("client_errors", check_client_errors),
         ]
         for metric_name, validator in metric_validators:
             self.logger.debug(f"Validating values of metric: {metric_name}")
@@ -2328,6 +2340,7 @@ class ShadowLinkingMetricsTests(ShadowLinkPreAllocTestBase):
             ("total_bytes_fetched", check_bytes_fetched),
             ("total_bytes_written", check_bytes_written),
             ("shadow_lag", check_shadow_lag_zero),
+            ("client_errors", check_client_errors),
         ]
         for metric_name, validator in metric_validators:
             self.logger.debug(f"Validating values of metric: {metric_name}")

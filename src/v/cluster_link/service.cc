@@ -18,6 +18,7 @@
 #include "cluster/partition_manager.h"
 #include "cluster_link/group_mirroring_task.h"
 #include "cluster_link/link.h"
+#include "cluster_link/link_probe.h"
 #include "cluster_link/logger.h"
 #include "cluster_link/manager.h"
 #include "cluster_link/model/types.h"
@@ -764,6 +765,9 @@ public:
       std::unique_ptr<kafka::client::cluster> cluster_connection) override {
         auto client_id = config.connection.client_id;
         auto cluster = cluster_connection.get();
+        kafka::client::direct_consumer_probe::configuration probe_cfg{
+          .group_name = link_probe::shadow_link_group,
+          .labels = {link_probe::shadow_link_name(config.name)}};
         return std::make_unique<link>(
           self,
           link_id,
@@ -779,7 +783,8 @@ public:
             std::make_unique<replication::mux_remote_consumer>(
               *cluster_connection,
               _snc_quota_mgr->local(),
-              make_remote_consumer_configuration(config.connection))),
+              make_remote_consumer_configuration(config.connection),
+              std::move(probe_cfg))),
           std::make_unique<local_partition_data_sink_factory>(
             *_partition_manager));
     }
