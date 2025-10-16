@@ -236,32 +236,29 @@ ss::future<storage::translating_reader> frontend::make_reader(
   std::optional<model::timeout_clock::time_point>) {
     vassert(_data_plane != nullptr, "cloud topics api not initialized");
 
-    auto ot_state = _partition->get_offset_translator_state();
-    auto lro = _ctp_stm_api->get_last_reconciled_offset();
-    if (lro > kafka::offset::min() && cfg.start_offset <= lro) {
-        // Read from L1 if some reconciliation has happened (lro > min) and the
-        // range overlaps L1.
-        vlog(
-          cd_log.debug,
-          "Start offset {} <= LRO {}: using L1 reader",
-          cfg.start_offset,
-          lro);
+    const auto lro = _ctp_stm_api->get_last_reconciled_offset();
 
-        auto impl = make_l1_reader(cfg);
-        co_return storage::translating_reader{
-          model::record_batch_reader(std::move(impl)), std::move(ot_state)};
-    }
+    const auto level_one = lro > kafka::offset::min()
+                           && cfg.start_offset <= lro;
 
     vlog(
       cd_log.debug,
-      "Start offset {} > LRO {}: using L0 reader",
+      "Building {} reader for {} from {} lro {}",
+      (level_one ? "L1" : "L0"),
+      _partition->ntp(),
       cfg.start_offset,
       lro);
 
-    auto impl = std::make_unique<level_zero_log_reader_impl>(
-      cfg, _partition, _data_plane);
+    auto impl = [&] {
+        if (level_one) {
+            return make_l1_reader(cfg);
+        }
+        return make_l0_reader(cfg);
+    }();
+
     co_return storage::translating_reader{
-      model::record_batch_reader(std::move(impl)), std::move(ot_state)};
+      model::record_batch_reader(std::move(impl)),
+      _partition->get_offset_translator_state()};
 }
 
 ss::future<std::vector<cluster::tx::tx_range>> frontend::aborted_transactions(
@@ -299,6 +296,12 @@ frontend::ntp_to_topic_id_partition(const model::ntp& ntp) const {
         return std::nullopt;
     }
     return model::topic_id_partition{*topic_cfg->tp_id, ntp.tp.partition};
+}
+
+std::unique_ptr<model::record_batch_reader::impl>
+frontend::make_l0_reader(cloud_topic_log_reader_config& cfg) const {
+    return std::make_unique<level_zero_log_reader_impl>(
+      cfg, _partition, _data_plane);
 }
 
 std::unique_ptr<model::record_batch_reader::impl>

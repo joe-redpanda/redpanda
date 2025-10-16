@@ -47,7 +47,9 @@ level_one_log_reader_impl::level_one_log_reader_impl(
   , _next_offset(cfg.start_offset)
   , _metastore(metastore)
   , _io(io_interface)
-  , _log(cd_log, fmt::format("[{}/{}]", fmt::ptr(this), _ntp)) {}
+  , _log(cd_log, fmt::format("[{}/{}]", fmt::ptr(this), _ntp)) {
+    vlog(_log.debug, "New reader created {}", _config);
+}
 
 ss::future<model::record_batch_reader::storage_t>
 level_one_log_reader_impl::do_load_slice(

@@ -190,6 +190,9 @@ private:
     ntp_to_topic_id_partition(const model::ntp& ntp) const;
 
     std::unique_ptr<model::record_batch_reader::impl>
+    make_l0_reader(cloud_topic_log_reader_config& cfg) const;
+
+    std::unique_ptr<model::record_batch_reader::impl>
     make_l1_reader(cloud_topic_log_reader_config& cfg) const;
 
     ss::lw_shared_ptr<cluster::partition> _partition;
