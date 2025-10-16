@@ -82,7 +82,9 @@ private:
     ss::future<> do_inform(model::node_id);
     ss::future<> create_internal_topic();
     ss::future<> fetch_internal_topic();
-    void validate_topic_creation_authorization();
+    ss::future<> validate_topic_creation_authorization();
+    bool active_sr_mirroring() const;
+    bool shadow_linking_active() const;
     configuration _config;
     kafka::client::configuration _client_config;
     ssx::semaphore _mem_sem;

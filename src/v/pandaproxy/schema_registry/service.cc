@@ -9,6 +9,7 @@
 
 #include "pandaproxy/schema_registry/service.h"
 
+#include "cluster/cluster_link/frontend.h"
 #include "cluster/controller.h"
 #include "cluster/ephemeral_credential_frontend.h"
 #include "cluster/members_table.h"
@@ -488,6 +489,15 @@ ss::future<> service::create_internal_topic() {
         vlog(srlog.debug, "Schema registry: found internal topic");
         co_return;
     }
+    co_await validate_topic_creation_authorization();
+    // If shadow linking is active and a link is actively mirroring the schema
+    // registry topic, then we will not create the topic and we will throw an
+    // error.  This is so the oneshot doesn't become 'completed'.
+    if (active_sr_mirroring()) {
+        throw std::runtime_error(
+          "Shadow Linking actively mirroring schema "
+          "registry topic.  Topic will not be created");
+    }
     // Use the default topic replica count, unless our specific setting
     // for the schema registry chooses to override it.
     int16_t replication_factor
@@ -631,6 +641,18 @@ ss::future<> service::validate_topic_creation_authorization() {
         "User is not authorized to create internal schema registry topic "
         "'{}'",
         model::schema_registry_internal_tp.topic));
+}
+
+bool service::active_sr_mirroring() const {
+    return _controller->get_cluster_link_frontend()
+      .local()
+      .schema_registry_shadowing_active();
+}
+
+bool service::shadow_linking_active() const {
+    const auto& clfe = _controller->get_cluster_link_frontend().local();
+
+    return clfe.cluster_linking_enabled() && clfe.cluster_link_active();
 }
 
 service::service(
