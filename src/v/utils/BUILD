@@ -684,3 +684,13 @@ redpanda_cc_library(
         "@seastar",
     ],
 )
+
+redpanda_cc_library(
+    name = "cancellation_token",
+    hdrs = [
+        "cancellation_token.h",
+    ],
+    deps = [
+        "@seastar",
+    ],
+)
