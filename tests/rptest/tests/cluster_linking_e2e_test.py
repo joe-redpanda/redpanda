@@ -392,10 +392,17 @@ class ShadowLinkBasicTests(ShadowLinkTestBase):
                 ),
             ]
         )
-
+        shadow_link.configurations.client_options.fetch_wait_max_ms = 100
+        shadow_link.configurations.client_options.fetch_min_bytes = 10
+        shadow_link.configurations.client_options.fetch_partition_max_bytes = (
+            500 * 1024 * 1024
+        )
         update_mask: google.protobuf.field_mask_pb2.FieldMask = google.protobuf.field_mask_pb2.FieldMask(
             paths=[
-                "configurations.topic_metadata_sync_options.auto_create_shadow_topic_filters"
+                "configurations.topic_metadata_sync_options.auto_create_shadow_topic_filters",
+                "configurations.client_options.fetch_partition_max_bytes",
+                "configurations.client_options.fetch_wait_max_ms",
+                "configurations.client_options.fetch_min_bytes",
             ]
         )
 
@@ -408,6 +415,12 @@ class ShadowLinkBasicTests(ShadowLinkTestBase):
             == shadow_link.configurations.topic_metadata_sync_options
         ), (
             f"Expected updated link to be returned, {updated_link.configurations.topic_metadata_sync_options} != {shadow_link.configurations.topic_metadata_sync_options}"
+        )
+        assert (
+            updated_link.configurations.client_options
+            == shadow_link.configurations.client_options
+        ), (
+            f"Expected updated link to be returned, {updated_link.configurations.client_options} != {shadow_link.configurations.client_options}"
         )
 
         def _all_but_one_topic_are_present_in_target_cluster():

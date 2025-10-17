@@ -41,7 +41,10 @@ redpanda_cc_library(
     hdrs = [
         "partition_replicator.h",
     ],
-    visibility = ["__subpackages__"],
+    visibility = [
+        "__subpackages__",
+        "//src/v/cluster_link:__subpackages__",
+    ],
     deps = [
         ":deps",
         ":types",
@@ -109,31 +112,12 @@ redpanda_cc_library(
     deps = [
         ":partition_data_queue",
         ":types",
+        "//src/v/base",
         "//src/v/cluster_link:logger",
         "//src/v/config",
         "//src/v/container:chunked_hash_map",
         "//src/v/kafka/client/direct_consumer",
         "//src/v/kafka/server",
-        "//src/v/ssx:future_util",
-        "@seastar",
-    ],
-)
-
-redpanda_cc_library(
-    name = "deps_impl",
-    srcs = [
-        "deps_impl.cc",
-    ],
-    hdrs = [
-        "deps_impl.h",
-    ],
-    visibility = ["//src/v/cluster_link:__subpackages__"],
-    deps = [
-        ":deps",
-        ":mux_remote_consumer",
-        "//src/v/cluster",
-        "//src/v/cluster_link:logger",
-        "//src/v/kafka/server:write_at_offset_stm",
         "//src/v/ssx:future_util",
         "@seastar",
     ],

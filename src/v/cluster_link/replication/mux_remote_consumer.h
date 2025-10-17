@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include "base/format_to.h"
 #include "cluster_link/replication/partition_data_queue.h"
 #include "container/chunked_hash_map.h"
 #include "kafka/client/direct_consumer/api_types.h"
@@ -39,18 +40,26 @@ namespace cluster_link::replication {
  */
 class mux_remote_consumer {
 public:
+    struct configuration {
+        ss::sstring client_id;
+        kafka::client::direct_consumer::configuration
+          direct_consumer_configuration;
+        size_t partition_max_buffered;
+        std::chrono::milliseconds fetch_max_wait;
+
+        fmt::iterator format_to(fmt::iterator it) const;
+    };
+
     enum class errc : int8_t {
         partition_not_found = 1,
         partition_already_exists = 2,
     };
     using result = std::expected<void, errc>;
 
-    explicit mux_remote_consumer(
-      ss::sstring client_id,
-      std::unique_ptr<kafka::client::direct_consumer> consumer,
+    mux_remote_consumer(
+      kafka::client::cluster& cluster,
       kafka::snc_quota_manager& snc_quota_mgr,
-      size_t partition_max_buffered,
-      std::chrono::milliseconds fetch_max_wait);
+      configuration consumer_configuration);
 
     ss::future<> start();
     ss::future<> stop() noexcept;
@@ -74,6 +83,12 @@ public:
      */
     ss::future<std::expected<partition_data_queue::fetch_data, errc>>
     fetch(const ::model::topic_partition&, ss::abort_source&);
+    /**
+     * Update the configuration of the consumer.
+     *
+     * The changes in the configuration will be applied for subsequent fetches.
+     */
+    void update_configuration(const configuration& cfg);
 
     /**
      * @brief Get the source offsets object

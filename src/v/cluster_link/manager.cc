@@ -471,6 +471,7 @@ manager::handle_on_link_change(model::id_t id, ::model::revision_id revision) {
           id,
           link_metadata);
         it->second->update_config(link_metadata.copy(), revision);
+        _cfg_change_notifications.notify(id, link_metadata);
     } else {
         // Create a new link
         vlog(
@@ -780,6 +781,15 @@ ss::future<> manager::on_controller_stepdown() {
               10s, [this] { return on_controller_stepdown(); });
         }
     }
+}
+
+manager::notification_id manager::register_link_config_changes_callback(
+  link_cfg_change_notification_cb cb) {
+    return _cfg_change_notifications.register_cb(std::move(cb));
+}
+
+void manager::unregister_link_config_changes_callback(notification_id id) {
+    _cfg_change_notifications.unregister_cb(id);
 }
 
 consumer_groups_router& manager::get_group_router() noexcept {

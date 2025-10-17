@@ -250,24 +250,27 @@ message ShadowLinkClientOptions {
     optional TLSSettings tls_settings = 4;
     // Authentication settings
     optional AuthenticationConfiguration authentication_configuration = 5;
-    // Max metadata age
+    // Max metadata age.
     // If 0 is provided, defaults to 10 seconds
     int32 metadata_max_age_ms = 6;
-    // Connection timeout
+    // Connection timeout.
     // If 0 is provided, defaults to 1 second
     int32 connection_timeout_ms = 7;
-    // Retry base backoff
+    // Retry base backoff.
     // If 0 is provided, defaults to 100ms
     int32 retry_backoff_ms = 8;
-    // Fetch request timeout
-    // If 0 is provided, defaults to 100ms
+    // Fetch request timeout.
+    // If 0 is provided, defaults to 500ms
     int32 fetch_wait_max_ms = 9;
-    // Fetch min bytes
-    // If 0 is provided, defaults to 1 byte
+    // Fetch min bytes.
+    // If 0 is provided, defaults to 5 MiB
     int32 fetch_min_bytes = 10;
-    // Fetch max bytes
-    // If 0 is provided, defaults to 1MiB
+    // Fetch max bytes.
+    // If 0 is provided, defaults to 20 MiB
     int32 fetch_max_bytes = 11;
+    // Fetch partition max bytes.
+    // If 0 is provided, defaults to 1 MiB
+    int32 fetch_partition_max_bytes = 12;
 }
 // Options for syncing topic metadata
 message TopicMetadataSyncOptions {

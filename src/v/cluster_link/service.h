@@ -29,6 +29,11 @@
 #include <seastar/util/defer.hh>
 
 namespace cluster_link {
+namespace replication {
+class data_source;
+class data_sink;
+class mux_remote_consumer;
+} // namespace replication
 /**
  * @brief API access for cluster link service
  */
@@ -216,4 +221,11 @@ private:
     ss::abort_source _as;
     mutex _shadow_link_config_mutex{"shadow_link/config"};
 };
+
+std::unique_ptr<replication::data_source> make_default_data_source(
+  const ::model::topic_partition& tp,
+  replication::mux_remote_consumer& consumer);
+
+std::unique_ptr<replication::data_sink>
+make_default_data_sink(ss::lw_shared_ptr<cluster::partition> partition);
 } // namespace cluster_link
