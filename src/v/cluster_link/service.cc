@@ -473,8 +473,15 @@ public:
         // replicator start is triggered again on the new leader.
         if (_partition->term() == term) {
             ssx::spawn_with_gate(_gate, [this, term] {
+                vlog(
+                  cllog.warn,
+                  "[{}] Stepping down partition due to replicator failure in "
+                  "term "
+                  "{}",
+                  _partition->ntp(),
+                  term);
                 return _partition->raft()->step_down(
-                  fmt::format("Unable to start replicator in term: {}", term));
+                  "replicator_start_failure");
             });
         }
     }
