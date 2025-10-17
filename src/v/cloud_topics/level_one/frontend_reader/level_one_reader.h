@@ -90,8 +90,12 @@ private:
         kafka::offset last_offset;
     };
 
-    ss::future<std::optional<current_object>>
-    fetch_metadata(model::timeout_clock::time_point deadline);
+    /*
+     * Contacts the L1 metastore to retrieve metadata for an L1 object that
+     * contains the target offset.
+     */
+    ss::future<std::optional<current_object>> lookup_object_for_offset(
+      kafka::offset, model::timeout_clock::time_point deadline);
 
     ss::future<> materialize_batches(model::timeout_clock::time_point deadline);
 

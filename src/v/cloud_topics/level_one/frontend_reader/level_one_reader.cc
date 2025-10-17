@@ -57,7 +57,8 @@ level_one_log_reader_impl::do_load_slice(
     // reaches end-of-stream.
     switch (_state) {
     case state::empty:
-        _current_obj = co_await fetch_metadata(deadline);
+        _current_obj = co_await lookup_object_for_offset(
+          _next_offset, deadline);
         [[fallthrough]];
     case state::ready:
         co_await materialize_batches(deadline);
@@ -89,8 +90,8 @@ level_one_log_reader_impl::do_load_slice(
 }
 
 ss::future<std::optional<level_one_log_reader_impl::current_object>>
-level_one_log_reader_impl::fetch_metadata(
-  model::timeout_clock::time_point /*deadline*/) {
+level_one_log_reader_impl::lookup_object_for_offset(
+  kafka::offset offset, model::timeout_clock::time_point /*deadline*/) {
     vassert(
       _state == state::empty,
       "Invalid state for metadata fetch: {}",
@@ -100,12 +101,12 @@ level_one_log_reader_impl::fetch_metadata(
       !_current_obj.has_value(),
       "Empty state should not have a current object");
 
-    if (_next_offset > _config.max_offset) {
+    if (offset > _config.max_offset) {
         vlog(
           _log.debug,
           "L1 reader next_offset {} > max_offset {}: ending "
           "stream",
-          _next_offset,
+          offset,
           _config.max_offset);
         _state = state::end_of_stream;
         co_return std::nullopt;
@@ -123,19 +124,17 @@ level_one_log_reader_impl::fetch_metadata(
                            : &default_abort_source;
     retry_chain_node rtc = l1::make_default_metastore_rtc(*abort_source);
     auto response = co_await l1::retry_metastore_op(
-      [this]()
-        -> ss::future<
-          std::expected<l1::metastore::object_response, l1::metastore::errc>> {
-          return _metastore->get_first_ge(_tidp, _next_offset);
+      [this, offset]
+      -> ss::future<
+        std::expected<l1::metastore::object_response, l1::metastore::errc>> {
+          return _metastore->get_first_ge(_tidp, offset);
       },
       rtc);
     if (!response.has_value()) {
         switch (response.error()) {
         case l1::metastore::errc::out_of_range:
             vlog(
-              _log.debug,
-              "No L1 objects found at offset {} or later",
-              _next_offset);
+              _log.debug, "No L1 objects found at offset {} or later", offset);
             _state = state::end_of_stream;
             co_return std::nullopt;
         case l1::metastore::errc::missing_ntp:
@@ -146,18 +145,18 @@ level_one_log_reader_impl::fetch_metadata(
             vlog(
               _log.error,
               "Failed to query metastore offset {}: {}",
-              _next_offset,
+              offset,
               response.error());
             _state = state::end_of_stream;
             throw std::runtime_error(_log.format(
               "Metastore query failed offset {}: {}",
-              _next_offset,
+              offset,
               response.error()));
         }
     }
 
     auto& obj = response.value();
-    vlog(_log.debug, "Found L1 object {} at offset {}", obj.oid, _next_offset);
+    vlog(_log.debug, "Found L1 object {} at offset {}", obj.oid, offset);
 
     auto footer = co_await read_footer(
       obj.oid, obj.footer_pos, obj.object_size);
