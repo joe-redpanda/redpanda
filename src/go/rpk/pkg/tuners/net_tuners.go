@@ -315,15 +315,37 @@ func (f *netTunersFactory) getNetTunerConfig(nic network.Nic, mode irq.Mode, cpu
 	return config, nil
 }
 
+func maybeReadFile(fs afero.Fs, path string) ([]byte, error) {
+	exists, err := afero.Exists(fs, path)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, nil
+	}
+	content, err := afero.ReadFile(fs, path)
+	if err != nil {
+		return nil, err
+	}
+	return content, nil
+}
+
 func (f *netTunersFactory) NewInterruptConfigFileTuner(interfaces []string, mode irq.Mode, cpuMask string) Tunable {
-	if len(interfaces) == 0 {
+	// In the AllNicsSameMode we have already checked that the mode and
+	// config for all NICs is the same so we can just use the first non-virtual one.
+	var nic network.Nic
+	for _, iface := range interfaces {
+		maybeNic := network.NewNic(f.fs, f.irqProcFile, f.irqDeviceInfo, f.ethtool, iface)
+		if maybeNic.IsHwInterface() || maybeNic.IsBondIface() {
+			nic = maybeNic
+			break
+		}
+	}
+
+	if nic == nil {
 		// No interfaces, nothing to do
 		return NewAggregatedTunable([]Tunable{})
 	}
-
-	// In the AllNicsSameMode we have already checked that the mode and
-	// config for all NICs is the same so we can just use the first here
-	nic := network.NewNic(f.fs, f.irqProcFile, f.irqDeviceInfo, f.ethtool, interfaces[0])
 
 	tunable := checkedTunable{}
 	tunable.tuneAction = func() TuneResult {
@@ -348,9 +370,11 @@ func (f *netTunersFactory) NewInterruptConfigFileTuner(interfaces []string, mode
 				return NewTuneError(err)
 			}
 			if exists {
-				err := f.fs.Remove(statePath)
+				// Empty file to avoid rpk:start from using it
+				err = f.executor.Execute(
+					commands.NewWriteFileCmd(f.fs, statePath, ""))
 				if err != nil {
-					return NewTuneError(fmt.Errorf("failed to remove existing net tuner config file %s: %w", statePath, err))
+					return NewTuneError(fmt.Errorf("failed to empty existing net tuner config file %s: %w", statePath, err))
 				}
 			}
 
@@ -386,27 +410,22 @@ func (f *netTunersFactory) NewInterruptConfigFileTuner(interfaces []string, mode
 				statePath = f.statePath
 			}
 
-			exists, err := afero.Exists(f.fs, statePath)
+			data, err := maybeReadFile(f.fs, statePath)
 			if err != nil {
 				return false, err
 			}
 
-			if targetConfig.Cpusets.IrqMode != irq.Dedicated {
-				// If in MQ mode we still need to run the tuner such that it removes the file if it exists
-				return !exists, nil
+			if targetConfig.Cpusets.IrqMode == irq.Mq {
+				// If in MQ mode we still need to run the tuner such that it empties the file if it exists and is not empty
+				return len(data) == 0, nil
 			}
 
-			if !exists {
+			if len(data) == 0 {
 				return false, nil
 			}
 
-			content, err := afero.ReadFile(f.fs, statePath)
-			if err != nil {
-				return false, err
-			}
-
 			currentConfig := NodeTunerState{}
-			err = yaml.Unmarshal(content, &currentConfig)
+			err = yaml.Unmarshal(data, &currentConfig)
 			if err != nil {
 				return false, err
 			}

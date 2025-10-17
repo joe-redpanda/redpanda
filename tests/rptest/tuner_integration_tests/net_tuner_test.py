@@ -207,13 +207,12 @@ class NetTunerTest(RedpandaTest):
                 assert line.endswith("true"), f"NIC check failed: {line}"
 
     def _test_tune_net_mq(self, expected_interrupt_setup: ExpectedInterruptSetup):
-        # Create an empty dummy file. This should be deleted by the tuner
-        self.redpanda.nodes[0].account.ssh(f"sudo touch {NET_TUNER_CONFIG_FILE_PATH}")
+        # Create a dummy file. This should be emptied by the tuner
+        self.redpanda.nodes[0].account.ssh(f"echo 123 > {NET_TUNER_CONFIG_FILE_PATH}")
         self.rpk.tune("net")
-        self.redpanda.nodes[0].account.ssh(f"test ! -e {NET_TUNER_CONFIG_FILE_PATH}")
+        self.redpanda.nodes[0].account.ssh(f"test ! -s {NET_TUNER_CONFIG_FILE_PATH}")
 
-        # Create it again. It should be ignored by rpk start as it's empty
-        self.redpanda.nodes[0].account.ssh(f"sudo touch {NET_TUNER_CONFIG_FILE_PATH}")
+        # rpk start should ignore the empty file
         self.start_rp()
 
         self._test_interrupt_config(self.node, self.rpk, expected_interrupt_setup)
@@ -277,6 +276,24 @@ class AwsNetTunerTest(NetTunerTest):
         )
 
         self._test_tune_net_mq(expected_interrupt_setup)
+
+    @cluster(num_nodes=1)
+    def test_tune_net_dedicated_explicit_interfaces(self):
+        expected_interrupt_setup = self.ExpectedInterruptSetup(
+            interrupts_masks=["8"],
+            redpanda_cores={0, 1, 2},
+            rps_cpu_mask="7",
+            rps_cpu_flow_count=int(self.TARGET_RFS_TABLE_SIZE / 1),
+            rfs_table_size=self.TARGET_RFS_TABLE_SIZE,
+            rx_tx_queue_count=1,
+        )
+
+        # lo should be ignored
+        self._test_tune_net_dedicated_core(
+            expected_interrupt_setup,
+            4,
+            additional_tune_args=["--nic", "lo,ens5"],
+        )
 
     @cluster(num_nodes=1)
     def test_tune_net_dedicated_1_core(self):

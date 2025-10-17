@@ -481,6 +481,8 @@ func readTunerConfigCpuset(fs afero.Fs, configFilePath string) (string, error) {
 		return "", err
 	}
 
+	// We allow an empty file to mean no cpuset. k8s will create an empty file
+	// when mounting in FileOrCreate mode and no file on the host exists.
 	if len(content) == 0 {
 		fmt.Println("Net tuner config file found but empty")
 		return "", nil
