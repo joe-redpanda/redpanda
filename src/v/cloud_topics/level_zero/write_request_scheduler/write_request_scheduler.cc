@@ -343,7 +343,7 @@ write_request_scheduler::proxy_write_request(
         // Normal errors (S3 upload failure or timeout)
         // are handled here
         errc e = extents.error();
-        vlog(cd_log.error, "Proxy write request failed: {}", e);
+        vlog(cd_log.info, "Proxy write request failed: {}", e);
         co_return std::unexpected(e);
     }
     auto ptr = ss::make_lw_shared<chunked_vector<extent_meta>>();
