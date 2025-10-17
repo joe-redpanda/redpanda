@@ -342,19 +342,19 @@ sharded_store::get_schema_subject_versions(schema_id id) {
     co_return co_await _store.map_reduce0(map, subject_versions{}, reduce);
 }
 
-ss::future<std::vector<subject_version_entry>>
+ss::future<chunked_vector<subject_version_entry>>
 sharded_store::get_subject_versions(subject sub, include_deleted inc_del) {
     co_return co_await _store.invoke_on(
       shard_for(sub),
       _smp_opts,
-      [sub, inc_del](store& s) -> std::vector<subject_version_entry> {
+      [sub, inc_del](store& s) -> chunked_vector<subject_version_entry> {
           auto res = s.get_version_ids(sub, inc_del);
           if (
             res.has_error()
             && res.assume_error().code() == error_code::subject_not_found) {
               return {};
           }
-          return res.value();
+          return std::move(res.value());
       });
 }
 

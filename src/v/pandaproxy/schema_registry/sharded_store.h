@@ -85,7 +85,7 @@ public:
 
     ///\brief Return a list of subject-versions for the subject. Returns an
     /// empty vector if the subject does not exist.
-    ss::future<std::vector<subject_version_entry>>
+    ss::future<chunked_vector<subject_version_entry>>
     get_subject_versions(subject sub, include_deleted inc_del);
 
     ///\brief Return a list of subjects for the schema id.
