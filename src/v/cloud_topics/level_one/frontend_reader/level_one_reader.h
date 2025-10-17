@@ -90,7 +90,8 @@ private:
         kafka::offset last_offset;
     };
 
-    ss::future<> fetch_metadata(model::timeout_clock::time_point deadline);
+    ss::future<std::optional<current_object>>
+    fetch_metadata(model::timeout_clock::time_point deadline);
 
     ss::future<> materialize_batches(model::timeout_clock::time_point deadline);
 

@@ -57,7 +57,7 @@ level_one_log_reader_impl::do_load_slice(
     // reaches end-of-stream.
     switch (_state) {
     case state::empty:
-        co_await fetch_metadata(deadline);
+        _current_obj = co_await fetch_metadata(deadline);
         [[fallthrough]];
     case state::ready:
         co_await materialize_batches(deadline);
@@ -88,7 +88,8 @@ level_one_log_reader_impl::do_load_slice(
     co_return res;
 }
 
-ss::future<> level_one_log_reader_impl::fetch_metadata(
+ss::future<std::optional<level_one_log_reader_impl::current_object>>
+level_one_log_reader_impl::fetch_metadata(
   model::timeout_clock::time_point /*deadline*/) {
     vassert(
       _state == state::empty,
@@ -107,13 +108,13 @@ ss::future<> level_one_log_reader_impl::fetch_metadata(
           _next_offset,
           _config.max_offset);
         _state = state::end_of_stream;
-        co_return;
+        co_return std::nullopt;
     }
 
     if (is_over_limit(0)) {
         vlog(_log.debug, "L1 reader over byte budget: ending stream");
         _state = state::end_of_stream;
-        co_return;
+        co_return std::nullopt;
     }
 
     ss::abort_source default_abort_source;
@@ -136,11 +137,11 @@ ss::future<> level_one_log_reader_impl::fetch_metadata(
               "No L1 objects found at offset {} or later",
               _next_offset);
             _state = state::end_of_stream;
-            co_return;
+            co_return std::nullopt;
         case l1::metastore::errc::missing_ntp:
             vlog(_log.debug, "Partition not tracked in metastore");
             _state = state::end_of_stream;
-            co_return;
+            co_return std::nullopt;
         default:
             vlog(
               _log.error,
@@ -160,12 +161,13 @@ ss::future<> level_one_log_reader_impl::fetch_metadata(
 
     auto footer = co_await read_footer(
       obj.oid, obj.footer_pos, obj.object_size);
-    _current_obj = current_object{
+
+    _state = state::ready;
+    co_return current_object{
       .oid = obj.oid,
       .footer = std::move(footer),
       .last_offset = obj.last_offset,
     };
-    _state = state::ready;
 }
 
 ss::future<l1::footer> level_one_log_reader_impl::read_footer(
