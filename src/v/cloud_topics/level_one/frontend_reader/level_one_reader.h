@@ -112,7 +112,7 @@ private:
 
     bool is_over_limit(size_t size) const;
 
-    ss::future<> close_reader_safe(std::unique_ptr<l1::object_reader>&);
+    ss::future<> close_reader_safe(l1::object_reader&);
 
     void set_end_of_stream();
     bool _end_of_stream{false};

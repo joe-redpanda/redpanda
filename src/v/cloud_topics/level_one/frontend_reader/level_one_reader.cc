@@ -22,10 +22,10 @@
 
 namespace cloud_topics {
 
-ss::future<> level_one_log_reader_impl::close_reader_safe(
-  std::unique_ptr<l1::object_reader>& reader) {
+ss::future<>
+level_one_log_reader_impl::close_reader_safe(l1::object_reader& reader) {
     try {
-        co_await reader->close();
+        co_await reader.close();
     } catch (const std::exception& e) {
         vlog(
           _log.warn, "Exception while closing L1 object reader: {}", e.what());
@@ -318,11 +318,11 @@ level_one_log_reader_impl::materialize_batches_from_object_offset(
     if (read_fut.failed()) {
         auto ex = read_fut.get_exception();
         vlog(_log.error, "Exception reading L1 object {}: {}", object.oid, ex);
-        co_await close_reader_safe(reader);
+        co_await close_reader_safe(*reader);
         std::rethrow_exception(ex);
     }
 
-    co_await close_reader_safe(reader);
+    co_await close_reader_safe(*reader);
 
     auto batches = read_fut.get();
 
