@@ -76,13 +76,6 @@ public:
     void print(std::ostream& o) final;
 
 private:
-    enum class state {
-        empty,
-        ready,
-        materialized,
-        end_of_stream,
-    };
-
     // Represents the current L1 object being read.
     struct current_object {
         l1::object_id oid;
@@ -115,13 +108,6 @@ private:
     ss::future<chunked_circular_buffer<model::record_batch>>
     read_batches(l1::object_reader& reader);
 
-    /*
-     * Prepare the result set to return to the record batch reader and configure
-     * the reader for the next request to load slice which will be the next
-     * offset that should be fetched.
-     */
-    chunked_circular_buffer<model::record_batch> consume_materialized_batches();
-
     ss::future<l1::footer>
     read_footer(l1::object_id oid, size_t footer_pos, size_t object_size);
 
@@ -129,14 +115,8 @@ private:
 
     ss::future<> close_reader_safe(std::unique_ptr<l1::object_reader>&);
 
-    state _state{state::empty};
-
-    // Current object being processed.
-    // Present in ready and materialized states, empty in empty state.
-    std::optional<current_object> _current_obj;
-
-    // Materialized batches ready to be consumed.
-    chunked_circular_buffer<model::record_batch> _batches;
+    void set_end_of_stream();
+    bool _end_of_stream{false};
 
     cloud_topic_log_reader_config _config;
     model::ntp _ntp;
