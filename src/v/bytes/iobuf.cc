@@ -18,6 +18,7 @@
 #include <seastar/core/future-util.hh>
 #include <seastar/core/smp.hh>
 
+#include <algorithm>
 #include <compare>
 #include <cstddef>
 #include <iostream>
@@ -106,9 +107,16 @@ bool iobuf::operator==(const iobuf& o) const {
     if (_size != o._size) {
         return false;
     }
-    if (_frags.is_single_fragment() && o._frags.is_single_fragment()) {
-        return std::string_view{_frags.front()}
-               == std::string_view{o._frags.front()};
+    if (!_frags.empty() && !o._frags.empty()) {
+        std::string_view lhs{_frags.front()};
+        std::string_view rhs{o._frags.front()};
+        constexpr static size_t max_byte_for_byte_cmp = 4;
+        auto n = std::min({lhs.size(), rhs.size(), max_byte_for_byte_cmp});
+        for (size_t i = 0; i < n; ++i) {
+            if (lhs[i] != rhs[i]) {
+                return false;
+            }
+        }
     }
     // We know these have the same amount of bytes in them, but they might
     // be chunked differently.
@@ -147,23 +155,22 @@ bool iobuf::operator<(const iobuf& o) const {
 }
 
 std::strong_ordering iobuf::operator<=>(const iobuf& o) const {
-    if (_frags.is_single_fragment() && o._frags.is_single_fragment()) {
+    // Always check the first few bytes using byte for byte comparison,
+    // this allows the case of relatively randomized data to be done quickly
+    // but we still preserve the chunked checks that are faster if there is
+    // a matching prefix.
+    if (!_frags.empty() && !o._frags.empty()) {
         std::string_view lhs{_frags.front()};
         std::string_view rhs{o._frags.front()};
-        auto n = std::min(lhs.size(), rhs.size());
-        constexpr size_t max_byte_for_byte_size = 32;
-        if (n > max_byte_for_byte_size) {
-            return lhs <=> rhs;
-        }
+        constexpr static size_t max_byte_for_byte_cmp = 4;
+        auto n = std::min({lhs.size(), rhs.size(), max_byte_for_byte_cmp});
         for (size_t i = 0; i < n; ++i) {
             auto cmp = lhs[i] <=> rhs[i];
             if (cmp != std::strong_ordering::equal) {
                 return cmp;
             }
         }
-        return lhs.size() <=> rhs.size();
     }
-
     auto o_it = o.cbegin();
     auto other_next_view = [&o, &o_it] -> std::string_view {
         while (o_it != o.cend() && o_it->is_empty()) {
