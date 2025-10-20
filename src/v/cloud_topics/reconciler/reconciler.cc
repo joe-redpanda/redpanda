@@ -474,9 +474,6 @@ reconciler::build_object(
       "Built L1 object from {} partitions ({} partitions were skipped)",
       metas.size(),
       sources.size() - metas.size());
-    if (!metas.empty()) {
-        _probe.add_bytes_reconciled(obj_info.size_bytes);
-    }
     co_return built_object_metadata{
       .object_info = std::move(obj_info),
       .commits = std::move(metas),
