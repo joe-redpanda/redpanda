@@ -15,9 +15,9 @@ struct_type schemaless_struct_type() {
     using namespace iceberg;
     struct_type system_fields;
     system_fields.fields.emplace_back(
-      nested_field::create(2, "partition", field_required::yes, int_type{}));
+      nested_field::create(2, "partition", field_required::no, int_type{}));
     system_fields.fields.emplace_back(
-      nested_field::create(3, "offset", field_required::yes, long_type{}));
+      nested_field::create(3, "offset", field_required::no, long_type{}));
     system_fields.fields.emplace_back(
       nested_field::create(
         4, "timestamp", field_required::no, timestamptz_type{}));
@@ -44,7 +44,7 @@ struct_type schemaless_struct_type() {
       nested_field::create(
         1,
         ss::sstring{rp_struct_name},
-        field_required::yes,
+        field_required::no,
         std::move(system_fields)));
 
     return res;
