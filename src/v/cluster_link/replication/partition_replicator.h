@@ -71,6 +71,8 @@ public:
 
     partition_offsets_report get_partition_offsets_report() const;
 
+    void maybe_synchronize_start_offset();
+
 private:
     struct replicate_ctx {
         ::model::offset begin;
@@ -87,6 +89,9 @@ private:
       ss::future<result<raft::replicate_result>>,
       ::model::offset begin,
       ::model::offset end) noexcept;
+    ss::future<> prefix_truncate(kafka::offset);
+
+private:
     ::model::ntp _ntp;
     ::model::term_id _term;
     link_configuration_provider& _config_provider;
@@ -101,6 +106,7 @@ private:
     ssx::semaphore _max_requests{
       max_in_flight_requests, "partition_replicator"};
     backoff_policy _backoff_policy;
+    std::optional<kafka::offset> _in_progress_truncate_offset{std::nullopt};
 };
 
 } // namespace cluster_link::replication
