@@ -816,7 +816,7 @@ class RpkTool:
             )
 
     def describe_topic(
-        self, topic: str, tolerant: bool = False, timeout=None
+        self, topic: str, tolerant: bool = False, timeout: int | None = None
     ) -> Iterator[RpkPartition]:
         """
         By default this will omit any partitions which do not have full
