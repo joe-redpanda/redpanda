@@ -49,6 +49,7 @@ redpanda_cc_library(
     srcs = [
         "append_entries_buffer.cc",
         "buffered_protocol.cc",
+        "compaction_coordinator.cc",
         "configuration_bootstrap_state.cc",
         "configuration_manager.cc",
         "consensus.cc",
@@ -79,6 +80,7 @@ redpanda_cc_library(
     hdrs = [
         "append_entries_buffer.h",
         "buffered_protocol.h",
+        "compaction_coordinator.h",
         "configuration_bootstrap_state.h",
         "configuration_manager.h",
         "consensus.h",
@@ -148,6 +150,7 @@ redpanda_cc_library(
         "//src/v/serde:map",
         "//src/v/serde:optional",
         "//src/v/serde:vector",
+        "//src/v/ssx:abort_source",
         "//src/v/ssx:async_algorithm",
         "//src/v/ssx:condition_variable",
         "//src/v/ssx:future_util",
