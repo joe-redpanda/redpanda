@@ -12,6 +12,7 @@
 #include "redpanda/admin/services/broker.h"
 
 #include "features/feature_table.h"
+#include "redpanda/admin/services/utils.h"
 #include "serde/protobuf/rpc.h"
 #include "version/version.h"
 
@@ -86,30 +87,13 @@ proto::admin::broker broker_service_impl::self_broker() const {
     return b;
 }
 
-namespace {
-
-void check_license(const features::feature_table& ft) {
-    if (ft.should_sanction()) {
-        const auto& license = ft.get_license();
-        auto status = [&license]() {
-            return !license.has_value()    ? "not present"
-                   : license->is_expired() ? "expired"
-                                           : "unknown error";
-        };
-        throw serde::pb::rpc::failed_precondition_exception(
-          fmt::format("Invalid license: {}", status()));
-    }
-}
-
-} // namespace
-
 ss::future<proto::admin::list_kafka_connections_response>
 broker_service_impl::list_kafka_connections(
   serde::pb::rpc::context ctx,
   proto::admin::list_kafka_connections_request req) {
     vlog(brlog.trace, "list_kafka_connections: {}", req);
 
-    check_license(_feature_table.local());
+    utils::check_license(_feature_table.local());
 
     // Proxy to the target node id specified in the request
     auto target = model::node_id{req.get_node_id()};
