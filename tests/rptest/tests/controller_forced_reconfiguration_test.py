@@ -543,7 +543,7 @@ class ControllerForcedReconfiguration_DecommissionTest(
         )
 
     @cluster(num_nodes=6)
-    @matrix(scenario=[Scenario.Simple]) #TODO enable Scenario.RandomMoves, Scenario.Decommission once stabilized
+    @matrix(scenario=[Scenario.Simple, Scenario.RandomMoves, Scenario.Decommission])
     def test_cluster_recovery_with_decommed_broker(self, scenario: Scenario):
         """constants"""
         cluster_size: int = 5
