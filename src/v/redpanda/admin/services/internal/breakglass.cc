@@ -36,6 +36,9 @@ breakglass_service_impl::controller_forced_reconfiguration(
         } else if (error_info.err == std::errc::operation_not_supported) {
             throw serde::pb::rpc::unimplemented_exception(
               std::move(error_info.message));
+        } else if (error_info.err == cluster::errc::invalid_request) {
+            throw serde::pb::rpc::invalid_argument_exception(
+              std::move(error_info.message));
         }
         throw serde::pb::rpc::unknown_exception(std::move(error_info.message));
     };

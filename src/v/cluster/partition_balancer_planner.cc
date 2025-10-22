@@ -959,6 +959,48 @@ auto partition_balancer_planner::request_context::do_with_partition(
     const auto& orig_replicas = assignment.replicas;
     auto in_progress_it = _parent._state.topics().updates_in_progress().find(
       ntp);
+
+    // if the replica is being forced, force it first
+    {
+        // check if the ntp is to be force reconfigured.
+        auto topic_md = _parent._state.topics().get_topic_metadata_ref(
+          model::topic_namespace_view{ntp});
+        const auto& force_reconfigurable_partitions
+          = _parent._state.topics().partitions_to_force_recover();
+        auto force_it = force_reconfigurable_partitions.find(ntp);
+        if (topic_md && force_it != force_reconfigurable_partitions.end()) {
+            auto topic_revision = topic_md.value().get().get_revision();
+            const auto& entries = force_it->second;
+            auto it = std::find_if(
+              entries.begin(), entries.end(), [&](const auto& entry) {
+                  return entry.topic_revision == topic_revision
+                         && are_replica_sets_equal(
+                           entry.assignment, orig_replicas);
+              });
+
+            if (it != entries.end()) {
+                auto size_it = _ntp2sizes.find(ntp);
+                std::optional<request_context::partition_sizes> sizes;
+                if (size_it != _ntp2sizes.end()) {
+                    sizes = size_it->second;
+                }
+                partition part{force_reassignable_partition{
+                  ntp, sizes, assignment, it->dead_nodes, *this}};
+
+                auto deferred = ss::defer([&] {
+                    auto& force_reassignable
+                      = std::get<force_reassignable_partition>(part._variant);
+                    if (force_reassignable._reallocation) {
+                        _force_reassignments.emplace(
+                          ntp,
+                          std::move(force_reassignable._reallocation.value()));
+                    }
+                });
+                return visitor(part);
+            }
+        }
+    }
+
     if (in_progress_it != _parent._state.topics().updates_in_progress().end()) {
         const auto& replicas = in_progress_it->second.get_target_replicas();
         const auto& orig_replicas
@@ -1021,42 +1063,6 @@ auto partition_balancer_planner::request_context::do_with_partition(
           *this}};
         return visitor(part);
     }
-
-    // check if the ntp is to be force reconfigured.
-    auto topic_md = _parent._state.topics().get_topic_metadata_ref(
-      model::topic_namespace_view{ntp});
-    const auto& force_reconfigurable_partitions
-      = _parent._state.topics().partitions_to_force_recover();
-    auto force_it = force_reconfigurable_partitions.find(ntp);
-    if (topic_md && force_it != force_reconfigurable_partitions.end()) {
-        auto topic_revision = topic_md.value().get().get_revision();
-        const auto& entries = force_it->second;
-        auto it = std::find_if(
-          entries.begin(), entries.end(), [&](const auto& entry) {
-              return entry.topic_revision == topic_revision
-                     && are_replica_sets_equal(entry.assignment, orig_replicas);
-          });
-
-        if (it != entries.end()) {
-            auto size_it = _ntp2sizes.find(ntp);
-            std::optional<request_context::partition_sizes> sizes;
-            if (size_it != _ntp2sizes.end()) {
-                sizes = size_it->second;
-            }
-            partition part{force_reassignable_partition{
-              ntp, sizes, assignment, it->dead_nodes, *this}};
-
-            auto deferred = ss::defer([&] {
-                auto& force_reassignable
-                  = std::get<force_reassignable_partition>(part._variant);
-                if (force_reassignable._reallocation) {
-                    _force_reassignments.emplace(
-                      ntp, std::move(force_reassignable._reallocation.value()));
-                }
-            });
-            return visitor(part);
-        }
-    };
 
     auto size_it = _ntp2sizes.find(ntp);
     if (size_it == _ntp2sizes.end()) {
@@ -2104,20 +2110,34 @@ partition_balancer_planner::get_force_repair_actions(request_context& ctx) {
 
     auto it = ctx.state().topics().partitions_to_force_recover_it_begin();
     while (it != ctx.state().topics().partitions_to_force_recover_it_end()) {
+        vlog(clusterlog.info, "found partition {}", it->first);
         if (!ctx.can_add_reassignment()) {
             co_return;
         }
         co_await ctx.with_partition(it->first, [&](partition& part) {
             part.match_variant(
               [&](force_reassignable_partition& part) {
+                  vlog(
+                    clusterlog.info,
+                    "partition: {} is force reassignable",
+                    part.ntp());
                   part.force_move_dead_replicas(
                     ctx.config().max_disk_usage_ratio);
               },
-              [&](reassignable_partition&) {},
+              [&](reassignable_partition&) {
+                  vlog(
+                    clusterlog.info,
+                    "partition: {} was reassignable",
+                    part.ntp());
+              },
               [&](moving_partition&) {
+                  vlog(clusterlog.info, "partition: {} was moving", part.ntp());
                   // ignore, wait for it to be canceled / finished.
               },
-              [&](immutable_partition&) {});
+              [&](immutable_partition&) {
+                  vlog(
+                    clusterlog.info, "partition: {} was immutable", part.ntp());
+              });
         });
         ++it;
     }

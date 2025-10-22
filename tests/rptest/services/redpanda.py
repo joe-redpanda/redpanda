@@ -5084,7 +5084,7 @@ class RedpandaService(Service, RedpandaServiceABC):
 
         return True
 
-    def controller(self):
+    def controller(self) -> ClusterNode:
         """
         :return: the ClusterNode that is currently controller leader, or None if no leader exists
         """

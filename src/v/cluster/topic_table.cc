@@ -872,9 +872,22 @@ topic_table::apply(set_topic_partitions_disabled_cmd cmd, model::offset o) {
 ss::future<std::error_code>
 topic_table::apply(bulk_force_reconfiguration_cmd cmd, model::offset o) {
     _last_applied_revision_id = model::revision_id(o);
+
+    for (auto lost_partition :
+         cmd.value.user_approved_force_recovery_partitions) {
+        vlog(
+          clusterlog.info,
+          "applying bulk_force_reconfiguration_cmd with entry: {}",
+          lost_partition);
+    }
     auto validation_ec = validate_force_reconfigurable_partitions(
       cmd.value.user_approved_force_recovery_partitions);
     if (validation_ec) {
+        vlog(
+          clusterlog.info,
+          "failed to apply bulk_force_reconfiguration_cmd with failure: "
+          "{}",
+          validation_ec);
         co_return validation_ec;
     }
     for (auto& entry : cmd.value.user_approved_force_recovery_partitions) {
@@ -923,7 +936,7 @@ std::error_code topic_table::validate_force_reconfigurable_partitions(
         }
         vlog(
           clusterlog.debug,
-          "Processed force reconfiguration entry {}, result: {}",
+          "Validated force reconfiguration entry {}, result: {}",
           entry,
           error);
     }
