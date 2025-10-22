@@ -526,10 +526,7 @@ ss::future<> admin_server::start() {
       });
     add_service(
       std::make_unique<admin::broker_service_impl>(
-        std::move(client),
-        &_services,
-        _kafka_connections_service,
-        _controller->get_feature_table()));
+        std::move(client), &_services));
 
     co_await _debug_bundle_file_handler.start();
 

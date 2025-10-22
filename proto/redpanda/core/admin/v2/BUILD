@@ -32,7 +32,6 @@ proto_library(
     srcs = ["broker.proto"],
     visibility = ["//visibility:public"],
     deps = [
-        ":kafka_connections_proto",
         "//proto/redpanda/core/pbgen:options_proto",
         "//proto/redpanda/core/pbgen:rpc_proto",
     ],
@@ -42,6 +41,26 @@ redpanda_proto_library(
     name = "broker_redpanda_proto",
     protos = [
         ":broker_proto",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
+proto_library(
+    name = "cluster_proto",
+    srcs = ["cluster.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kafka_connections_proto",
+        "//proto/redpanda/core/pbgen:options_proto",
+        "//proto/redpanda/core/pbgen:rpc_proto",
+    ],
+)
+
+redpanda_proto_library(
+    name = "cluster_redpanda_proto",
+    protos = [
+        ":cluster_proto",
     ],
     visibility = ["//visibility:public"],
     deps = [

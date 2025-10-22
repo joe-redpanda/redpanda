@@ -212,7 +212,7 @@ redpanda_cc_library(
     deps = [
         ":aip_filter",
         ":aip_ordering",
-        "//proto/redpanda/core/admin/v2:broker_redpanda_proto",
+        "//proto/redpanda/core/admin/v2:cluster_redpanda_proto",
         "//proto/redpanda/core/admin/v2:kafka_connections_redpanda_proto",
         "//src/v/base",
         "//src/v/container:priority_queue",

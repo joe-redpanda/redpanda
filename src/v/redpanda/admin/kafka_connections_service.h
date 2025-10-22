@@ -13,7 +13,7 @@
 
 #include "base/seastarx.h"
 #include "kafka/server/fwd.h"
-#include "proto/redpanda/core/admin/v2/broker.proto.h"
+#include "proto/redpanda/core/admin/v2/cluster.proto.h"
 
 #include <seastar/core/future.hh>
 #include <seastar/core/sharded.hh>

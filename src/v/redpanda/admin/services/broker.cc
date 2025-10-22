@@ -11,7 +11,6 @@
 
 #include "redpanda/admin/services/broker.h"
 
-#include "features/feature_table.h"
 #include "redpanda/admin/services/utils.h"
 #include "serde/protobuf/rpc.h"
 #include "version/version.h"
@@ -32,13 +31,9 @@ ss::logger brlog{"admin_api_server/broker_service"};
 
 broker_service_impl::broker_service_impl(
   admin::proxy::client client,
-  std::vector<std::unique_ptr<serde::pb::rpc::base_service>>* services,
-  ss::sharded<kafka_connections_service>& kafka_connections_service,
-  ss::sharded<features::feature_table>& feature_table)
+  std::vector<std::unique_ptr<serde::pb::rpc::base_service>>* services)
   : _proxy_client(std::move(client))
-  , _services(services)
-  , _kafka_connections_service(kafka_connections_service)
-  , _feature_table(feature_table) {}
+  , _services(services) {}
 
 ss::future<proto::admin::get_broker_response> broker_service_impl::get_broker(
   serde::pb::rpc::context ctx, proto::admin::get_broker_request req) {
@@ -85,37 +80,6 @@ proto::admin::broker broker_service_impl::self_broker() const {
         }
     }
     return b;
-}
-
-ss::future<proto::admin::list_kafka_connections_response>
-broker_service_impl::list_kafka_connections(
-  serde::pb::rpc::context ctx,
-  proto::admin::list_kafka_connections_request req) {
-    vlog(brlog.trace, "list_kafka_connections: {}", req);
-
-    utils::check_license(_feature_table.local());
-
-    // Proxy to the target node id specified in the request
-    auto target = model::node_id{req.get_node_id()};
-    if (target != -1 && target != _proxy_client.self_node_id()) {
-        vlog(brlog.debug, "Redirecting to target node id {}", target);
-        co_return co_await _proxy_client
-          .make_client_for_node<proto::admin::broker_service_client>(target)
-          .list_kafka_connections(ctx, std::move(req));
-    }
-
-    auto resp = co_await _kafka_connections_service.local()
-                  .list_kafka_connections_local(std::move(req));
-
-    vlog(
-      brlog.trace,
-      "list_kafka_connections: response connections: {} ({}b), total matching: "
-      "{}",
-      resp.get_connections().size(),
-      resp.get_connections().memory_size(),
-      resp.get_total_size());
-
-    co_return resp;
 }
 
 } // namespace admin

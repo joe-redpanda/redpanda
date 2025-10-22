@@ -13,7 +13,7 @@
 
 #include "container/priority_queue.h"
 #include "kafka/server/server.h"
-#include "proto/redpanda/core/admin/v2/broker.proto.h"
+#include "proto/redpanda/core/admin/v2/cluster.proto.h"
 #include "proto/redpanda/core/admin/v2/kafka_connections.proto.h"
 #include "redpanda/admin/aip_filter.h"
 #include "redpanda/admin/aip_ordering.h"
