@@ -126,9 +126,13 @@ class TopicRecreateTest(RedpandaTest):
             test_context=test_context,
             num_brokers=5,
             resource_settings=ResourceSettings(num_cpus=1),
+            si_settings=SISettings(
+                test_context=test_context, skip_end_of_test_scrubbing=True
+            ),
             extra_rp_conf={
                 "auto_create_topics_enabled": False,
                 "max_compacted_log_segment_size": 5 * (2 << 20),
+                CLOUD_TOPICS_CONFIG_STR: True,
             },
         )
 
@@ -162,6 +166,64 @@ class TopicRecreateTest(RedpandaTest):
             producer_properties["enable.idempotence"] = True
         else:
             assert False
+
+        swarm = ProducerSwarm(
+            self.test_context,
+            self.redpanda,
+            spec.name,
+            producer_count,
+            10000000000,
+            log_level="ERROR",
+            properties=producer_properties,
+        )
+        swarm.start()
+
+        rpk = RpkTool(self.redpanda)
+
+        def topic_is_healthy():
+            if not swarm.is_alive():
+                swarm.stop()
+                swarm.start()
+            partitions = rpk.describe_topic(spec.name)
+            hw_offsets = [p.high_watermark for p in partitions]
+            offsets_present = [hw > 0 for hw in hw_offsets]
+            self.logger.debug(f"High watermark offsets: {hw_offsets}")
+            return len(offsets_present) == partition_count and all(offsets_present)
+
+        for i in range(1, 20):
+            rf = 3 if i % 2 == 0 else 1
+            self.client().delete_topic(spec.name)
+            spec.replication_factor = rf
+            self.client().create_topic(spec)
+            wait_until(topic_is_healthy, 30, 2, err_msg=f"Topic {spec.name} health")
+            sleep(5)
+
+        swarm.stop()
+        swarm.wait()
+
+    @cluster(num_nodes=6)
+    def test_cloud_topic_recreation_while_producing(self):
+        """
+        Test that we are able to recreate topic multiple times
+        """
+        self._client = DefaultClient(self.redpanda)
+
+        # scaling parameters
+        partition_count = 30
+        producer_count = 10
+
+        spec = TopicSpec(
+            partition_count=partition_count,
+            replication_factor=3,
+            cloud_topics_enabled=True,
+        )
+
+        self.client().create_topic(spec)
+
+        producer_properties = {
+            "acks": -1,
+            "enable.idempotence": True,
+        }
 
         swarm = ProducerSwarm(
             self.test_context,
