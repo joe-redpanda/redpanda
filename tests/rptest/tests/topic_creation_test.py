@@ -30,6 +30,7 @@ from rptest.services.producer_swarm import ProducerSwarm
 from rptest.services.redpanda import (
     ResourceSettings,
     SISettings,
+    CLOUD_TOPICS_CONFIG_STR,
 )
 from rptest.services.rpk_producer import RpkProducer
 from rptest.tests.cluster_config_test import wait_for_version_sync
@@ -54,10 +55,12 @@ class RapidTopicRecreateTest(RedpandaTest):
             ),
             extra_rp_conf={
                 "iceberg_enabled": True,  # to create relevant STMs
+                CLOUD_TOPICS_CONFIG_STR: True,
             },
         )
         self.rpk = RpkTool(self.redpanda)
         self.topic_name = topic_name()
+        self.cloud_topic_name = topic_name()
 
     def create(self):
         self._current_partitions = random.randint(1, 4)
@@ -73,10 +76,18 @@ class RapidTopicRecreateTest(RedpandaTest):
                 replication_factor=replication_factor,
             )
         )
+        self.client().create_topic(
+            TopicSpec(
+                name=self.cloud_topic_name,
+                partition_count=self._current_partitions,
+                replication_factor=replication_factor,
+            )
+        )
 
     def delete(self):
         self.logger.info("Deleting topic")
         self.client().delete_topic(self.topic_name)
+        self.client().delete_topic(self.cloud_topic_name)
 
     def add_partitions(self):
         partitions_to_add = random.randint(1, 4)
@@ -85,6 +96,7 @@ class RapidTopicRecreateTest(RedpandaTest):
             f"to {self._current_partitions} existing"
         )
         self.rpk.add_partitions(self.topic_name, partitions_to_add)
+        self.rpk.add_partitions(self.cloud_topic_name, partitions_to_add)
         self._current_partitions += partitions_to_add
 
     @cluster(num_nodes=3)
