@@ -955,8 +955,49 @@ auto partition_balancer_planner::request_context::do_with_partition(
   const model::ntp& ntp,
   const partition_assignment& assignment,
   Visitor& visitor) {
-    const bool is_disabled = _parent._state.topics().is_disabled(ntp);
     const auto& orig_replicas = assignment.replicas;
+
+    { // first thing to check, is this partition being forced
+      // check if the ntp is to be force reconfigured.
+        auto topic_md = _parent._state.topics().get_topic_metadata_ref(
+          model::topic_namespace_view{ntp});
+        const auto& force_reconfigurable_partitions
+          = _parent._state.topics().partitions_to_force_recover();
+        auto force_it = force_reconfigurable_partitions.find(ntp);
+        if (topic_md && force_it != force_reconfigurable_partitions.end()) {
+            auto topic_revision = topic_md.value().get().get_revision();
+            const auto& entries = force_it->second;
+            auto it = std::find_if(
+              entries.begin(), entries.end(), [&](const auto& entry) {
+                  return entry.topic_revision == topic_revision
+                         && are_replica_sets_equal(
+                           entry.assignment, orig_replicas);
+              });
+
+            if (it != entries.end()) {
+                auto size_it = _ntp2sizes.find(ntp);
+                std::optional<request_context::partition_sizes> sizes;
+                if (size_it != _ntp2sizes.end()) {
+                    sizes = size_it->second;
+                }
+                partition part{force_reassignable_partition{
+                  ntp, sizes, assignment, it->dead_nodes, *this}};
+
+                auto deferred = ss::defer([&] {
+                    auto& force_reassignable
+                      = std::get<force_reassignable_partition>(part._variant);
+                    if (force_reassignable._reallocation) {
+                        _force_reassignments.emplace(
+                          ntp,
+                          std::move(force_reassignable._reallocation.value()));
+                    }
+                });
+                return visitor(part);
+            }
+        }
+    }
+
+    const bool is_disabled = _parent._state.topics().is_disabled(ntp);
     auto in_progress_it = _parent._state.topics().updates_in_progress().find(
       ntp);
     if (in_progress_it != _parent._state.topics().updates_in_progress().end()) {
@@ -1021,42 +1062,6 @@ auto partition_balancer_planner::request_context::do_with_partition(
           *this}};
         return visitor(part);
     }
-
-    // check if the ntp is to be force reconfigured.
-    auto topic_md = _parent._state.topics().get_topic_metadata_ref(
-      model::topic_namespace_view{ntp});
-    const auto& force_reconfigurable_partitions
-      = _parent._state.topics().partitions_to_force_recover();
-    auto force_it = force_reconfigurable_partitions.find(ntp);
-    if (topic_md && force_it != force_reconfigurable_partitions.end()) {
-        auto topic_revision = topic_md.value().get().get_revision();
-        const auto& entries = force_it->second;
-        auto it = std::find_if(
-          entries.begin(), entries.end(), [&](const auto& entry) {
-              return entry.topic_revision == topic_revision
-                     && are_replica_sets_equal(entry.assignment, orig_replicas);
-          });
-
-        if (it != entries.end()) {
-            auto size_it = _ntp2sizes.find(ntp);
-            std::optional<request_context::partition_sizes> sizes;
-            if (size_it != _ntp2sizes.end()) {
-                sizes = size_it->second;
-            }
-            partition part{force_reassignable_partition{
-              ntp, sizes, assignment, it->dead_nodes, *this}};
-
-            auto deferred = ss::defer([&] {
-                auto& force_reassignable
-                  = std::get<force_reassignable_partition>(part._variant);
-                if (force_reassignable._reallocation) {
-                    _force_reassignments.emplace(
-                      ntp, std::move(force_reassignable._reallocation.value()));
-                }
-            });
-            return visitor(part);
-        }
-    };
 
     auto size_it = _ntp2sizes.find(ntp);
     if (size_it == _ntp2sizes.end()) {
