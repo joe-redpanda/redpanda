@@ -10,10 +10,13 @@
 #pragma once
 
 #include "compaction/key_offset_map.h"
+#include "features/feature_table.h"
 #include "model/fundamental.h"
 #include "model/namespace.h"
 #include "model/record.h"
 #include "model/record_batch_types.h"
+
+#include <seastar/core/sharded.hh>
 
 namespace compaction {
 
@@ -23,7 +26,9 @@ namespace compaction {
 // of filtering) to decide if these batches can be removed. They can be
 // indiscriminately removed when they are seen.
 bool is_removable_control_batch(
-  const model::ntp& ntp, const model::record_batch_type batch_type);
+  const model::ntp& ntp,
+  const model::record_batch_type batch_type,
+  ss::sharded<features::feature_table>& feature_table);
 
 // Returns `true` or `false` indicating whether the batch type of the header
 // passed contains records that may be removed by compaction- whether that is by

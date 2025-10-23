@@ -760,7 +760,13 @@ ss::future<bool> disk_log_impl::sliding_window_compact(
     bool needs_chunked_sliding_window_compact = false;
     try {
         idx_start_offset = co_await build_offset_map(
-          cfg, segs, _stm_manager, _manager.resources(), *_probe, map);
+          cfg,
+          segs,
+          _stm_manager,
+          _manager.resources(),
+          *_probe,
+          map,
+          _feature_table);
     } catch (const zero_segments_indexed_exception&) {
         // We failed to index even one segment (the last entry of the segs set).
         // Perform chunked compaction on it.
@@ -848,6 +854,7 @@ ss::future<bool> disk_log_impl::sliding_window_compact(
 
         const bool segment_needs_rewrite
           = internal::may_have_removable_tombstones(seg, cfg)
+            || internal::has_removable_transaction_batches(seg, cfg)
             || co_await segment_needs_rewrite_with_offset_map(cfg, seg, map);
         if (!segment_needs_rewrite) {
             vlog(
@@ -1489,6 +1496,7 @@ ss::future<bool> disk_log_impl::chunked_sliding_window_compact(
 
             const bool segment_needs_rewrite
               = internal::may_have_removable_tombstones(s, compact_cfg)
+                || internal::has_removable_transaction_batches(s, compact_cfg)
                 || co_await segment_needs_rewrite_with_offset_map(
                   compact_cfg, s, map);
             if (!segment_needs_rewrite) {

@@ -113,7 +113,8 @@ ss::future<model::offset> build_offset_map(
   ss::lw_shared_ptr<storage::stm_manager> stm_manager,
   storage_resources& resources,
   storage::probe& probe,
-  compaction::key_offset_map& m) {
+  compaction::key_offset_map& m,
+  ss::sharded<features::feature_table>& feature_table) {
     if (segs.empty()) {
         throw std::runtime_error("No segments to build offset map");
     }
@@ -149,7 +150,13 @@ ss::future<model::offset> build_offset_map(
         try {
             auto read_lock = co_await seg->read_lock();
             co_await internal::maybe_rebuild_compaction_index(
-              seg, stm_manager, cfg, read_lock, resources, probe);
+              seg,
+              stm_manager,
+              cfg,
+              read_lock,
+              resources,
+              probe,
+              feature_table);
         } catch (const segment_closed_exception& e) {
             // Stop early if the segment e.g. has been prefix truncated.
             // We'll make do with the offset map we have so far.
@@ -201,9 +208,13 @@ ss::future<index_state> deduplicate_segment(
     auto segment_last_offset = seg->offsets().get_committed_offset();
     auto compaction_placeholder_enabled = feature_table.local().is_active(
       features::feature::compaction_placeholder_batch);
+    auto unset_transactional_bit_enabled = feature_table.local().is_active(
+      features::feature::coordinated_compaction);
     const bool past_tombstone_delete_horizon
       = internal::is_past_tombstone_delete_horizon(seg, cfg);
     bool may_have_tombstone_records = false;
+    const bool past_tx_delete_horizon
+      = internal::is_past_transaction_batch_delete_horizon(seg, cfg);
     bool may_have_transaction_batches = false;
 
     auto is_latest_record = [&map](
@@ -220,6 +231,7 @@ ss::future<index_state> deduplicate_segment(
                           past_tombstone_delete_horizon,
                           &may_have_tombstone_records,
                           &probe,
+                          past_tx_delete_horizon,
                           &may_have_transaction_batches](
                            const model::record_batch& b,
                            const model::record& r,
@@ -235,6 +247,7 @@ ss::future<index_state> deduplicate_segment(
           segment_last_offset,
           past_tombstone_delete_horizon,
           may_have_tombstone_records,
+          past_tx_delete_horizon,
           may_have_transaction_batches);
     };
 
@@ -247,6 +260,7 @@ ss::future<index_state> deduplicate_segment(
       seg->index().base_offset(),
       segment_last_offset,
       compaction_placeholder_enabled,
+      unset_transactional_bit_enabled,
       &cmp_idx_writer,
       inject_reader_failure,
       cfg.asrc);

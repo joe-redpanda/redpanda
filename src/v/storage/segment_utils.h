@@ -48,7 +48,8 @@ ss::future<compacted_index::recovery_state> maybe_rebuild_compaction_index(
   const compaction::compaction_config& cfg,
   ss::rwlock::holder& read_holder,
   storage_resources& resources,
-  storage::probe& pb);
+  storage::probe& pb,
+  ss::sharded<features::feature_table>& feature_table);
 
 /// \brief, this method will acquire it's own locks on the segment
 ///
@@ -69,7 +70,8 @@ ss::future<> rebuild_compaction_index(
   ss::lw_shared_ptr<storage::stm_manager> stm_manager,
   compaction::compaction_config cfg,
   storage::probe& pb,
-  storage_resources& resources);
+  storage_resources& resources,
+  ss::sharded<features::feature_table>&);
 
 /*
  * Concatentate segments into a minimal new segment.
@@ -313,22 +315,32 @@ auto with_segment_reader_handle(segment_reader_handle handle, Func func) {
 // Returns `true` or `false` depending on whether the provided record/control
 // batch is instantly removable by compaction.
 // This will return `true` for:
-//   1. Compactible control batches (such as those found in the
+//   1. Removable control batches (such as those found in the
 //      __consumer_offsets topic).
-//   2. Tombstone records past the removal horizon set by
+//   2. Expired tombstone records past the removal horizon set by
+//      `delete.retention.ms`
+//   2. Expired control batches past the removal horizon set by
 //      `delete.retention.ms`
 // In all other cases, return `false`.
 inline bool can_discard(
   const model::record_batch& b,
   const model::record& r,
   const model::ntp& ntp,
-  bool past_tombstone_delete_horizon) {
-    if (compaction::is_removable_control_batch(ntp, b.header().type)) {
+  bool past_tombstone_delete_horizon,
+  bool past_tx_delete_horizon,
+  ss::sharded<features::feature_table>& feature_table) {
+    if (compaction::is_removable_control_batch(
+          ntp, b.header().type, feature_table)) {
         return true;
     }
 
     // Deal with tombstone record removal
     if (r.is_tombstone() && past_tombstone_delete_horizon) {
+        return true;
+    }
+
+    // Deal with transactional control batch removal
+    if (b.header().attrs.is_control() && past_tx_delete_horizon) {
         return true;
     }
 
@@ -347,10 +359,14 @@ ss::future<bool> should_keep(
   model::offset segment_last_offset,
   bool past_tombstone_delete_horizon,
   bool& may_have_tombstone_records,
+  bool past_tx_delete_horizon,
   bool& has_tx_batches) {
-    auto compaction_placeholder_enabled = feature_table.local().is_active(
+    const auto compaction_placeholder_enabled = feature_table.local().is_active(
       features::feature::compaction_placeholder_batch);
-    auto is_last_batch = b.last_offset() == segment_last_offset;
+    const auto is_compactible = compaction::is_compactible(b.header());
+    const auto is_last_batch = b.last_offset() == segment_last_offset;
+    const auto is_control_batch = b.header().attrs.is_control();
+    const auto is_tombstone = r.is_tombstone();
     // once compaction placeholder feature is enabled, we are not
     // worried about empty batches as the reducer then installs a
     // placeholder batch if all the records are compacted away.
@@ -362,42 +378,47 @@ ss::future<bool> should_keep(
           "retaining last record: {} of segment from batch: {}",
           r,
           b.header());
-        if (r.is_tombstone()) {
+        if (is_tombstone) {
             may_have_tombstone_records = true;
         }
 
-        if (b.contains_transactional_data()) {
+        if (is_control_batch) {
             has_tx_batches = true;
         }
 
         co_return true;
     }
 
-    auto& header = b.header();
-    if (!compaction::is_compactible(ntp, header)) {
-        if (header.attrs.is_control()) {
-            has_tx_batches = true;
-        }
-        co_return true;
-    }
-
-    // Before considering `is_latest_key()`, unconditionally remove
-    // records/batches which are always considered removable.
-    if (can_discard(b, r, ntp, past_tombstone_delete_horizon)) {
-        if (r.is_tombstone()) {
+    // Before considering `is_latest_key()`, remove
+    // records/batches which are always considered removable as well as expired
+    // tombstone records/control batches.
+    if (can_discard(
+          b,
+          r,
+          ntp,
+          past_tombstone_delete_horizon,
+          past_tx_delete_horizon,
+          feature_table)) {
+        if (is_tombstone) {
             pb.add_removed_tombstone();
+        }
+        if (is_control_batch) {
+            pb.add_removed_control_batch();
         }
         co_return false;
     }
 
-    auto keep = co_await is_latest_key(b, r);
-
-    if (r.is_tombstone() && keep) {
-        may_have_tombstone_records = true;
+    if (!is_compactible) {
+        if (is_control_batch) {
+            has_tx_batches = true;
+        }
+        co_return true;
     }
 
-    if (b.contains_transactional_data() && keep) {
-        has_tx_batches = true;
+    auto keep = co_await is_latest_key(b, r);
+
+    if (is_tombstone && keep) {
+        may_have_tombstone_records = true;
     }
 
     co_return keep;

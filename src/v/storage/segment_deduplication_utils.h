@@ -47,7 +47,8 @@ ss::future<model::offset> build_offset_map(
   ss::lw_shared_ptr<storage::stm_manager> stm_manager,
   storage::storage_resources&,
   storage::probe&,
-  compaction::key_offset_map&);
+  compaction::key_offset_map&,
+  ss::sharded<features::feature_table>&);
 
 // Rewrites 'seg' according to the parameters in 'cfg' to 'appender' and
 // 'cmp_idx_writer', deduplicating with latest offsets per key from 'map'.

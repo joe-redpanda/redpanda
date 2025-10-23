@@ -409,7 +409,8 @@ TEST(BuildOffsetMap, TestBuildSimpleMap) {
                        disk_log.stm_manager(),
                        disk_log.resources(),
                        disk_log.get_probe(),
-                       partial_map)
+                       partial_map,
+                       b.feature_table())
                        .get();
     ASSERT_GT(partial_o(), 0);
 
@@ -421,7 +422,8 @@ TEST(BuildOffsetMap, TestBuildSimpleMap) {
                         disk_log.stm_manager(),
                         disk_log.resources(),
                         disk_log.get_probe(),
-                        all_segs_map)
+                        all_segs_map,
+                        b.feature_table())
                         .get();
     ASSERT_EQ(all_segs_o(), 0);
 }
@@ -453,7 +455,8 @@ TEST(BuildOffsetMap, TestBuildMapWithMissingCompactedIndex) {
                disk_log.stm_manager(),
                disk_log.resources(),
                disk_log.get_probe(),
-               missing_index_map)
+               missing_index_map,
+               b.feature_table())
                .get();
     ASSERT_EQ(o(), 0);
     ASSERT_EQ(missing_index_map.size(), 30);
@@ -491,7 +494,8 @@ TEST(DeduplicateSegmentsTest, TestBadReader) {
                               disk_log.stm_manager(),
                               disk_log.resources(),
                               disk_log.get_probe(),
-                              all_segs_map)
+                              all_segs_map,
+                              b.feature_table())
                               .get();
     ASSERT_EQ(map_start_offset(), 0);
 
