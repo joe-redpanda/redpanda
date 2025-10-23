@@ -113,6 +113,8 @@ public:
 
     partition_metadata_provider& get_partition_metadata_provider();
 
+    kafka_rpc_client_service& get_kafka_rpc_client_service();
+
     std::optional<
       chunked_hash_map<::model::topic, model::mirror_topic_metadata>>
     get_mirror_topics_for_link() const;
@@ -128,6 +130,7 @@ private:
     ss::future<> run_task_reconciler();
     ss::future<cl_result<void>> do_register_task(std::unique_ptr<task>);
     void maybe_update_connection_configuration();
+    void handle_new_topics_to_replicate(chunked_vector<::model::topic>);
 
 private:
     ::model::node_id _self;
