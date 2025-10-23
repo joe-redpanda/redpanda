@@ -26,6 +26,7 @@ from rptest.clients.admin.proto.redpanda.core.admin.internal.cloud_topics.v1 imp
     metastore_pb2,
     metastore_pb2_connect,
 )
+from rptest.clients.admin.proto.redpanda.core.common import ntp_pb2
 
 
 class RedpandaServiceProto(Protocol):
@@ -41,6 +42,7 @@ debug_pb = debug_pb2
 kafka_connections_pb = kafka_connections_pb2
 breakglass_pb = breakglass_pb2
 metastore_pb = metastore_pb2
+ntp_pb = ntp_pb2
 
 
 # A hacky workaround for https://github.com/connectrpc/connect-python/issues/37
