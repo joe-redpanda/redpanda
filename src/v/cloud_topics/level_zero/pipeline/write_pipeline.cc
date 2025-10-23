@@ -67,6 +67,7 @@ template<class Clock>
 ss::future<result<chunked_vector<extent_meta>>>
 write_pipeline<Clock>::write_and_debounce(
   model::ntp ntp,
+  [[maybe_unused]] cluster_epoch min_epoch,
   chunked_vector<model::record_batch> batches,
   Clock::time_point timeout) {
     auto h = this->hold_gate();
