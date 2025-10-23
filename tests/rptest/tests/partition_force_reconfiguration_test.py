@@ -8,6 +8,7 @@
 # by the Apache License, Version 2.0
 import random
 import time
+from enum import Enum
 from random import shuffle
 from threading import Condition, Thread
 
@@ -631,9 +632,12 @@ class NodeWiseRecoveryTest(RedpandaTest):
             retry_on_exc=True,
         )
 
+    # class NodeWiseRecoveryCase(str, Enum):
+    #
+
     @cluster(num_nodes=6)
-    @matrix(dead_node_count=[1, 2])
-    def test_node_wise_recovery(self, dead_node_count):
+    @matrix(dead_node_count=[1, 2], ongoing_decommission=[True])
+    def test_node_wise_recovery(self, dead_node_count, ongoing_decommission):
         num_topics = 20
         # Create a mix of rf=1 and 3 topics.
         topics = []
@@ -675,6 +679,14 @@ class NodeWiseRecoveryTest(RedpandaTest):
         initial_topic_hws = {
             t.name: self.get_topic_partition_high_watermarks(t.name) for t in topics
         }
+
+        if ongoing_decommission:
+            # jam recovery so the decommission is in progress at the time of forcing
+            self.redpanda.set_cluster_config(
+                {"raft_learner_recovery_rate": 1}, self.default_timeout_sec
+            )
+            for node_id in to_kill_node_ids:
+                admin.decommission_broker(node_id)
 
         self.logger.debug(f"Stopping nodes: {to_kill_node_ids}")
         self.redpanda.for_nodes(to_kill_nodes, self.redpanda.stop_node)
@@ -718,6 +730,12 @@ class NodeWiseRecoveryTest(RedpandaTest):
         self._rpk.force_partition_recovery(
             from_nodes=to_kill_node_ids, to_node=surviving_node
         )
+
+        if ongoing_decommission:
+            # unjam force recovery and transfers
+            self.redpanda.set_cluster_config(
+                {"raft_learner_recovery_rate": 1 << 30}, tolerate_stopped_nodes=True
+            )
 
         with ControllerLeadershipTransferInjector(self.redpanda) as transfers:
 
