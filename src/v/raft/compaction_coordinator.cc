@@ -180,8 +180,10 @@ void compaction_coordinator::collect_mcco_from_all_members() {
     update_local_mcco();
     for (auto& [node_id, fstat] : _fstats) {
         ssx::background = fstat.mcco_getter->submit(
-          [this, holder = _raft_bg.hold(), node_id](ss::abort_source& op_as) {
-              return get_and_process_compaction_mcco(node_id, op_as);
+          [this, holder = _raft_bg.hold(), node_id](
+            ss::abort_source& op_as) mutable {
+              return get_and_process_compaction_mcco(node_id, op_as)
+                .finally([holder = std::move(holder)] {});
           });
     }
     arm_timer_if_needed(false);
@@ -280,7 +282,7 @@ void compaction_coordinator::send_mtro_to_followers() {
     for (const auto& [node_id, fstat] : _fstats) {
         ssx::background = fstat.mtro_sender->submit(
           [this, holder = _raft_bg.hold(), node_id](
-            ss::abort_source& op_as) -> ss::future<> {
+            ss::abort_source& op_as) mutable -> ss::future<> {
               // MTRO may get recalculated a few times triggered by MCCO
               // arriving from multiple nodes. However, we cannot wait for all
               // MCCOs to arrive as some of them may come very late e.g. due to
@@ -295,6 +297,7 @@ void compaction_coordinator::send_mtro_to_followers() {
                       },
                       op_as);
                 })
+                .finally([holder = std::move(holder)] {})
                 .discard_result();
           });
     }
