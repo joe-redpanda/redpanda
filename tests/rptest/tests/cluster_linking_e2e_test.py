@@ -29,7 +29,7 @@ from rptest.clients.admin.proto.redpanda.core.admin.v2 import (
     shadow_link_pb2,
 )
 from rptest.clients.kafka_cli_tools import KafkaCliToolsError
-from rptest.clients.rpk import RpkTool, RPKACLInput, RpkException
+from rptest.clients.rpk import RpkTool, RPKACLInput, RpkException, RpkGroup
 from rptest.clients.types import TopicSpec
 from rptest.clients.default import DefaultClient
 from rptest.services.cluster import TestContext
@@ -1745,7 +1745,10 @@ class ShadowLinkConsumeGroupsMirroringTest(ShadowLinkTestBase):
         ),
     )
     @matrix(
-        with_failures=[True, False],
+        with_failures=[
+            True,
+            False,
+        ],
         source_cluster_spec=[
             SecondaryClusterSpec(ServiceType.REDPANDA),
             SecondaryClusterSpec(
@@ -1778,10 +1781,20 @@ class ShadowLinkConsumeGroupsMirroringTest(ShadowLinkTestBase):
             else:
                 return self._nop_context_manager()
 
-        def _consume_with_group(topic: str, group_id: str):
+        def _consume_with_group(
+            topic: str,
+            group_id: str,
+            rpk: RpkTool = source_rpk,
+            format: str | None = None,
+        ) -> str | None:
             try:
-                source_rpk.consume(
-                    topic=topic, group=group_id, n=1, timeout=5, offset="start"
+                return rpk.consume(
+                    topic=topic,
+                    group=group_id,
+                    n=1,
+                    timeout=5,
+                    offset="start",
+                    format=format,
                 )
             except Exception as e:
                 self.logger.debug(
@@ -1839,6 +1852,65 @@ class ShadowLinkConsumeGroupsMirroringTest(ShadowLinkTestBase):
                     err_msg="Group states not consistent between source and target clusters",
                     retry_on_exc=True,
                 )
+
+            # now fail over all the topics and confirm that we start consuming at the right spot
+            for topic in topics:
+                metadata = self.failover_link_topic(
+                    link_name="test-link", topic=topic.name
+                )
+                self.logger.debug(f"Failover response: {metadata}")
+                t_status = [
+                    s.status.state
+                    for s in metadata.status.shadow_topics
+                    if s.name == topic.name
+                ]
+                assert next(iter(t_status), None) in [
+                    shadow_link_pb2.ShadowTopicState.SHADOW_TOPIC_STATE_FAILING_OVER,
+                    shadow_link_pb2.ShadowTopicState.SHADOW_TOPIC_STATE_FAILED_OVER,
+                ], (
+                    "Topic state should be FAILING_OVER or FAILED_OVER after failover request"
+                )
+                self.wait_for_topic_status(
+                    link="test-link",
+                    topic=topic.name,
+                    target_status=shadow_link_pb2.ShadowTopicState.SHADOW_TOPIC_STATE_FAILED_OVER,
+                )
+
+            wait_until(
+                lambda: _wait_for_group_states_consistent(),
+                timeout_sec=120,
+                backoff_sec=3,
+                err_msg="Group states not consistent after failover",
+                retry_on_exc=True,
+            )
+
+            target_groups: dict[str, RpkGroup] = {
+                g: target_rpk.group_describe(group=g) for g in groups
+            }
+
+            for group_name, g_desc in target_groups.items():
+                partitions: dict[tuple[str, int], int | None] = {
+                    (p.topic, p.partition): p.current_offset for p in g_desc.partitions
+                }
+
+                assigned_topics = set(t for t, _ in partitions)
+
+                # make sure we can consume from every topic in the group
+                for topic in assigned_topics:
+                    r = _consume_with_group(
+                        topic,
+                        group_name,
+                        rpk=target_rpk,
+                        format="%p,%o\n",
+                    )
+                    assert r is not None, f"Failed to consume from {group_name=}"
+                    p, consumed = (int(v) for v in r.split(","))
+                    # sanity check the result against group description
+                    # assume the CG protocol works correctly for the rest of the partitions
+                    expected = partitions[(topic, p)]
+                    assert consumed == expected, (
+                        f"{group_name=}: {topic}/{p} {consumed=} but {expected=}"
+                    )
 
 
 class ShadowLinkSecurityTests(ShadowLinkTestBase):
