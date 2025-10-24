@@ -46,7 +46,11 @@ from rptest.services.multi_cluster_services import (
     SecondaryClusterSpec,
     ServiceType,
 )
-from rptest.services.redpanda import SchemaRegistryConfig, SecurityConfig
+from rptest.services.redpanda import (
+    RedpandaService,
+    SchemaRegistryConfig,
+    SecurityConfig,
+)
 from rptest.services.tls import TLSCertManager
 from rptest.tests.cluster_linking_test_base import (
     DEFAULT_SYNCED_TOPIC_PROPERTIES,
@@ -56,6 +60,7 @@ from rptest.tests.cluster_linking_test_base import (
     ShadowLinkPreAllocTestBase,
     ShadowLinkTestBase,
 )
+from rptest.clients.admin.proto.redpanda.core.admin.v2 import shadow_link_pb2
 from rptest.tests.redpanda_test import RedpandaTest
 from rptest.util import (
     bg_thread_cm,
@@ -1115,6 +1120,83 @@ class ShadowLinkBasicTests(ShadowLinkTestBase):
                 lambda e: e.code == ConnectErrorCode.INVALID_ARGUMENT,
             ):
                 self.update_link(shadow_link, update_mask)
+
+    @cluster(num_nodes=6)
+    @matrix(
+        source_cluster_spec=[
+            SecondaryClusterSpec(ServiceType.REDPANDA),
+            SecondaryClusterSpec(
+                ServiceType.KAFKA, kafka_version="3.8.0", kafka_quorum="COMBINED_KRAFT"
+            ),
+        ],
+    )
+    def test_link_creation_checks(self, source_cluster_spec):
+        """
+        Checks that preflight checks during link creation work as expected. Particularly
+        creating links where the remote cluster is not reachable due to connectivity issues
+        or incorrect configurations.
+        """
+        # Test incorrect bootstrap servers
+        bad_bootstrap_servers = [
+            "non.existent.server:9092",
+            "one.more.bad:9092",
+            "localhost:1234",
+        ]
+        bad_link_request = self.create_default_link_request("bad-link")
+        bad_link_request.shadow_link.configurations.client_options.bootstrap_servers[
+            :
+        ] = bad_bootstrap_servers
+
+        with expect_exception(
+            ConnectError,
+            lambda e: e.code == ConnectErrorCode.FAILED_PRECONDITION,
+        ):
+            self.create_link_with_request(req=bad_link_request)
+
+        # Test invalid TLS settings, source cluster has no TLS
+        bad_link_request = self.create_default_link_request("bad-link-tls")
+        bad_link_request.shadow_link.configurations.client_options.tls_settings.CopyFrom(
+            shadow_link_pb2.TLSSettings(
+                enabled=True,
+                tls_file_settings=shadow_link_pb2.TLSFileSettings(
+                    ca_path=self.redpanda.TLS_CA_CRT_FILE,
+                    key_path=self.redpanda.TLS_SERVER_KEY_FILE,
+                    cert_path=self.redpanda.TLS_SERVER_CRT_FILE,
+                ),
+            )
+        )
+        with expect_exception(
+            ConnectError,
+            lambda e: e.code == ConnectErrorCode.FAILED_PRECONDITION,
+        ):
+            self.create_link_with_request(req=bad_link_request)
+
+        # Kill one broker on the source cluster to simulate partial connectivity
+        # during preflight checks
+        node_to_stop = self.source_cluster._service.get_node(idx=1)
+        self.source_cluster._service.stop_node(node_to_stop)
+        self.create_link("link-with-partial-connectivity")
+
+    @cluster(num_nodes=6)
+    def test_link_creation_incompatible_api(self):
+        """
+        Tests that link creation fails when the source cluster has an incompatible
+        kafka API support.
+        """
+        # Downgrade the source cluster to a version that does not support
+        # v10 of metadata request used for cluster linking
+        assert isinstance(self.source_cluster.service, RedpandaService), (
+            "Invalid source cluster service type"
+        )
+        rp = self.source_cluster.service
+        rp._installer.install(rp.nodes, (25, 1))
+        rp.for_nodes(rp.nodes, lambda node: rp.stop_node(node))
+        rp.start(rp.nodes, clean_nodes=True)
+        with expect_exception(
+            ConnectError,
+            lambda e: e.code == ConnectErrorCode.FAILED_PRECONDITION,
+        ):
+            self.create_link("link-to-incompatible-cluster")
 
 
 class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):

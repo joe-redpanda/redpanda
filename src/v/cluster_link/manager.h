@@ -205,6 +205,9 @@ private:
     ss::future<> link_task_reconciler();
     ss::future<> on_controller_leadership(::model::term_id);
     ss::future<> on_controller_stepdown();
+    ss::future<err_info>
+    broker_preflight_check(::model::node_id, kafka::client::cluster&);
+    ss::future<err_info> link_preflight_checks(const model::metadata& md);
 
 private:
     ::model::node_id _self;
