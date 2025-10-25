@@ -636,7 +636,41 @@ class LogCompactionEnableSlidingWindow(RedpandaTest):
             )
 
 
-class LogCompactionTxRemovalTest(LogCompactionTestBase, PreallocNodesTest):
+class LogCompactionTxRemovalTestBase(LogCompactionTestBase, PreallocNodesTest):
+    @dataclass
+    class TestCase:
+        msg_size: int
+        msg_count: int
+        abort_rate: float
+        msgs_per_transaction: int
+
+    test_cases = {
+        "Mixed aborts and commits": TestCase(
+            msg_size=1024,
+            msg_count=10000,
+            msgs_per_transaction=10,
+            abort_rate=0.5,
+        ),
+        "All aborts": TestCase(
+            msg_size=1024,
+            msg_count=10000,
+            msgs_per_transaction=10,
+            abort_rate=1.0,
+        ),
+        "All commits": TestCase(
+            msg_size=1024,
+            msg_count=10000,
+            msgs_per_transaction=10,
+            abort_rate=0.0,
+        ),
+        "Multi-segment spanning transactions": TestCase(
+            msg_size=10240,
+            msg_count=1000,
+            msgs_per_transaction=100,
+            abort_rate=0.5,
+        ),
+    }
+
     def __init__(self, test_context):
         self.test_context = test_context
         # Run with small segments and a very frequent compaction interval.
@@ -648,7 +682,7 @@ class LogCompactionTxRemovalTest(LogCompactionTestBase, PreallocNodesTest):
 
         super().__init__(
             test_context=test_context,
-            num_brokers=1,
+            num_brokers=3,
             node_prealloc_count=1,
             extra_rp_conf=self.extra_rp_conf,
         )
@@ -674,93 +708,31 @@ class LogCompactionTxRemovalTest(LogCompactionTestBase, PreallocNodesTest):
 
     def check_tx_batches(self):
         viewer = OfflineLogViewer(self.redpanda)
-        assert len(self.redpanda.nodes) == 1
-        node = self.redpanda.nodes[0]
-        num_control_batches = 0
-        num_fence_batches = 0
-        records_and_batches = viewer.read_kafka_records(node, self.topic_spec.name)
-        for record_or_batch in records_and_batches:
-            if "expanded_attrs" not in record_or_batch:
-                continue
-            if record_or_batch["expanded_attrs"]["control_batch"]:
-                num_control_batches += 1
-            if record_or_batch["type_name"] == "tx_fence":
-                num_fence_batches += 1
+        for node in self.redpanda.nodes:
+            num_control_batches = 0
+            num_fence_batches = 0
+            records_and_batches = viewer.read_kafka_records(node, self.topic_spec.name)
+            for record_or_batch in records_and_batches:
+                if "expanded_attrs" not in record_or_batch:
+                    continue
+                if record_or_batch["expanded_attrs"]["control_batch"]:
+                    num_control_batches += 1
+                if record_or_batch["type_name"] == "tx_fence":
+                    num_fence_batches += 1
 
-        assert num_control_batches == 0, (
-            f"expected 0 control batches (abort/commit batches), saw {num_control_batches}"
-        )
-        assert num_fence_batches == 0, (
-            f"expected 0 tx_fence batches, saw {num_fence_batches}"
-        )
+            assert num_control_batches == 0, (
+                f"expected 0 control batches (abort/commit batches), saw {num_control_batches} on node {node.name()}"
+            )
+            assert num_fence_batches == 0, (
+                f"expected 0 tx_fence batches, saw {num_fence_batches}  on node {node.name()}"
+            )
 
-    @cluster(num_nodes=2)
-    def test_tx_control_batch_removal(self):
-        @dataclass
-        class TestCase:
-            name: str
-            msg_size: int
-            msg_count: int
-            abort_rate: float
-            msgs_per_transaction: int
-
-        test_cases = [
-            TestCase(
-                name="Mixed aborts and commits",
-                msg_size=1024,
-                msg_count=10000,
-                msgs_per_transaction=10,
-                abort_rate=0.5,
-            ),
-            TestCase(
-                name="All aborts",
-                msg_size=1024,
-                msg_count=10000,
-                msgs_per_transaction=10,
-                abort_rate=1.0,
-            ),
-            TestCase(
-                name="All commits",
-                msg_size=1024,
-                msg_count=10000,
-                msgs_per_transaction=10,
-                abort_rate=0.0,
-            ),
-            TestCase(
-                name="Multi-segment spanning transactions",
-                msg_size=10240,
-                msg_count=1000,
-                msgs_per_transaction=100,
-                abort_rate=0.5,
-            ),
-        ]
-
-        failed_test_cases = []
-        for test_case in test_cases:
-            try:
-                self.do_test_tx_control_batch_removal(test_case)
-            except Exception as e:
-                self.logger.info(
-                    f"Test case {test_case.name} failed with exception {e}"
-                )
-
-                failed_test_cases.append(e)
-        assert len(failed_test_cases) == 0, (
-            f"Expected 0 failed test cases, got {len(failed_test_cases)}"
-        )
-
-    def do_test_tx_control_batch_removal(self, test_case):
-        self.topic_setup(
-            cleanup_policy=TopicSpec.CLEANUP_COMPACT,
-            replication_factor=1,
-            key_set_cardinality=100,
-            partition_count=1,
-        )
-
+    def do_test_tx_control_batch_removal(self, test_case_name, test_case):
         self.logger.info(
-            f"Running test case {test_case.name} with topic {self.topic_spec.name}"
+            f"Running test case {test_case_name} with topic {self.topic_spec.name}"
         )
 
+        self.start_partition_movement()
         self.produce(test_case)
 
         # Restart the redpanda broker to roll segments
@@ -782,5 +754,33 @@ class LogCompactionTxRemovalTest(LogCompactionTestBase, PreallocNodesTest):
             err_msg="Compaction did not stabilize.",
         )
 
+        self.stop_partition_movement()
+
         # Check that no tx batches are seen after compaction settles
         self.check_tx_batches()
+
+
+class LogCompactionTxRemovalTest(LogCompactionTxRemovalTestBase):
+    def __init__(self, test_context):
+        super().__init__(test_context)
+
+    @cluster(num_nodes=4)
+    def test_tx_control_batch_removal(self):
+        failed_test_cases = []
+        for name, test_case in LogCompactionTxRemovalTestBase.test_cases.items():
+            self.topic_setup(
+                cleanup_policy=TopicSpec.CLEANUP_COMPACT,
+                replication_factor=3,
+                key_set_cardinality=100,
+                partition_count=1,
+            )
+
+            try:
+                self.do_test_tx_control_batch_removal(name, test_case)
+            except Exception as e:
+                self.logger.info(f"Test case {name} failed with exception {e}")
+
+                failed_test_cases.append(e)
+        assert len(failed_test_cases) == 0, (
+            f"Expected 0 failed test cases, got {len(failed_test_cases)}"
+        )
