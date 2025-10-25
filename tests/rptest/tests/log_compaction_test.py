@@ -21,6 +21,7 @@ from rptest.services.kgo_verifier_services import (
     KgoVerifierProducer,
     KgoVerifierSeqConsumer,
 )
+from rptest.services.redpanda_installer import RedpandaVersionLine
 from rptest.services.redpanda import MetricsEndpoint
 from rptest.tests.partition_movement import PartitionMovementMixin
 from rptest.tests.prealloc_nodes import PreallocNodesTest
@@ -784,3 +785,49 @@ class LogCompactionTxRemovalTest(LogCompactionTxRemovalTestBase):
         assert len(failed_test_cases) == 0, (
             f"Expected 0 failed test cases, got {len(failed_test_cases)}"
         )
+
+
+class LogCompactionTxRemovalUpgradeTest(LogCompactionTxRemovalTestBase):
+    def __init__(self, test_context):
+        super().__init__(test_context)
+        # Version before `may_have_transactional_batches` was added.
+        self.initial_version: RedpandaVersionLine = (25, 1)
+        # Version before tx removal was added to compaction.
+        self.may_have_tx_batch_version: RedpandaVersionLine = (25, 2)
+        # Version in which tx batch removal was added to compaction.
+        self.tx_removal_version: RedpandaVersionLine = (25, 3)
+
+    def setUp(self):
+        self.redpanda._installer.install(self.redpanda.nodes, self.initial_version)
+        self.redpanda.start()
+
+    def upgrade_to_version(self, version):
+        self.redpanda._installer.install(self.redpanda.nodes, version)
+        self.redpanda.restart_nodes(self.redpanda.nodes)
+
+    @cluster(num_nodes=4)
+    @matrix(test_case_name=list(LogCompactionTxRemovalTestBase.test_cases.keys()))
+    def test_tx_control_batch_removal_with_upgrade(self, test_case_name):
+        test_case = LogCompactionTxRemovalTestBase.test_cases[test_case_name]
+
+        self.topic_setup(
+            cleanup_policy=TopicSpec.CLEANUP_COMPACT,
+            replication_factor=3,
+            key_set_cardinality=100,
+            partition_count=1,
+        )
+
+        # Produce some transactional data
+        self.produce(test_case)
+
+        # Upgrade to `may_have_transactional_batch` version.
+        self.upgrade_to_version(self.may_have_tx_batch_version)
+
+        # Produce more transactional data.
+        self.produce(test_case)
+
+        # Upgrade to `tx_removal` version.
+        self.upgrade_to_version(self.tx_removal_version)
+
+        # Perform rest of test
+        self.do_test_tx_control_batch_removal(test_case_name, test_case)
