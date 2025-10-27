@@ -302,13 +302,10 @@ void task::run_callbacks(const state_change& change) {
 
 bool task::valid_previous_state(model::task_state st) const {
     switch (st) {
-    case model::task_state::paused:
-        return _state == model::task_state::active
-               || _state == model::task_state::link_unavailable
-               || _state == model::task_state::faulted;
     case model::task_state::link_unavailable:
         return _state == model::task_state::active;
-    // Always valid to change to stopped, active or faulted
+    // Always valid to change to stopped, active, paused or faulted
+    case model::task_state::paused:
     case model::task_state::stopped:
     case model::task_state::active:
     case model::task_state::faulted:

@@ -105,10 +105,8 @@ TEST_F_CORO(test_task_fixture, test_task_run) {
     ASSERT_EQ_CORO(task->get_state(), model::task_state::stopped);
 
     auto res = co_await task->pause();
-    EXPECT_FALSE(res.has_value())
-      << "Was able to pause task when in stopped state";
-    EXPECT_EQ(res.assume_error().code(), errc::invalid_task_state_change);
-    ASSERT_EQ_CORO(task->get_state(), model::task_state::stopped);
+    ASSERT_TRUE_CORO(res.has_value());
+    ASSERT_EQ_CORO(task->get_state(), model::task_state::paused);
 
     res = co_await task->start();
     ASSERT_TRUE_CORO(res.has_value())
