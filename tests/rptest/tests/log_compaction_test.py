@@ -21,7 +21,9 @@ from rptest.services.kgo_verifier_services import (
     KgoVerifierProducer,
     KgoVerifierSeqConsumer,
 )
-from rptest.services.redpanda_installer import RedpandaVersionLine
+from rptest.services.redpanda_installer import (
+    RedpandaVersionLine,
+)
 from rptest.services.redpanda import MetricsEndpoint
 from rptest.tests.partition_movement import PartitionMovementMixin
 from rptest.tests.prealloc_nodes import PreallocNodesTest
@@ -794,8 +796,6 @@ class LogCompactionTxRemovalUpgradeTest(LogCompactionTxRemovalTestBase):
         self.initial_version: RedpandaVersionLine = (25, 1)
         # Version before tx removal was added to compaction.
         self.may_have_tx_batch_version: RedpandaVersionLine = (25, 2)
-        # Version in which tx batch removal was added to compaction.
-        self.tx_removal_version: RedpandaVersionLine = (25, 3)
 
     def setUp(self):
         self.redpanda._installer.install(self.redpanda.nodes, self.initial_version)
@@ -826,8 +826,11 @@ class LogCompactionTxRemovalUpgradeTest(LogCompactionTxRemovalTestBase):
         # Produce more transactional data.
         self.produce(test_case)
 
-        # Upgrade to `tx_removal` version.
-        self.upgrade_to_version(self.tx_removal_version)
+        # Upgrade to `HEAD`.
+        for version in self.redpanda._installer.upgrade_path_to_head(
+            self.may_have_tx_batch_version
+        ):
+            self.upgrade_to_version(version)
 
         # Perform rest of test
         self.do_test_tx_control_batch_removal(test_case_name, test_case)
