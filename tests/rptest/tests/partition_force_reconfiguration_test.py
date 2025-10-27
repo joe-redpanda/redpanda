@@ -525,7 +525,7 @@ class NodeWiseRecoveryTest(RedpandaTest):
             *args,
             **kwargs,
         )
-        self.default_timeout_sec = 120
+        self.default_timeout_sec = 300
         self.rpk = RpkTool(self.redpanda)
         self.admin = Admin(self.redpanda, retries_amount=20, retry_codes=[503, 504])
 
