@@ -2102,6 +2102,11 @@ partition_balancer_planner::get_force_repair_actions(request_context& ctx) {
         co_return;
     }
 
+    vlog(
+      clusterlog.info,
+      "found {} force repair actions",
+      ctx.state().topics().partitions_to_force_recover().size());
+
     auto it = ctx.state().topics().partitions_to_force_recover_it_begin();
     while (it != ctx.state().topics().partitions_to_force_recover_it_end()) {
         if (!ctx.can_add_reassignment()) {
@@ -2110,14 +2115,29 @@ partition_balancer_planner::get_force_repair_actions(request_context& ctx) {
         co_await ctx.with_partition(it->first, [&](partition& part) {
             part.match_variant(
               [&](force_reassignable_partition& part) {
+                  vlog(
+                    clusterlog.info,
+                    "partition: {} is force reassignable",
+                    part.ntp());
                   part.force_move_dead_replicas(
                     ctx.config().max_disk_usage_ratio);
               },
-              [&](reassignable_partition&) {},
-              [&](moving_partition&) {
-                  // ignore, wait for it to be canceled / finished.
+              [&](reassignable_partition& part) {
+                  vlog(
+                    clusterlog.info,
+                    "partition: {} is only reassignable",
+                    part.ntp());
               },
-              [&](immutable_partition&) {});
+              [&](moving_partition& part) {
+                  vlog(clusterlog.info, "partition: {} is moving", part.ntp());
+              },
+              [&](immutable_partition& part) {
+                  vlog(
+                    clusterlog.info,
+                    "partition: {} is immutable because: {}",
+                    part.ntp(),
+                    static_cast<int>(part.reason()));
+              });
         });
         ++it;
     }
