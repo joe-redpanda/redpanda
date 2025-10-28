@@ -25,7 +25,7 @@ tar -C "$ROOT_DIR" -cf - \
   tests/setup.py \
   tools/type-checking |
   docker build -t $tag -f "tools/type-checking/Dockerfile" \
-    ${TARGET:+--target=$TARGET} ${TC_DOCKER_ARGS---quiet} -
+    ${TARGET:+--target=$TARGET} ${TC_DOCKER_ARGS-} -
 
 # Run the container with the tests directory mounted
 # echo "Running type checker in Docker container..."
