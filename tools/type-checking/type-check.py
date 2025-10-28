@@ -519,6 +519,9 @@ class TypeCheck:
 
         return all_sorted
 
+    def check_sorted(self):
+        self._check_strictness_file_sorted()
+
     def _update_strictness_file(
         self, promotable_files: list[tuple[Path, Level, Level]]
     ):
@@ -703,18 +706,14 @@ class TypeCheck:
             raise
 
 
-CMDS = [
-    "check",
-    "promotion-check",
-    "fruit",
-    "ci",
-]
+CMDS = ["check", "promotion-check", "fruit", "ci", "check-sorted"]
 
 COMMAND_DOC = """Commands:\nmissing-check: Find files and directories which are not included in the pyrightconfig.json
 check: Run the type checker on the input set and print any errors to stdout
 promotion-check: Check if files can be promoted to stricter levels than their current assignment
 fruit: Show files with fewest errors at each target level (low-hanging fruit for type checking improvements)
-ci: Run both promotion-check and check commands, failing if either fails"""
+ci: Run both promotion-check and check commands, failing if either fails
+check-sorted: Just check that the strictness file is sorted properly"""
 
 
 def main():
