@@ -55,7 +55,6 @@ segment::segment(
   storage_resources& resources,
   segment::generation_id gen) noexcept
   : _resources(resources)
-  , _appender_callbacks(this)
   , _generation_id(gen)
   , _tracker(tkr)
   , _reader(std::move(r))
@@ -65,7 +64,9 @@ segment::segment(
   , _cache(std::move(c))
   , _first_write(std::nullopt) {
     if (_appender) {
-        _appender->set_callbacks(&_appender_callbacks);
+        _appender->set_stable_offset_callback([this](size_t stable_offset) {
+            advance_stable_offset(stable_offset);
+        });
     }
 }
 

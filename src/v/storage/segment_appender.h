@@ -51,6 +51,7 @@ namespace storage {
 class segment_appender {
 public:
     using chunk = segment_appender_chunk;
+    using committed_offset_clb = ss::noncopyable_function<void(size_t)>;
 
     static constexpr const size_t fallocation_alignment
       = segment_appender_fallocation_alignment;
@@ -119,12 +120,13 @@ public:
     ss::future<> close();
     ss::future<> flush();
 
-    struct callbacks {
-        virtual ~callbacks() = default;
-        virtual void committed_physical_offset(size_t) = 0;
-    };
-
-    void set_callbacks(callbacks* callbacks) { _callbacks = callbacks; }
+    /**
+     * Registers a callback that is invoked whenever stable offset of the
+     * appender is advanced.
+     */
+    void set_stable_offset_callback(committed_offset_clb callback) {
+        _committed_offset_clb = std::move(callback);
+    }
 
     fmt::iterator format_to(fmt::iterator) const;
 
@@ -275,7 +277,7 @@ private:
     // queued write prior to dispatch, hence don't need to be separately
     // dispatched
     size_t _merged_writes{0};
-    callbacks* _callbacks = nullptr;
+    committed_offset_clb _committed_offset_clb;
     ss::future<>
     maybe_advance_stable_offset(const ss::lw_shared_ptr<inflight_write>&);
     ss::future<> process_flush_ops(size_t);

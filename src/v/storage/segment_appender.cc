@@ -103,7 +103,7 @@ segment_appender::segment_appender(segment_appender&& o) noexcept
   , _inflight_dispatched(std::exchange(o._inflight_dispatched, 0))
   , _dispatched_writes(std::exchange(o._dispatched_writes, 0))
   , _merged_writes(std::exchange(o._merged_writes, 0))
-  , _callbacks(std::exchange(o._callbacks, nullptr))
+  , _committed_offset_clb(std::exchange(o._committed_offset_clb, {}))
   , _inactive_timer([this] { handle_inactive_timer(); })
   , _chunk_size(o._chunk_size) {
     o._closed = true;
@@ -423,8 +423,8 @@ ss::future<> segment_appender::maybe_advance_stable_offset(
 
     // if we advanced the committed offset, do the callbacks and
     // trigger any flush operations
-    if (_callbacks) {
-        _callbacks->committed_physical_offset(*committed);
+    if (_committed_offset_clb) {
+        _committed_offset_clb(*committed);
     }
     _stable_offset = *committed;
     return process_flush_ops(*committed);
