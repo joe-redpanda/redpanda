@@ -711,21 +711,22 @@ class LogCompactionTxRemovalTestBase(LogCompactionTestBase, PreallocNodesTest):
         for node in self.redpanda.nodes:
             num_control_batches = 0
             num_fence_batches = 0
-            records_and_batches = viewer.read_kafka_records(node, self.topic_spec.name)
-            for record_or_batch in records_and_batches:
-                if "expanded_attrs" not in record_or_batch:
-                    continue
-                if record_or_batch["expanded_attrs"]["control_batch"]:
-                    num_control_batches += 1
-                if record_or_batch["type_name"] == "tx_fence":
-                    num_fence_batches += 1
+            partitions = viewer.read_kafka_records(node, self.topic_spec.name)
+            for partition in partitions:
+                for record_or_batch in partition:
+                    if "expanded_attrs" not in record_or_batch:
+                        continue
+                    if record_or_batch["expanded_attrs"]["control_batch"]:
+                        num_control_batches += 1
+                    if record_or_batch["type_name"] == "tx_fence":
+                        num_fence_batches += 1
 
-            assert num_control_batches == 0, (
-                f"expected 0 control batches (abort/commit batches), saw {num_control_batches} on node {node.name()}"
-            )
-            assert num_fence_batches == 0, (
-                f"expected 0 tx_fence batches, saw {num_fence_batches}  on node {node.name()}"
-            )
+                assert num_control_batches == 0, (
+                    f"expected 0 control batches (abort/commit batches), saw {num_control_batches} on node {node.name}"
+                )
+                assert num_fence_batches == 0, (
+                    f"expected 0 tx_fence batches, saw {num_fence_batches}  on node {node.name}"
+                )
 
     def do_test_tx_control_batch_removal(self, test_case_name, test_case):
         self.logger.info(
@@ -737,7 +738,6 @@ class LogCompactionTxRemovalTestBase(LogCompactionTestBase, PreallocNodesTest):
 
         # Restart the redpanda broker to roll segments
         self.redpanda.restart_nodes(self.redpanda.nodes)
-
 
         self.wait_for_sliding_window_compaction()
 
