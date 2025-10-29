@@ -10,10 +10,17 @@
 import subprocess
 
 from ducktape.errors import DucktapeError
+from ducktape.mark import matrix
 from ducktape.tests.test import TestContext
 
+from rptest.context.cloud_storage import CloudStorageType
 from rptest.clients.rpk import RpkTool
 from rptest.services.cluster import cluster
+from rptest.services.redpanda import (
+    SISettings,
+    get_cloud_storage_type,
+    CLOUD_TOPICS_CONFIG_STR,
+)
 from rptest.tests.redpanda_test import RedpandaTest
 
 # Expected log errors in tests that test misbehaving
@@ -35,10 +42,17 @@ class TxVerifierTest(RedpandaTest):
             "default_topic_partitions": 1,
             "enable_leader_balancer": False,
             "partition_autobalancing_mode": "off",
+            CLOUD_TOPICS_CONFIG_STR: True,
         }
 
         super(TxVerifierTest, self).__init__(
-            test_context=test_context, extra_rp_conf=extra_rp_conf
+            test_context=test_context,
+            extra_rp_conf=extra_rp_conf,
+            si_settings=SISettings(
+                test_context=test_context,
+                cloud_storage_enable_remote_read=False,
+                cloud_storage_enable_remote_write=False,
+            ),
         )
 
     def verify(self, tests: list[str]):
@@ -82,7 +96,8 @@ class TxVerifierTest(RedpandaTest):
             raise DucktapeError(errors)
 
     @cluster(num_nodes=3, log_allow_list=TX_ERROR_LOGS)
-    def test_all_tx_tests(self):
+    @matrix(cloud_storage_type=get_cloud_storage_type())
+    def test_all_tx_tests(self, cloud_storage_type: CloudStorageType):
         self.verify(
             [
                 "init",
