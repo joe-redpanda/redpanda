@@ -28,6 +28,7 @@
 #include <seastar/coroutine/maybe_yield.hh>
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <span>
 #include <utility>
@@ -872,8 +873,18 @@ topic_table::apply(set_topic_partitions_disabled_cmd cmd, model::offset o) {
 ss::future<std::error_code>
 topic_table::apply(bulk_force_reconfiguration_cmd cmd, model::offset o) {
     _last_applied_revision_id = model::revision_id(o);
+
+    // set the bulk command controller offset for deduplication
+    auto& partitions_with_lost_majority
+      = cmd.value.user_approved_force_recovery_partitions;
+    std::ranges::for_each(
+      partitions_with_lost_majority, [o](ntp_with_majority_loss& lost_ntp) {
+          lost_ntp.maybe_bulk_force_offset = o;
+      });
+
     auto validation_ec = validate_force_reconfigurable_partitions(
       cmd.value.user_approved_force_recovery_partitions);
+
     if (validation_ec) {
         co_return validation_ec;
     }
@@ -893,6 +904,8 @@ std::error_code topic_table::validate_force_reconfigurable_partition(
     if (!topic_md || topic_md->get().get_revision() != entry.topic_revision) {
         return errc::topic_not_exists;
     }
+    /*
+    remove validation on equivalent sets
     const auto& current_assignment = get_partition_assignment(ntp);
     if (!current_assignment) {
         return errc::no_partition_assignments;
@@ -910,6 +923,7 @@ std::error_code topic_table::validate_force_reconfigurable_partition(
             return errc::partition_already_exists;
         }
     }
+    */
     return errc::success;
 }
 
