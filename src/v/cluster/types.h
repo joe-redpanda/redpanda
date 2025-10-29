@@ -2081,7 +2081,7 @@ struct reconciliation_state_request
 struct ntp_with_majority_loss
   : serde::envelope<
       ntp_with_majority_loss,
-      serde::version<0>,
+      serde::version<1>,
       serde::compat_version<0>> {
     ntp_with_majority_loss() = default;
     explicit ntp_with_majority_loss(
@@ -2093,10 +2093,21 @@ struct ntp_with_majority_loss
       , topic_revision(r)
       , assignment(std::move(replicas))
       , dead_nodes(std::move(dead_nodes)) {}
+
     model::ntp ntp;
+
+    // the version of the topic, used in case a topic is created, force
+    // reconfigured, deleted then recreated
+    // to prevent an old force reconfigure from applying to the new topic
     model::revision_id topic_revision;
     std::vector<model::broker_shard> assignment;
     std::vector<model::node_id> dead_nodes;
+
+    // Internal state tracking:
+    // A bulk force reconfiguration will add these to topic table.
+    // The controller offset will be used as an epoch to deduplicate
+    // different bulk force reconfigurations on the same ntp
+    std::optional<model::offset> maybe_bulk_force_offset;
 
     template<typename H>
     friend H AbslHashValue(H h, const ntp_with_majority_loss& s) {
