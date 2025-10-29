@@ -90,9 +90,25 @@ class TxVerifierTest(RedpandaTest):
     def test_all_tx_tests(self, cloud_storage_type: CloudStorageType):
         rpk = RpkTool(self.redpanda)
 
-        spec = ("topic1-standard", "topic2-standard", "groupId-standard")
-        rpk.create_topic(spec[0])
-        rpk.create_topic(spec[1])
+        specs: list[tuple[str, str, str]] = []
+
+        # 2 standard topics
+        specs.append(("topic1-std", "topic2-std", "groupId-std"))
+        rpk.create_topic(specs[-1][0])
+        rpk.create_topic(specs[-1][1])
+
+        # 2 cloud topics
+        cloud_topic_config = {
+            "redpanda.cloud_topic.enabled": "true",
+        }
+        specs.append(("topic1-ct", "topic2-ct", "groupId-ct"))
+        rpk.create_topic(specs[-1][0], config=cloud_topic_config)
+        rpk.create_topic(specs[-1][1], config=cloud_topic_config)
+
+        # 1 standard topic and 1 cloud topic
+        specs.append(("topic1-std2", "topic2-ct2", "groupId-mixed"))
+        rpk.create_topic(specs[-1][0])
+        rpk.create_topic(specs[-1][1], config=cloud_topic_config)
 
         tests = [
             "init",
@@ -115,4 +131,5 @@ class TxVerifierTest(RedpandaTest):
             "read-process-write",
         ]
 
-        self.verify(tests, *spec)
+        for spec in specs:
+            self.verify(tests, *spec)
