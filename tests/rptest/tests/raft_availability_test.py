@@ -79,7 +79,7 @@ class RaftAvailabilityTest(RedpandaTest):
             return condition(result[0][0])
 
         wait_until(
-            check, timeout_sec=timeout, backoff_sec=0.5, err_msg=f"No leader emerged!"
+            check, timeout_sec=timeout, backoff_sec=0.5, err_msg="No leader emerged!"
         )
 
         duration = time.time() - t1
@@ -126,7 +126,7 @@ class RaftAvailabilityTest(RedpandaTest):
         count = 0
         while True:
             count += 1
-            self.logger.info(f"Waiting for a leader")
+            self.logger.info("Waiting for a leader")
             leader_id = admin.await_stable_leader(
                 topic, partition=0, namespace=namespace, timeout_s=30, backoff_s=2
             )
@@ -326,7 +326,7 @@ class RaftAvailabilityTest(RedpandaTest):
             lambda: self._is_available() is True,
             timeout_sec=ELECTION_TIMEOUT * 2,
             backoff_sec=0.5,
-            err_msg=f"Cluster did not become available!",
+            err_msg="Cluster did not become available!",
         )
 
         new_leader, _ = self._wait_for_leader(

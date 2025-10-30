@@ -41,7 +41,7 @@ class FullDiskHelper:
         self.redpanda.set_cluster_config(updates)
 
         # self.admin.patch_cluster_config(upsert=updates, remove=[])
-        self.logger.debug(f"Confirming new config values..")
+        self.logger.debug("Confirming new config values..")
         self._wait_for_node_config_value(self.CONF_MIN_FREE_BYTES, new_threshold)
 
     def trigger_low_space(self, node=None):

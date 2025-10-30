@@ -504,7 +504,7 @@ class TransactionsTest(RedpandaTest, TransactionsMixin):
                 producer.init_transactions()
                 break
             except ck.cimpl.KafkaException as e:
-                self.redpanda.logger.debug(f"error on init_transactions", exc_info=True)
+                self.redpanda.logger.debug("error on init_transactions", exc_info=True)
                 kafka_error = e.args[0]
                 assert kafka_error.code() in [
                     ck.cimpl.KafkaError.NOT_COORDINATOR,

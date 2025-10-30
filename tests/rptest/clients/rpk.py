@@ -1865,7 +1865,7 @@ class RpkTool:
                 except RpkException as e:
                     if e.returncode != 1:
                         raise e
-                    if not "NOT_COORDINATOR" in str(e):
+                    if "NOT_COORDINATOR" not in str(e):
                         e.parsed_output = parse_offset_delete_output(
                             e.stdout.splitlines()
                         )

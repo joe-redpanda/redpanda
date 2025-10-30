@@ -33,7 +33,6 @@ from logging import Logger
 from typing import (
     Any,
     Callable,
-    Generator,
     List,
     Literal,
     Mapping,

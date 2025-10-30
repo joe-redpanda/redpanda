@@ -353,7 +353,7 @@ class KeycloakService(Service):
             self.stop_node(node)
 
         node.account.ssh(f"rm -rf {KC_LOG_FILE}")
-        node.account.ssh(f"rm -rf /opt/keycloak/data/*", allow_fail=False)
+        node.account.ssh("rm -rf /opt/keycloak/data/*", allow_fail=False)
         if self._remote_config_file is not None:
             node.account.ssh(f"rm {self._remote_config_file}")
 
