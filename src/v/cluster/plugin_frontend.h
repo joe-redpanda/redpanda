@@ -131,11 +131,14 @@ public:
      */
     class validator {
     public:
+        using is_active_shadow_topic_fn
+          = ss::noncopyable_function<bool(const model::topic&)>;
         validator(
           topic_table*,
           plugin_table*,
           absl::flat_hash_set<model::topic>,
-          size_t max_transforms);
+          size_t max_transforms,
+          is_active_shadow_topic_fn is_active_shadow_topic);
 
         // Ensures that the mutation is valid.
         //
@@ -154,6 +157,7 @@ public:
         plugin_table* _table;
         absl::flat_hash_set<model::topic> _no_sink_topics;
         size_t _max_transforms;
+        is_active_shadow_topic_fn _is_active_shadow_topic;
     };
 
 private:
