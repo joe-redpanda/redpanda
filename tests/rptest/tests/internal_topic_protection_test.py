@@ -180,7 +180,7 @@ class InternalTopicProtectionTest(RedpandaTest):
             assert False, "Call to delete topic must fail"
         except Exception:
             self.redpanda.logger.info(
-                f"we were expecting delete_topic to fail", exc_info=True
+                "we were expecting delete_topic to fail", exc_info=True
             )
             pass
 

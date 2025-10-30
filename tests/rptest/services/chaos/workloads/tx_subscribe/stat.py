@@ -582,7 +582,7 @@ def collect(title, workload_dir, workload_nodes, source_partitions):
         logger.info(f"total stats: {total_result}")
     else:
         total_result = {"result": Result.NODATA}
-        logger.info(f"not enough data to calculate total stats")
+        logger.info("not enough data to calculate total stats")
 
     ret["total"] = total_result
     ret["result"] = Result.more_severe(ret["result"], total_result["result"])

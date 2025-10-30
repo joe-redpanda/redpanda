@@ -131,7 +131,7 @@ class TieredStorageTest(TieredStorageEndToEndTest, RedpandaTest):
         # this code assumes that all offsets will be available
         # but this is not the case if retention or compaction (or both) is enabled
         if not fake_ts:
-            self.logger.info(f"Timequery check is disabled")
+            self.logger.info("Timequery check is disabled")
             return
         fake_ts_step = self.producer_config.get("fake_timestamp_step_ms", 1000)
         num_messages = self.producer_config.get("msg_count", 10000)

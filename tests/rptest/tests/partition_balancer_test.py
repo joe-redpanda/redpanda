@@ -207,7 +207,7 @@ class PartitionBalancerService(EndToEndTest):
             )
         else:
             node_id = None
-            self.logger.info(f"waiting for quiescent state")
+            self.logger.info("waiting for quiescent state")
 
         def predicate(status):
             return status["status"] == "ready" and (
@@ -397,7 +397,7 @@ class PartitionBalancerTest(PartitionBalancerService):
                     # but just for the partition movement to start and then
                     # move to the next node.
 
-                    self.logger.info(f"waiting for partition balancer to kick in")
+                    self.logger.info("waiting for partition balancer to kick in")
 
                     node_id = self.redpanda.idx(node)
 

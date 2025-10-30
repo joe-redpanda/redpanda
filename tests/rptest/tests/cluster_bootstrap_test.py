@@ -10,7 +10,6 @@
 import concurrent.futures
 import threading
 
-import ducktape.errors
 from ducktape.mark import matrix
 from requests.exceptions import ConnectionError
 

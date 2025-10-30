@@ -9,7 +9,7 @@
 
 import math
 from time import time
-from typing import Any, TypeVar
+from typing import Any
 
 from ducktape.mark import matrix
 from ducktape.tests.test import TestContext
@@ -511,7 +511,7 @@ class OMBValidationTest(RedpandaCloudTest):
             assert metrics.clients_alive == producer_per_swarm_node, (
                 f"On {sname} bad clients_alive: {metrics.clients_alive} != {producer_per_swarm_node}"
             )
-            assert metrics.clients_stopped == 0, f"clients unexpectedly stopped"
+            assert metrics.clients_stopped == 0, "clients unexpectedly stopped"
 
             def in_range(name: str, value: float, nominal: float, max_range: float):
                 lb = nominal * (1 - max_range)
