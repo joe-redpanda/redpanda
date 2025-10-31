@@ -633,6 +633,13 @@ message AType {
   float f = 1;
 }"""
 
+    simple_b_proto_def = """
+syntax = "proto3";
+
+message BType {
+  double d = 1;
+}"""
+
     def __init__(self, test_context, *args, **kwargs):
         super().__init__(
             test_context=test_context,
@@ -761,8 +768,50 @@ message AType {
         )
 
         # Verify we can query the shadow topic
-        self.get_shadow_topic(
+        schemas_topic = self.get_shadow_topic(
             shadow_link_name="test-link", shadow_topic_name="_schemas"
+        )
+        assert schemas_topic.source_topic_name == "_schemas", (
+            f"Expected topic name '_schemas'. Got '{schemas_topic.source_topic_name}'"
+        )
+
+        # Verify posting on target schema registry - read is allowed
+        second_target_id = self.post_schema_to_subject(
+            target_sr_client, "second", self.simple_a_proto_def
+        )
+        assert second_target_id == second_id, (
+            f"Expected id {second_id}. Got {second_target_id}"
+        )
+
+        # Verify posting on target schema registry - write is disabled
+        result_raw = target_sr_client.post_subjects_subject_versions(
+            subject="third",
+            data=json.dumps(
+                {"schema": self.simple_b_proto_def, "schemaType": "PROTOBUF"}
+            ),
+        )
+        assert result_raw.status_code == 412, (
+            f"Expected error code '412'. Got {result_raw.status_code}"
+        )
+
+        # Verify that replication keeps up with source SR
+        third_id = self.post_schema_to_subject(
+            source_sr_client, "third", self.simple_b_proto_def
+        )
+        self.logger.debug(f"Third id: {third_id}")
+
+        wait_until(
+            lambda: "third" in self.get_subjects(source_sr_client),
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg="Failed to write to source SR",
+        )
+
+        wait_until(
+            subjects_match,
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg="Subjects do not match",
         )
 
     @cluster(
