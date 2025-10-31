@@ -154,6 +154,10 @@ ss::future<std::error_code> topic_table::do_local_delete(
     for (auto& [_, p_as] : tp->second.get_assignments()) {
         _partition_count--;
         auto ntp = model::ntp(nt.ns, nt.tp, p_as.id);
+        vlog(
+          clusterlog.info,
+          "248624 erasing in progress update for ntp: {}",
+          ntp);
         _updates_in_progress.erase(ntp);
         on_partition_deletion(ntp);
         _pending_ntp_deltas.emplace_back(
@@ -479,7 +483,7 @@ topic_table::apply(finish_moving_partition_replicas_cmd cmd, model::offset o) {
         co_return errc::topic_not_exists;
     }
 
-    // calculate deleta for backend
+    // calculate delta for backend
     auto current_assignment_it = tp->second.get_assignments().find(
       cmd.key.tp.partition);
 
@@ -491,6 +495,7 @@ topic_table::apply(finish_moving_partition_replicas_cmd cmd, model::offset o) {
         co_return errc::invalid_node_operation;
     }
     auto it = _updates_in_progress.find(cmd.key);
+
     if (it == _updates_in_progress.end()) {
         co_return errc::no_update_in_progress;
     }
@@ -499,7 +504,17 @@ topic_table::apply(finish_moving_partition_replicas_cmd cmd, model::offset o) {
     if (p_meta_it == tp->second.partitions.end()) {
         co_return errc::partition_not_exists;
     }
-    if (!is_cancelled_state(it->second.get_state())) {
+
+    // two valid forces may race to complete, in which case, the replica
+    // revisions will be wrong
+    // solution would likely be to plumb the intent offset through, and only
+    // remove in-progress updates when the revision from the given update has
+    // been found
+    //
+    // for now, we assume that the current update is the same as that which is
+    // being finished
+    auto& current_update = it->second;
+    if (!is_cancelled_state(current_update.get_state())) {
         // update went through and the cancellation didn't happen, we must
         // update replicas_revisions.
         p_meta_it->second.replicas_revisions = update_replicas_revisions(
@@ -509,11 +524,12 @@ topic_table::apply(finish_moving_partition_replicas_cmd cmd, model::offset o) {
     }
     p_meta_it->second.last_update_finished_revision = model::revision_id{o};
 
+    vlog(
+      clusterlog.info,
+      "248624 erasing in progress update for ntp: {}",
+      it->first);
     _updates_in_progress.erase(it);
-
-    _topics_map_revision++;
-
-    on_partition_move_finish(cmd.key, cmd.value);
+    ++_topics_map_revision;
 
     // notify backend about finished update
     _pending_ntp_deltas.emplace_back(
@@ -657,8 +673,12 @@ topic_table::apply(revert_cancel_partition_move_cmd cmd, model::offset o) {
     p_meta_it->second.last_update_finished_revision = model::revision_id{o};
 
     /// Since the update is already finished we drop in_progress state
-    _updates_in_progress.erase(in_progress_it);
 
+    vlog(
+      clusterlog.info,
+      "248624 erasing in progress update for ntp: {}",
+      in_progress_it->first);
+    _updates_in_progress.erase(in_progress_it);
     _topics_map_revision++;
 
     // notify backend about finished update
@@ -743,6 +763,15 @@ topic_table::apply(move_topic_replicas_cmd cmd, model::offset o) {
 ss::future<std::error_code>
 topic_table::apply(force_partition_reconfiguration_cmd cmd, model::offset o) {
     _last_applied_revision_id = model::revision_id(o);
+
+    vlog(
+      clusterlog.info,
+      " 248624 got force reconfiguration command for ntp: {}, with replicas: "
+      "{}, with bulk force offset: {}",
+      cmd.key,
+      cmd.value.replicas,
+      cmd.value.maybe_bulk_force_offset);
+
     // Check the topic exists.
     auto tp = _topics.find(model::topic_namespace_view(cmd.key));
     if (tp == _topics.end()) {
@@ -753,6 +782,8 @@ topic_table::apply(force_partition_reconfiguration_cmd cmd, model::offset o) {
       cmd.key.tp.partition);
 
     if (current_assignment_it == tp->second.get_assignments().end()) {
+        vlog(
+          clusterlog.info, "248624 partition does not exist ntp: {}", cmd.key);
         co_return errc::partition_not_exists;
     }
 
@@ -760,18 +791,102 @@ topic_table::apply(force_partition_reconfiguration_cmd cmd, model::offset o) {
         co_return errc::partition_disabled;
     }
 
+    // if the force reconfigure comes from a bulk force reconfigure, check that
+    // our intent has not been overridden by another force command
+    // this can happen in three cases:
+    //
+    // 1. another force command has exceeded the intent in
+    //    _partitions_to_force_reconfigure
+    // 2. another force command with excessive intent has completed and removed
+    //    the force configure request from _partitions_to_force_reconfigure
+    // 3. an in-progress force command with excessive intent is ongoing
+    //
+    // in all of these cases, the current command should be considered outdated
+    // and not be issued
+
+    // precondititon, this force reconfigure comes from a bulk command
+    if (cmd.value.maybe_bulk_force_offset) {
+        const auto command_bulk_force_offset
+          = cmd.value.maybe_bulk_force_offset.value();
+        const auto& force_it = _partitions_to_force_reconfigure.find(cmd.key);
+
+        // 2. the request has been removed
+        if (force_it == _partitions_to_force_reconfigure.end()) {
+            vlog(
+              clusterlog.info,
+              "248624 force reconfigure for ntp: {} with bulk force "
+              "reconfigure "
+              "offset: {} has been overridden by a more recent force command",
+              cmd.key,
+              command_bulk_force_offset);
+            co_return errc::concurrent_modification_error;
+        }
+
+        // 1. another command has exceeded the intent in the requests map
+        vassert(
+          force_it->second.maybe_bulk_force_offset,
+          "programmer error, map must always contain a bulk force offset");
+        auto requested_bulk_force_offset
+          = force_it->second.maybe_bulk_force_offset.value();
+        if (requested_bulk_force_offset > command_bulk_force_offset) {
+            vlog(
+              clusterlog.info,
+              "248624 force reconfigure for ntp: {} with bulk force "
+              "reconfigure "
+              "offset: {} has been overridden by a more recent force command "
+              "with offset: {}",
+              cmd.key,
+              command_bulk_force_offset,
+              requested_bulk_force_offset);
+            co_return errc::concurrent_modification_error;
+        }
+
+        // 3. there is an in-progress request that exceeds the intent of the
+        // current command
+        const auto& update_it = _updates_in_progress.find(cmd.key);
+        if (update_it != _updates_in_progress.end()) {
+            // the revision of the last command to
+            if (
+              update_it->second.get_update_revision()
+              >= model::revision_id{command_bulk_force_offset}) {
+                vlog(
+                  clusterlog.info,
+                  "248624 force reconfigure for ntp: {} with bulk force "
+                  "reconfigure "
+                  "offset: {} has been overridden by a more recent force "
+                  "command "
+                  "with offset: {}",
+                  cmd.key,
+                  command_bulk_force_offset,
+                  update_it->second.get_update_revision());
+                co_return errc::concurrent_modification_error;
+            }
+        }
+    }
+
     const auto& new_replicas = cmd.value.replicas;
-    auto update_revision = model::revision_id{o};
+    // the intent offset is the offset where the decision was made to perform
+    // this force reconfiguration
+    // for a bulk force reconfiguration, its the offset of the
+    //     bulk_force_reconfiguration command
+    // for a normal configuration, its the offset of the command itself
+    auto intent_offset = cmd.value.maybe_bulk_force_offset
+                           ? *cmd.value.maybe_bulk_force_offset
+                           : o;
+    auto update_revision = model::revision_id{intent_offset};
     auto& current_assignment = current_assignment_it->second;
 
     auto it = _updates_in_progress.find(cmd.key);
     if (it != _updates_in_progress.end()) {
+        vlog(clusterlog.info, "248624 overriding old move for ntp {}", cmd.key);
         // update in progress, amend it to update target replicas.
         it->second.force_set_state(
           new_replicas,
-          model::revision_id{o},
-          reconfiguration_policy::full_local_retention);
+          update_revision,
+          reconfiguration_policy::full_local_retention,
+          cmd.value.maybe_bulk_force_offset);
     } else {
+        vlog(clusterlog.info, "248624 new move for ntp: {}", cmd.key);
         _updates_in_progress.emplace(
           cmd.key,
           in_progress_update(
@@ -784,17 +899,40 @@ topic_table::apply(force_partition_reconfiguration_cmd cmd, model::offset o) {
              * reconfiguring partition.
              */
             reconfiguration_policy::full_local_retention,
-            &_probe));
+            &_probe,
+            cmd.value.maybe_bulk_force_offset));
     }
+
+    vassert(
+      _updates_in_progress.find(cmd.key) != _updates_in_progress.end(),
+      "what on earth");
     _topics_map_revision++;
 
     current_assignment.replicas = cmd.value.replicas;
+
+    vlog(
+      clusterlog.info,
+      "248624 successfully applied force reconfiguration for ntp: {}",
+      cmd.key);
+
+    // if a force reconfigure was accepted, whatever is in the map is either
+    // done or outdated, do this before the suspension point
+    auto force_it = _partitions_to_force_reconfigure.find(cmd.key);
+    if (force_it != _partitions_to_force_reconfigure.end()) {
+        vlog(
+          clusterlog.info,
+          "248624 erasing {} from partitions to force recover at end of apply",
+          cmd.key);
+        _partitions_to_force_reconfigure.erase(force_it);
+        ++_partitions_to_force_reconfigure_revision;
+    }
 
     _pending_ntp_deltas.emplace_back(
       std::move(cmd.key),
       current_assignment.group,
       update_revision,
       topic_table_ntp_delta_type::replicas_updated);
+
     co_await notify_waiters();
 
     co_return errc::success;
@@ -874,6 +1012,11 @@ ss::future<std::error_code>
 topic_table::apply(bulk_force_reconfiguration_cmd cmd, model::offset o) {
     _last_applied_revision_id = model::revision_id(o);
 
+    vlog(
+      clusterlog.info,
+      "248624 applying bulk force reconfiguration command at offset: {}",
+      o);
+
     // set the bulk command controller offset for deduplication
     auto& partitions_with_lost_majority
       = cmd.value.user_approved_force_recovery_partitions;
@@ -888,7 +1031,39 @@ topic_table::apply(bulk_force_reconfiguration_cmd cmd, model::offset o) {
     if (validation_ec) {
         co_return validation_ec;
     }
+
     for (auto& entry : cmd.value.user_approved_force_recovery_partitions) {
+        auto tp = _topics.find(model::topic_namespace_view(entry.ntp));
+        if (tp == _topics.end()) {
+            vlog(
+              clusterlog.info,
+              "248624 ntp: {} skipping on topic doesn't exist",
+              entry.ntp);
+            continue;
+        }
+
+        auto p_meta_it = tp->second.partitions.find(entry.ntp.tp.partition);
+        if (p_meta_it != tp->second.partitions.end()) {
+            if (
+              p_meta_it->second.last_update_finished_revision
+              >= model::revision_id(o)) {
+                vlog(
+                  clusterlog.info,
+                  "248624 skipping because the partition {} is already more up "
+                  "to date than the bulk force reconfiguration in question "
+                  "with "
+                  "current offset {}, found revision: {}",
+                  entry.ntp,
+                  o,
+                  p_meta_it->second.last_update_finished_revision);
+                continue;
+            }
+        } else {
+            vlog(
+              clusterlog.info,
+              "248624 ntp: {}skipping because partition does not exist",
+              entry.ntp);
+        }
         add_partition_to_force_reconfigure(std::move(entry));
     }
     co_return errc::success;
@@ -936,8 +1111,8 @@ std::error_code topic_table::validate_force_reconfigurable_partitions(
             result = error;
         }
         vlog(
-          clusterlog.debug,
-          "Processed force reconfiguration entry {}, result: {}",
+          clusterlog.info,
+          "248624 Processed force reconfiguration entry {}, result: {}",
           entry,
           error);
     }
@@ -1759,9 +1934,18 @@ ss::future<> topic_table::apply_snapshot(
 
 void topic_table::add_partition_to_force_reconfigure(
   ntp_with_majority_loss entry) {
+    vassert(
+      entry.maybe_bulk_force_offset.has_value(),
+      "all partitions added to partitions to force reconfigure must have bulk "
+      "offset set");
+
+    vlog(
+      clusterlog.info,
+      "248624 adding partition to force reconfigure with entry: {}",
+      entry.ntp);
     const auto& [it, _] = _partitions_to_force_reconfigure.try_emplace(
       entry.ntp);
-    it->second.push_back(std::move(entry));
+    it->second = entry;
     _partitions_to_force_reconfigure_revision++;
 }
 
@@ -2116,33 +2300,6 @@ size_t topic_table::get_node_partition_count(model::node_id id) const {
     return cnt;
 }
 
-void topic_table::on_partition_move_finish(
-  const model::ntp& ntp, const std::vector<model::broker_shard>& replicas) {
-    auto it = _partitions_to_force_reconfigure.find(ntp);
-    if (it == _partitions_to_force_reconfigure.end()) {
-        return;
-    }
-    auto& entries = it->second;
-    auto num_erased = std::erase_if(entries, [&replicas](const auto& entry) {
-        // check if the new replica set contains any dead nodes that were
-        // intended to be removed.
-        bool has_dead_nodes = std::any_of(
-          entry.dead_nodes.begin(),
-          entry.dead_nodes.end(),
-          [&replicas](const model::node_id& id) {
-              return contains_node(replicas, id);
-          });
-        return !has_dead_nodes;
-    });
-    if (num_erased > 0) {
-        _partitions_to_force_reconfigure_revision++;
-    }
-    if (entries.size() == 0) {
-        _partitions_to_force_reconfigure.erase(it);
-        _partitions_to_force_reconfigure_revision++;
-    }
-}
-
 void topic_table::on_partition_deletion(const model::ntp& ntp) {
     auto it = _partitions_to_force_reconfigure.find(ntp);
     if (it == _partitions_to_force_reconfigure.end()) {
@@ -2154,30 +2311,34 @@ void topic_table::on_partition_deletion(const model::ntp& ntp) {
         _partitions_to_force_reconfigure.erase(it);
         _partitions_to_force_reconfigure_revision++;
         vlog(
-          clusterlog.debug,
-          "marking force repair action as finished for partition: {} because "
+          clusterlog.info,
+          "248624 marking force repair action as finished for partition: {} "
+          "because "
           "the topic was deleted.",
           it->first);
         return;
     }
     // A newer version of the topic exists.
     // delete all entries for older revision of the topic.
-    auto& entries = it->second;
+    const auto& entry = it->second;
     auto new_topic_revision = topic_md.value().get().get_revision();
-    auto num_erased = std::erase_if(entries, [&](const auto& entry) {
-        return entry.topic_revision < new_topic_revision;
-    });
-    if (num_erased > 0) {
-        _partitions_to_force_reconfigure_revision++;
-    }
-    if (entries.size() == 0) {
+    if (entry.topic_revision <= new_topic_revision) {
         _partitions_to_force_reconfigure.erase(it);
         _partitions_to_force_reconfigure_revision++;
         vlog(
           clusterlog.debug,
-          "marking force repair action as finished for partition: {} because "
+          "248624 marking force repair action as finished for partition: {} "
+          "because "
           "the topic was deleted.",
           it->first);
+    } else {
+        vlog(
+          clusterlog.warn,
+          "a force repair action from the future was found. ntp: {}, current "
+          "revision: {}, forced repair revision: {}",
+          ntp,
+          new_topic_revision,
+          entry.topic_revision);
     }
 }
 

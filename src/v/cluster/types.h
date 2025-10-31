@@ -1721,15 +1721,22 @@ struct cancel_moving_partition_replicas_cmd_data
 struct force_partition_reconfiguration_cmd_data
   : serde::envelope<
       force_partition_reconfiguration_cmd_data,
-      serde::version<0>,
+      serde::version<1>,
       serde::compat_version<0>> {
     force_partition_reconfiguration_cmd_data() noexcept = default;
-    explicit force_partition_reconfiguration_cmd_data(replicas_t replicas)
-      : replicas(std::move(replicas)) {}
+    explicit force_partition_reconfiguration_cmd_data(
+      replicas_t replicas,
+      std::optional<model::offset> maybe_bulk_force_offset = std::nullopt)
+      : replicas(std::move(replicas))
+      , maybe_bulk_force_offset(maybe_bulk_force_offset) {}
 
     replicas_t replicas;
 
-    auto serde_fields() { return std::tie(replicas); }
+    // used to correlate back to the spawning bulk_force_reconfiguration command
+    // if this force_partition_reconfiguration was spawned by one
+    std::optional<model::offset> maybe_bulk_force_offset;
+
+    auto serde_fields() { return std::tie(replicas, maybe_bulk_force_offset); }
 
     friend bool operator==(
       const force_partition_reconfiguration_cmd_data&,
@@ -2154,7 +2161,7 @@ struct bulk_force_reconfiguration_cmd_data
 };
 
 using force_recoverable_partitions_t
-  = absl::btree_map<model::ntp, std::vector<ntp_with_majority_loss>>;
+  = absl::btree_map<model::ntp, ntp_with_majority_loss>;
 
 struct reconciliation_state_reply
   : serde::envelope<

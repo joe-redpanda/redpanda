@@ -525,7 +525,7 @@ class NodeWiseRecoveryTest(RedpandaTest):
             *args,
             **kwargs,
         )
-        self.default_timeout_sec = 300
+        self.default_timeout_sec = 120
         self.rpk = RpkTool(self.redpanda)
         self.admin = Admin(self.redpanda, retries_amount=20, retry_codes=[503, 504])
 
@@ -636,7 +636,7 @@ class NodeWiseRecoveryTest(RedpandaTest):
     #
 
     @cluster(num_nodes=6)
-    @matrix(dead_node_count=[1, 2], ongoing_decommission=[True])
+    @matrix(dead_node_count=[1, 2], ongoing_decommission=[False])
     def test_node_wise_recovery(self, dead_node_count, ongoing_decommission):
         num_topics = 20
         # Create a mix of rf=1 and 3 topics.

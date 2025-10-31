@@ -29,7 +29,22 @@ struct ntp_reassignment {
     model::ntp ntp;
     allocated_partition allocated;
     reconfiguration_policy reconfiguration_policy;
-    ntp_reassignment_type type;
+
+    bool is_forced() { return false; }
+};
+
+struct forced_ntp_reassignment : public ntp_reassignment {
+    forced_ntp_reassignment(
+      model::ntp ntp,
+      ::cluster::allocated_partition allocated_partiton,
+      ::cluster::reconfiguration_policy reconfiguration_policy,
+      model::offset bulk_force_offset)
+      : ntp_reassignment(
+          std::move(ntp), std::move(allocated_partiton), reconfiguration_policy)
+      , bulk_force_offset{bulk_force_offset} {}
+
+    model::offset bulk_force_offset;
+    bool is_forced() { return true; }
 };
 
 struct planner_config {
@@ -83,6 +98,7 @@ public:
     struct plan_data {
         partition_balancer_violations violations;
         chunked_vector<ntp_reassignment> reassignments;
+        chunked_vector<forced_ntp_reassignment> forced_reassignments;
         chunked_vector<model::ntp> cancellations;
         chunked_hash_map<model::ntp, reallocation_failure_details>
           reallocation_failures;

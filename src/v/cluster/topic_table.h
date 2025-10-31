@@ -118,14 +118,16 @@ public:
           reconfiguration_state state,
           model::revision_id update_revision,
           reconfiguration_policy policy,
-          topic_table_probe* probe)
+          topic_table_probe* probe,
+          std::optional<model::offset> maybe_bulk_force_offset = std::nullopt)
           : _previous_replicas(std::move(previous_replicas))
           , _target_replicas(std::move(target_replicas))
           , _state(state)
           , _update_revision(update_revision)
           , _last_cmd_revision(update_revision)
           , _policy(policy)
-          , _probe(probe) {
+          , _probe(probe)
+          , _maybe_bulk_force_offset(maybe_bulk_force_offset) {
             if (_probe) {
                 _probe->handle_update(_previous_replicas, _target_replicas);
             }
@@ -163,7 +165,8 @@ public:
         void force_set_state(
           const replicas_t& new_replicas,
           model::revision_id rev,
-          reconfiguration_policy policy) {
+          reconfiguration_policy policy,
+          std::optional<model::offset> maybe_bulk_force_offset) {
             /**
              * a move from (A (prev) -> B (target)) -> C (force, new_replicas)
              * is redefined to
@@ -178,6 +181,7 @@ public:
             _last_cmd_revision = _update_revision = rev;
             _policy = policy;
             _state = reconfiguration_state::force_update;
+            _maybe_bulk_force_offset = maybe_bulk_force_offset;
         }
 
         const replicas_t& get_previous_replicas() const {
@@ -212,6 +216,10 @@ public:
                    || _state == reconfiguration_state::force_update;
         }
 
+        std::optional<model::offset> get_maybe_bulk_force_offset() const {
+            return _maybe_bulk_force_offset;
+        }
+
         friend std::ostream&
         operator<<(std::ostream&, const in_progress_update&);
 
@@ -224,6 +232,8 @@ public:
         reconfiguration_policy _policy;
         // _probe can be nullptr, in this case metrics are not updated.
         topic_table_probe* _probe;
+        // tracks the parent bulk_force_reconfiguration cmd if there was one
+        std::optional<model::offset> _maybe_bulk_force_offset;
     };
 
     struct partition_meta {
@@ -897,8 +907,6 @@ private:
       const force_recoverable_partitions_t&);
 
     void on_partition_deletion(const model::ntp&);
-    void on_partition_move_finish(
-      const model::ntp&, const std::vector<model::broker_shard>& replicas);
     std::error_code validate_force_reconfigurable_partition(
       const ntp_with_majority_loss&) const;
 

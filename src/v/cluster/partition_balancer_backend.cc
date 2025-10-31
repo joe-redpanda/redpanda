@@ -506,34 +506,48 @@ ss::future<> partition_balancer_backend::do_tick() {
       plan_data.reassignments, 32, [this](ntp_reassignment& reassignment) {
           _tick_in_progress->check();
           auto f = ss::make_ready_future<std::error_code>();
-          switch (reassignment.type) {
-          case regular:
-              f = _topics_frontend.move_partition_replicas(
-                reassignment.ntp,
-                reassignment.allocated.replicas(),
-                reassignment.reconfiguration_policy,
-                model::timeout_clock::now() + add_move_cmd_timeout,
-                _cur_term->id);
-              break;
-          case force:
-              f = _topics_frontend.force_update_partition_replicas(
-                reassignment.ntp,
-                reassignment.allocated.replicas(),
-                model::timeout_clock::now() + add_move_cmd_timeout);
-              break;
-          default:
-              vassert(
-                false,
-                "unexpected ntp reassignment type: {}",
-                reassignment.type);
-              break;
-          }
+
+          f = _topics_frontend.move_partition_replicas(
+            reassignment.ntp,
+            reassignment.allocated.replicas(),
+            reassignment.reconfiguration_policy,
+            model::timeout_clock::now() + add_move_cmd_timeout,
+            _cur_term->id);
           return std::move(f).then(
             [reassignment = std::move(reassignment)](auto errc) {
                 if (errc) {
                     vlog(
                       clusterlog.warn,
                       "submitting {} reassignment failed, error: {}",
+                      reassignment.ntp,
+                      errc.message());
+                }
+            });
+      });
+
+    co_await ss::max_concurrent_for_each(
+      plan_data.forced_reassignments,
+      32,
+      [this](forced_ntp_reassignment& reassignment) {
+          _tick_in_progress->check();
+          vlog(
+            clusterlog.info,
+            "executing force reassignment with ntp {} and offset: {}",
+            reassignment.ntp,
+            reassignment.bulk_force_offset);
+          return _topics_frontend
+            .force_update_partition_replicas(
+              reassignment.ntp,
+              reassignment.allocated.replicas(),
+              model::timeout_clock::now() + add_move_cmd_timeout,
+              _cur_term->id,
+              reassignment.bulk_force_offset)
+            .then([reassignment = std::move(reassignment)](auto errc) {
+                if (errc) {
+                    vlog(
+                      clusterlog.warn,
+                      "submitting {} forced reassignment failed, error: "
+                      "{}",
                       reassignment.ntp,
                       errc.message());
                 }
@@ -575,6 +589,15 @@ partition_balancer_overview_reply partition_balancer_backend::overview() const {
     ret.partitions_pending_force_recovery_count
       = _state.topics().partitions_to_force_recover().size();
     if (ret.partitions_pending_force_recovery_count > 0) {
+        for (auto& to_force : _state.topics().partitions_to_force_recover()) {
+            vlog(
+              clusterlog.info,
+              "248624 found partition to force recover: ntp {}, dead_nodes: "
+              "{}, assignment: {}",
+              to_force.first,
+              to_force.second.dead_nodes,
+              to_force.second.assignment);
+        }
         constexpr size_t max_partitions_to_include = 10;
         auto sample_size = std::min(
           ret.partitions_pending_force_recovery_count,

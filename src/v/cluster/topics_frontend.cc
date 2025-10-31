@@ -1348,7 +1348,15 @@ ss::future<std::error_code> topics_frontend::force_update_partition_replicas(
   model::ntp ntp,
   std::vector<model::broker_shard> new_replica_set,
   model::timeout_clock::time_point tout,
-  std::optional<model::term_id> term) {
+  std::optional<model::term_id> term,
+  std::optional<model::offset> maybe_bulk_force_offset) {
+    vlog(
+      clusterlog.info,
+      "248624 running force update partition replicas on ntp: {}, with "
+      "replicas : {}, bulk_force_offset: {}",
+      ntp,
+      new_replica_set,
+      maybe_bulk_force_offset);
     auto result = co_await stm_linearizable_barrier(tout);
     if (!result) {
         co_return result.error();
@@ -1358,7 +1366,13 @@ ss::future<std::error_code> topics_frontend::force_update_partition_replicas(
     }
     force_partition_reconfiguration_cmd cmd{
       std::move(ntp),
-      force_partition_reconfiguration_cmd_data{std::move(new_replica_set)}};
+      force_partition_reconfiguration_cmd_data{
+        std::move(new_replica_set), maybe_bulk_force_offset}};
+
+    vlog(
+      clusterlog.info,
+      "248624 confirm bulk_force_offset: {}",
+      cmd.value.maybe_bulk_force_offset);
 
     co_return co_await replicate_and_wait(
       _stm, _as, std::move(cmd), tout, term);
@@ -1421,6 +1435,12 @@ topics_frontend::force_recover_partitions_from_nodes(
     if (!result) {
         co_return result.error();
     }
+
+    vlog(
+      clusterlog.info,
+      "248624 got bulk force reconfiguration request with user approved "
+      "partitions {}",
+      user_approved_force_recovery_partitions);
     // check if the state of partitions to recover tallies with their
     // current state.
     const auto& topics = _topics.local();

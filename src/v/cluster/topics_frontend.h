@@ -113,7 +113,8 @@ public:
       model::ntp,
       std::vector<model::broker_shard>,
       model::timeout_clock::time_point,
-      std::optional<model::term_id> = std::nullopt);
+      std::optional<model::term_id> = std::nullopt,
+      std::optional<model::offset> maybe_bulk_force_offset = std::nullopt);
 
     /**
      * Given a list of defunct nodes, generates a list of ntps that lost

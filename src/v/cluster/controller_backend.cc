@@ -1301,7 +1301,7 @@ ss::future<result<ss::stop_iteration>> controller_backend::reconcile_ntp_step(
 
         co_return co_await reconcile_partition_reconfiguration(
           std::move(partition),
-          *replicas_view.update,
+          *replicas_view.update, // the underlying hashmap is pointer stable
           replicas_view.revisions());
     }
 
@@ -1323,14 +1323,22 @@ controller_backend::reconcile_partition_reconfiguration(
           update.get_target_replicas());
         // other replicas replicated a configuration with a newer revision,
         // probably our topic_table is out of date? Anyway, there is nothing for
-        // us to do except to wait for a topic table update.
+        // us to do except to wait or a topic table update.
         co_return ss::stop_iteration::yes;
     }
 
     // Check if configuration is reconciled. If it is, try finishing the update.
 
+    // the update may be pointer stable, but dispatching_update_finished begins
+    // its deletion process. snap the value here s.t. the value is guaranteed to
+    // live to the end of the coroutine
+
+    // NOLINTNEXTLINE(performance-unnecessary-copy-initialization) its safety
+    // necessary
+    const topic_table::in_progress_update snapped_update{update};
+
     auto update_ec = check_configuration_update(
-      _self, partition, update.get_resulting_replicas(), cmd_revision);
+      _self, partition, snapped_update.get_resulting_replicas(), cmd_revision);
     if (!update_ec) {
         auto leader = partition->get_leader_id();
         vlog(
@@ -1340,9 +1348,11 @@ controller_backend::reconcile_partition_reconfiguration(
           partition->ntp(),
           leader);
         if (can_finish_update(
-              leader, update.get_state(), update.get_resulting_replicas())) {
+              leader,
+              snapped_update.get_state(),
+              snapped_update.get_resulting_replicas())) {
             auto ec = co_await dispatch_update_finished(
-              partition->ntp(), update.get_resulting_replicas());
+              partition->ntp(), snapped_update.get_resulting_replicas());
             if (ec) {
                 co_return ec;
             } else {
@@ -1360,34 +1370,34 @@ controller_backend::reconcile_partition_reconfiguration(
     }
 
     // We need to dispatch the requested raft configuration update.
-    switch (update.get_state()) {
+    switch (snapped_update.get_state()) {
     case reconfiguration_state::in_progress:
         co_return co_await update_partition_replica_set(
           std::move(partition),
-          update.get_target_replicas(),
+          snapped_update.get_target_replicas(),
           replicas_revisions,
           cmd_revision,
-          update.get_reconfiguration_policy());
+          snapped_update.get_reconfiguration_policy());
     case reconfiguration_state::force_update:
         co_return co_await force_replica_set_update(
           std::move(partition),
-          update.get_previous_replicas(),
-          update.get_target_replicas(),
+          snapped_update.get_previous_replicas(),
+          snapped_update.get_target_replicas(),
           replicas_revisions,
           cmd_revision);
     case reconfiguration_state::cancelled:
         co_return co_await cancel_replica_set_update(
           std::move(partition),
-          update.get_previous_replicas(),
+          snapped_update.get_previous_replicas(),
           replicas_revisions,
-          update.get_target_replicas(),
+          snapped_update.get_target_replicas(),
           cmd_revision);
     case reconfiguration_state::force_cancelled:
         co_return co_await force_abort_replica_set_update(
           std::move(partition),
-          update.get_previous_replicas(),
+          snapped_update.get_previous_replicas(),
           replicas_revisions,
-          update.get_target_replicas(),
+          snapped_update.get_target_replicas(),
           cmd_revision);
     }
     __builtin_unreachable();

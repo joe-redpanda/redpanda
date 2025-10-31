@@ -250,6 +250,11 @@ private:
         }
     };
 
+    struct force_reassignment {
+        allocated_partition allocated_partition;
+        model::offset bulk_force_offset;
+    };
+
     partition_balancer_planner& _parent;
     chunked_hash_map<model::ntp, partition_sizes> _ntp2sizes;
     chunked_hash_map<
@@ -259,7 +264,7 @@ private:
       model::topic_namespace_eq>
       _topic2node_counts;
     absl::node_hash_map<model::ntp, reassignment_info> _reassignments;
-    absl::node_hash_map<model::ntp, allocated_partition> _force_reassignments;
+    absl::node_hash_map<model::ntp, force_reassignment> _force_reassignments;
     size_t _failed_actions_count = 0;
     // we track missing partition size info separately as it requires force
     // refresh of health report
@@ -656,6 +661,8 @@ public:
 
     void force_move_dead_replicas(double max_disk_usage_ratio);
 
+    model::offset get_bulk_force_offset() { return _bulk_force_offset; }
+
 private:
     friend class request_context;
 
@@ -664,12 +671,14 @@ private:
       std::optional<request_context::partition_sizes> sizes,
       const partition_assignment& assignment,
       std::vector<model::node_id> nodes_to_remove,
-      request_context& ctx)
+      request_context& ctx,
+      model::offset bulk_force_offset)
       : _ntp(std::move(ntp))
       , _sizes(std::move(sizes))
       , _original_assignment(assignment)
       , _nodes_to_remove(nodes_to_remove.begin(), nodes_to_remove.end())
-      , _ctx(ctx) {}
+      , _ctx(ctx)
+      , _bulk_force_offset(bulk_force_offset) {}
 
     allocation_constraints
     get_allocation_constraints(double max_disk_usage_ratio) const;
@@ -679,6 +688,7 @@ private:
     const partition_assignment& _original_assignment;
     absl::flat_hash_set<model::node_id> _nodes_to_remove;
     request_context& _ctx;
+    model::offset _bulk_force_offset;
     result<allocated_partition> _reallocation = errc::allocation_error;
 };
 
@@ -957,44 +967,152 @@ auto partition_balancer_planner::request_context::do_with_partition(
   Visitor& visitor) {
     const auto& orig_replicas = assignment.replicas;
 
-    { // first thing to check, is this partition being forced
-      // check if the ntp is to be force reconfigured.
-        auto topic_md = _parent._state.topics().get_topic_metadata_ref(
+    // first thing to check, is this partition being forced
+    // check if the ntp is to be force reconfigured.
+    auto maybe_force_reconfig_partition = [&] -> std::optional<partition> {
+        // standard checks, does the original topic exist still, is there still
+        // a forced reconfiguration
+        auto maybe_topic_md = _parent._state.topics().get_topic_metadata_ref(
           model::topic_namespace_view{ntp});
         const auto& force_reconfigurable_partitions
           = _parent._state.topics().partitions_to_force_recover();
         auto force_it = force_reconfigurable_partitions.find(ntp);
-        if (topic_md && force_it != force_reconfigurable_partitions.end()) {
-            auto topic_revision = topic_md.value().get().get_revision();
-            const auto& entries = force_it->second;
-            auto it = std::find_if(
-              entries.begin(), entries.end(), [&](const auto& entry) {
-                  return entry.topic_revision == topic_revision
-                         && are_replica_sets_equal(
-                           entry.assignment, orig_replicas);
-              });
 
-            if (it != entries.end()) {
-                auto size_it = _ntp2sizes.find(ntp);
-                std::optional<request_context::partition_sizes> sizes;
-                if (size_it != _ntp2sizes.end()) {
-                    sizes = size_it->second;
-                }
-                partition part{force_reassignable_partition{
-                  ntp, sizes, assignment, it->dead_nodes, *this}};
+        if (!maybe_topic_md) {
+            // topic was deleted, exit
+            vlog(
+              clusterlog.info,
+              "248624 pbp tick ntp: {} exiting with not found in topic "
+              "metadata",
+              ntp);
+            return std::nullopt;
+        }
 
-                auto deferred = ss::defer([&] {
-                    auto& force_reassignable
-                      = std::get<force_reassignable_partition>(part._variant);
-                    if (force_reassignable._reallocation) {
-                        _force_reassignments.emplace(
-                          ntp,
-                          std::move(force_reassignable._reallocation.value()));
-                    }
-                });
-                return visitor(part);
+        if (force_it == force_reconfigurable_partitions.end()) {
+            // force_reconfiguration completed or cancelled
+            vlog(
+              clusterlog.info,
+              "248624 pbp tick ntp: {} exiting eith force reconfigure not "
+              "requested",
+              ntp);
+            return std::nullopt;
+        }
+        const auto& topic_md = maybe_topic_md->get();
+        const auto& force_entry = force_it->second;
+
+        if (topic_md.get_revision() != force_entry.topic_revision) {
+            // topic was deleted and recreated, this force entry no longer
+            // applies
+            vlog(
+              clusterlog.info,
+              "248624 pbp tick ntp: {} exiting with revision difference",
+              ntp);
+            return std::nullopt;
+        }
+
+        // now check if there is an ongoing force reconfiguration matching the
+        // requested one
+        const auto& ongoing_updates
+          = _parent._state.topics().updates_in_progress();
+
+        vassert(
+          force_entry.maybe_bulk_force_offset.has_value(),
+          "no force reconfiguration entry should ever be emplaced within "
+          "force_reconfigurable_partitions without a parent bulk force "
+          "reconfiguration offset");
+        model::offset requested_bulk_force_offset{
+          force_entry.maybe_bulk_force_offset.value()};
+
+        auto ongoing_update_it = ongoing_updates.find(ntp);
+        if (ongoing_update_it != ongoing_updates.end()) {
+            const auto& ongoing_update = ongoing_update_it->second;
+            const auto ongoing_update_revision
+              = ongoing_update.get_update_revision();
+
+            vlog(
+              clusterlog.info,
+              "248624 ntp tick ntp: {} requested_bulk_force_offset: {}, "
+              "ongoing_update_revision: {}, ongoing is forced?: {}",
+              ntp,
+              requested_bulk_force_offset,
+              ongoing_update_revision,
+              ongoing_update.get_state()
+                == reconfiguration_state::force_update);
+
+            if (
+              ongoing_update_revision
+                >= model::revision_id(requested_bulk_force_offset)
+              && ongoing_update.get_state()
+                   == reconfiguration_state::force_update) {
+                // the ongoing reconfiguration has a higher offset and is
+                // therefore a more recent intent to force reconfigure, do not
+                // override it
+                vlog(
+                  clusterlog.info,
+                  "248624 ntp: {} exiting because ongoing is same or greater "
+                  "intent",
+                  ntp);
+                return std::nullopt;
             }
         }
+
+        auto size_it = _ntp2sizes.find(ntp);
+        std::optional<request_context::partition_sizes> sizes;
+        if (size_it != _ntp2sizes.end()) {
+            sizes = size_it->second;
+        }
+        partition part{force_reassignable_partition{
+          ntp,
+          sizes,
+          assignment,
+          force_entry.dead_nodes,
+          *this,
+          requested_bulk_force_offset}};
+
+        vlog(
+          clusterlog.info,
+          "248624 exiting with force reassignment partition for ntp: {}",
+          ntp);
+
+        return part;
+    }();
+
+    if (maybe_force_reconfig_partition) {
+        auto& part = *maybe_force_reconfig_partition;
+        auto deferred
+          = ss::
+            defer(
+              [&] {
+                  auto& force_reassignable
+                    = std::get<force_reassignable_partition>(part._variant);
+                  vlog(
+                    clusterlog.info,
+                    "248624 pbp tick ntp: {} in deferred lambda",
+                    force_reassignable.ntp());
+                  if (force_reassignable._reallocation && (force_reassignable._reallocation.assume_value().replicas().size() > 0)) {
+                      vlog(
+                        clusterlog.info,
+                        "248624 pbp tick ntp: {} in deferred lambda, adding to "
+                        "map with replica size",
+                        force_reassignable.ntp(),
+                        force_reassignable._reallocation.assume_value()
+                          .replicas()
+                          .size());
+                      _force_reassignments.emplace(
+                        ntp,
+                        force_reassignment{
+                          .allocated_partition = std::move(
+                            force_reassignable._reallocation.value()),
+                          .bulk_force_offset
+                          = force_reassignable.get_bulk_force_offset()});
+                  }
+              });
+
+        vlog(
+          clusterlog.info,
+          "248624 running visitor for ntp: {}",
+          std::get<force_reassignable_partition>(part._variant).ntp());
+        return visitor(part);
     }
 
     const bool is_disabled = _parent._state.topics().is_disabled(ntp);
@@ -2112,6 +2230,15 @@ partition_balancer_planner::get_force_repair_actions(request_context& ctx) {
       "found {} force repair actions",
       ctx.state().topics().partitions_to_force_recover().size());
 
+    for (auto& force_repair_action :
+         ctx.state().topics().partitions_to_force_recover()) {
+        vlog(
+          clusterlog.info,
+          "248624 found force_repair_action ntp: {}, dead nodes: {}",
+          force_repair_action.first,
+          force_repair_action.second.dead_nodes);
+    }
+
     auto it = ctx.state().topics().partitions_to_force_recover_it_begin();
     while (it != ctx.state().topics().partitions_to_force_recover_it_end()) {
         if (!ctx.can_add_reassignment()) {
@@ -2122,7 +2249,7 @@ partition_balancer_planner::get_force_repair_actions(request_context& ctx) {
               [&](force_reassignable_partition& part) {
                   vlog(
                     clusterlog.info,
-                    "partition: {} is force reassignable",
+                    "248624 partition: {} is force reassignable",
                     part.ntp());
                   part.force_move_dead_replicas(
                     ctx.config().max_disk_usage_ratio);
@@ -2130,16 +2257,19 @@ partition_balancer_planner::get_force_repair_actions(request_context& ctx) {
               [&](reassignable_partition& part) {
                   vlog(
                     clusterlog.info,
-                    "partition: {} is only reassignable",
+                    "248624 partition: {} is only reassignable",
                     part.ntp());
               },
               [&](moving_partition& part) {
-                  vlog(clusterlog.info, "partition: {} is moving", part.ntp());
+                  vlog(
+                    clusterlog.info,
+                    "248624 partition: {} is moving",
+                    part.ntp());
               },
               [&](immutable_partition& part) {
                   vlog(
                     clusterlog.info,
-                    "partition: {} is immutable because: {}",
+                    "248624 partition: {} is immutable because: {}",
                     part.ntp(),
                     static_cast<int>(part.reason()));
               });
@@ -2156,17 +2286,24 @@ void partition_balancer_planner::request_context::collect_actions(
           ntp_reassignment{
             .ntp = ntp,
             .allocated = std::move(reallocated_meta.partition),
-            .reconfiguration_policy = reallocated_meta.reconfiguration_policy,
-            .type = ntp_reassignment_type::regular});
+            .reconfiguration_policy = reallocated_meta.reconfiguration_policy});
     }
 
+    result.forced_reassignments.reserve(_force_reassignments.size());
     for (auto& [ntp, reallocated] : _force_reassignments) {
-        result.reassignments.push_back(
-          ntp_reassignment{
-            .ntp = ntp,
-            .allocated = std::move(reallocated),
-            .type = ntp_reassignment_type::force});
+        forced_ntp_reassignment fnr(
+          ntp,
+          std::move(reallocated.allocated_partition),
+          reconfiguration_policy::full_local_retention,
+          reallocated.bulk_force_offset);
+        vlog(
+          clusterlog.info,
+          "248624 emplacing ntp {} bulk_force_offset: {}",
+          ntp,
+          reallocated.bulk_force_offset);
+        result.forced_reassignments.push_back(std::move(fnr));
     }
+    _force_reassignments.clear();
 
     result.failed_actions_count = _failed_actions_count;
 
