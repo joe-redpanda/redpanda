@@ -17,6 +17,7 @@
 #include "ssx/future-util.h"
 
 #include <algorithm>
+#include <functional>
 
 namespace kafka::client {
 
@@ -51,6 +52,7 @@ direct_consumer::fetch_next(std::chrono::milliseconds timeout) {
         // the remainder is synchronous, no lock is needed
         auto& response_to_filter = maybe_response_to_filter.value();
         filter_stale_subscriptions(response_to_filter);
+        update_start_offsets(response_to_filter);
         co_return maybe_response_to_filter;
 
     } catch (ss::condition_variable_timed_out&) {
@@ -59,7 +61,7 @@ direct_consumer::fetch_next(std::chrono::milliseconds timeout) {
 }
 
 void direct_consumer::filter_stale_subscriptions(
-  chunked_vector<fetched_topic_data>& responses_to_filter) {
+  chunked_vector<fetched_topic_data>& responses_to_filter) const {
     // for each topic, remove stale partitions
     for (auto& topic_data : responses_to_filter) {
         auto& partition_data = topic_data.partitions;
@@ -103,6 +105,58 @@ void direct_consumer::filter_stale_subscriptions(
       responses_to_filter.end() - non_empty_subsegment.size());
 }
 
+void direct_consumer::update_start_offsets(
+  const chunked_vector<fetched_topic_data>& fetched_data) {
+    for (const auto& topic_data : fetched_data) {
+        for (const auto& partition_data : topic_data.partitions) {
+            // we have already filtered the map, we know these will be found
+            auto maybe_subscription = find_subscription(
+              topic_data.topic, partition_data.partition_id);
+            vassert(
+              maybe_subscription.has_value(),
+              "invoke only after filtering, all subscriptions should be "
+              "consistent");
+            auto& subscription = maybe_subscription->get();
+            source_partition_offsets spo{
+              .log_start_offset = partition_data.start_offset,
+              .high_watermark = partition_data.high_watermark,
+              .last_stable_offset = partition_data.last_stable_offset,
+              .last_offset_update_timestamp = ss::lowres_clock::now()};
+            if (
+              subscription.last_known_source_offsets.log_start_offset
+              > spo.log_start_offset) {
+                vlog(
+                  _cluster->logger().error,
+                  "log start offset should never move backward, current: {}, "
+                  "found: {}",
+                  subscription.last_known_source_offsets.log_start_offset,
+                  spo.log_start_offset);
+            }
+            if (
+              subscription.last_known_source_offsets.high_watermark
+              > spo.high_watermark) {
+                vlog(
+                  _cluster->logger().warn,
+                  "high watermark should not normally move backward, current: "
+                  "{}, found: {}",
+                  subscription.last_known_source_offsets.high_watermark,
+                  spo.high_watermark);
+            }
+            if (
+              subscription.last_known_source_offsets.last_stable_offset
+              > spo.last_stable_offset) {
+                vlog(
+                  _cluster->logger().error,
+                  "last known stable should never move backward, "
+                  "current: {}, found: {}",
+                  subscription.last_known_source_offsets.last_stable_offset,
+                  spo.last_stable_offset);
+            }
+            subscription.last_known_source_offsets = spo;
+        }
+    }
+}
+
 void direct_consumer::update_configuration(configuration cfg) {
     vlog(
       _cluster->logger().info,
@@ -118,15 +172,10 @@ void direct_consumer::update_configuration(configuration cfg) {
 
 std::optional<source_partition_offsets>
 direct_consumer::get_source_offsets(model::topic_partition_view tp) const {
-    auto it = _subscriptions.find(tp.topic);
-    if (it == _subscriptions.end()) {
-        return std::nullopt;
-    }
-    auto p_it = it->second.find(tp.partition);
-    if (p_it == it->second.end()) {
-        return std::nullopt;
-    }
-    return p_it->second.last_known_source_offsets;
+    return find_subscription(tp.topic, tp.partition)
+      .transform([](std::reference_wrapper<const subscription> sub) {
+          return sub.get().last_known_source_offsets;
+      });
 }
 
 ss::future<> direct_consumer::update_fetchers(
@@ -231,7 +280,24 @@ fetcher& direct_consumer::get_fetcher(model::node_id id) {
     return *it->second;
 }
 
-std::optional<subscription_epoch> direct_consumer::find_subscription_epoch(
+std::optional<std::reference_wrapper<const direct_consumer::subscription>>
+direct_consumer::find_subscription(
+  const model::topic& topic, model::partition_id partition_id) const {
+    auto t_it = _subscriptions.find(topic);
+    if (t_it == _subscriptions.end()) {
+        return std::nullopt;
+    }
+
+    auto& p_map = t_it->second;
+    auto p_it = p_map.find(partition_id);
+    if (p_it == p_map.end()) {
+        return std::nullopt;
+    }
+    return p_it->second;
+}
+
+std::optional<std::reference_wrapper<direct_consumer::subscription>>
+direct_consumer::find_subscription(
   const model::topic& topic, model::partition_id partition_id) {
     auto t_it = _subscriptions.find(topic);
     if (t_it == _subscriptions.end()) {
@@ -243,7 +309,14 @@ std::optional<subscription_epoch> direct_consumer::find_subscription_epoch(
     if (p_it == p_map.end()) {
         return std::nullopt;
     }
-    return p_it->second.subscription_epoch;
+    return p_it->second;
+}
+
+std::optional<subscription_epoch> direct_consumer::find_subscription_epoch(
+  const model::topic& topic, model::partition_id partition_id) const {
+    return find_subscription(topic, partition_id).transform([](auto sub) {
+        return sub.get().subscription_epoch;
+    });
 }
 
 ss::future<> direct_consumer::start() {
@@ -348,24 +421,6 @@ ss::future<> direct_consumer::handle_metadata_update() {
 
 void direct_consumer::on_metadata_update(const metadata_update&) {
     ssx::spawn_with_gate(_gate, [this] { return handle_metadata_update(); });
-}
-
-void direct_consumer::maybe_update_source_partition_offsets(
-  model::topic_partition_view tp, source_partition_offsets offsets) {
-    auto it = _subscriptions.find(tp.topic);
-    if (it == _subscriptions.end()) {
-        return;
-    }
-    auto p_it = it->second.find(tp.partition);
-    if (p_it == it->second.end()) {
-        return;
-    }
-    auto& sub = p_it->second;
-    if (
-      offsets.last_offset_update_timestamp
-      > sub.last_known_source_offsets.last_offset_update_timestamp) {
-        sub.last_known_source_offsets = offsets;
-    }
 }
 
 direct_consumer::~direct_consumer() = default;
