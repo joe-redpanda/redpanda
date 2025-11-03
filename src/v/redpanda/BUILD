@@ -76,6 +76,7 @@ redpanda_cc_library(
         "//src/v/redpanda/admin/services/internal:breakglass",
         "//src/v/redpanda/admin/services/internal:debug",
         "//src/v/redpanda/admin/services/internal:metastore",
+        "//src/v/redpanda/admin/services/internal:shadow_link_internal",
         "//src/v/redpanda/admin/services/shadow_link",
         "//src/v/resource_mgmt:cpu_profiler",
         "//src/v/resource_mgmt:cpu_scheduling",
