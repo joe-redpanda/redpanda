@@ -27,7 +27,8 @@ class remote;
 
 namespace cluster {
 class health_monitor_frontend;
-}
+class topic_table;
+} // namespace cluster
 
 namespace cloud_topics {
 
@@ -213,6 +214,7 @@ public:
       cloud_io::remote*,
       cloud_storage_clients::bucket_name,
       seastar::sharded<cluster::health_monitor_frontend>*,
+      seastar::sharded<cluster::topic_table>*,
       level_zero_gc_config = {});
 
     /*
