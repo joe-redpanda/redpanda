@@ -156,7 +156,7 @@ class ClusterLinkingProgressVerifier:
             custom_node=self.preallocated_nodes,
             **self.producer_properties,
         )
-        self.producer.start(clean=False)
+        self.producer.start(clean=True)
         self.producer.wait_for_acks(10, 40, 1)
         readers = 8
 
