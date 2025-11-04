@@ -192,7 +192,7 @@ class KgoRepeaterService(Service):
 
         wait_until(
             lambda: self._is_ready(node),
-            timeout_sec=5,
+            timeout_sec=10,
             backoff_sec=0.5,
             err_msg=f"Timed out waiting for status endpoint {self.who_am_i()} to be available",
         )
