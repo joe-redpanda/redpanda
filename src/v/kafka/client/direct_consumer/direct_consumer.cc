@@ -17,6 +17,7 @@
 #include "ssx/future-util.h"
 
 #include <algorithm>
+#include <chrono>
 #include <functional>
 
 namespace kafka::client {
@@ -38,26 +39,41 @@ direct_consumer::direct_consumer(
 
 ss::future<fetches>
 direct_consumer::fetch_next(std::chrono::milliseconds timeout) {
+    static constexpr auto jitter = std::chrono::milliseconds(1);
     if (!_started) [[unlikely]] {
         throw std::runtime_error("Direct consumer is not started");
     }
     auto holder = _gate.hold();
+
+    auto started = ss::lowres_clock::now();
+    auto deadline = started + timeout;
     try {
-        auto maybe_response_to_filter = co_await _fetched_data_queue->pop(
-          timeout);
-        if (maybe_response_to_filter.has_error()) {
+        while (ss::lowres_clock::now() < deadline) {
+            auto remaining_timeout = deadline - ss::lowres_clock::now()
+                                     + jitter;
+            auto maybe_response_to_filter = co_await _fetched_data_queue->pop(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                remaining_timeout));
+            if (maybe_response_to_filter.has_error()) {
+                co_return maybe_response_to_filter;
+            }
+
+            // the remainder is synchronous, no lock is needed
+            auto& response_to_filter = maybe_response_to_filter.value();
+            filter_stale_subscriptions(response_to_filter);
+            update_start_offsets(response_to_filter);
+            filter_empty(response_to_filter);
+            if (response_to_filter.empty()) {
+                continue;
+            }
+
             co_return maybe_response_to_filter;
         }
-
-        // the remainder is synchronous, no lock is needed
-        auto& response_to_filter = maybe_response_to_filter.value();
-        filter_stale_subscriptions(response_to_filter);
-        update_start_offsets(response_to_filter);
-        co_return maybe_response_to_filter;
 
     } catch (ss::condition_variable_timed_out&) {
         co_return chunked_vector<fetched_topic_data>{};
     }
+    co_return chunked_vector<fetched_topic_data>{};
 }
 
 void direct_consumer::filter_stale_subscriptions(
@@ -155,6 +171,19 @@ void direct_consumer::update_start_offsets(
             subscription.last_known_source_offsets = spo;
         }
     }
+}
+
+void direct_consumer::filter_empty(
+  chunked_vector<fetched_topic_data>& responses_to_filter) const {
+    // for each topic, remove stale partitions
+    auto empty_subsegment = std::ranges::partition(
+      responses_to_filter, [](fetched_topic_data& topic_data) {
+          return topic_data.total_bytes != 0;
+      });
+
+    auto erase_iterator = responses_to_filter.end() - empty_subsegment.size();
+
+    responses_to_filter.erase_to_end(erase_iterator);
 }
 
 void direct_consumer::update_configuration(configuration cfg) {

@@ -33,13 +33,13 @@ filter_offset_only(
       model::topic_partition,
       chunked_vector<model::record_batch>>
       ret;
-    for (auto& [k, v] : fetch) {
-        if (v.empty()) {
-            continue;
-        }
-        ret.emplace(k, std::move(v));
-    }
-    return ret;
+    // for (auto& [k, v] : fetch) {
+    //     if (v.empty()) {
+    //         continue;
+    //     }
+    //     ret.emplace(k, std::move(v));
+    // }
+    return fetch;
 }
 } // namespace
 

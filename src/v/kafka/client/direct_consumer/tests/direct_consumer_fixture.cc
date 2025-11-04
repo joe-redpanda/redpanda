@@ -291,14 +291,8 @@ consumer_fixture::fetch_until_empty(direct_consumer& consumer) {
       chunked_vector<model::record_batch>>
       ret;
 
-    auto timeout = 1s;
-    auto deadline = ss::lowres_clock::now() + timeout;
-
     while (true) {
-        if (ss::lowres_clock::now() > deadline) {
-            break;
-        }
-        auto fetched = consumer.fetch_next(100ms).get();
+        auto fetched = consumer.fetch_next(1000ms).get();
 
         if (fetched.value().empty()) {
             break;

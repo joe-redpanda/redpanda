@@ -185,6 +185,9 @@ private:
     void update_start_offsets(
       const chunked_vector<fetched_topic_data>& fetched_data);
 
+    void
+    filter_empty(chunked_vector<fetched_topic_data>& responses_to_filter) const;
+
     cluster* _cluster;
 
     offset_reset_policy _reset_policy
