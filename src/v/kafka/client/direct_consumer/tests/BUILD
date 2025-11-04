@@ -69,6 +69,9 @@ redpanda_cc_gtest(
         "direct_consumer_fixture_test.cc",
     ],
     cpu = 1,
+    args = [
+        "--logger-log-level=kvstore=info:cluster=info:storage-resources=info:storage=info:syschecks=info:r/heartbeat=info:rpc=info:raft=info"
+    ],
     deps = [
         ":direct_consumer_fixture",
         "//src/v/model",
