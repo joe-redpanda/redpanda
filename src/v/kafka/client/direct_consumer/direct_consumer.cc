@@ -39,21 +39,22 @@ direct_consumer::direct_consumer(
 
 ss::future<fetches>
 direct_consumer::fetch_next(std::chrono::milliseconds timeout) {
-    static constexpr auto jitter = std::chrono::milliseconds(1);
+    static constexpr auto jitter = std::chrono::milliseconds{1};
     if (!_started) [[unlikely]] {
         throw std::runtime_error("Direct consumer is not started");
     }
     auto holder = _gate.hold();
 
-    auto started = ss::lowres_clock::now();
-    auto deadline = started + timeout;
+    auto deadline = ss::lowres_clock::now() + timeout;
+
     try {
         while (ss::lowres_clock::now() < deadline) {
-            auto remaining_timeout = deadline - ss::lowres_clock::now()
-                                     + jitter;
+            auto timeout_remaining
+              = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - ss::lowres_clock::now() + jitter);
+
             auto maybe_response_to_filter = co_await _fetched_data_queue->pop(
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                remaining_timeout));
+              timeout_remaining);
             if (maybe_response_to_filter.has_error()) {
                 co_return maybe_response_to_filter;
             }
@@ -62,7 +63,9 @@ direct_consumer::fetch_next(std::chrono::milliseconds timeout) {
             auto& response_to_filter = maybe_response_to_filter.value();
             filter_stale_subscriptions(response_to_filter);
             update_start_offsets(response_to_filter);
-            filter_empty(response_to_filter);
+
+            // if the filters have removed everything, there are no updates.
+            // rejoin the queue
             if (response_to_filter.empty()) {
                 continue;
             }
@@ -122,55 +125,82 @@ void direct_consumer::filter_stale_subscriptions(
 }
 
 void direct_consumer::update_start_offsets(
-  const chunked_vector<fetched_topic_data>& fetched_data) {
-    for (const auto& topic_data : fetched_data) {
-        for (const auto& partition_data : topic_data.partitions) {
-            // we have already filtered the map, we know these will be found
-            auto maybe_subscription = find_subscription(
-              topic_data.topic, partition_data.partition_id);
-            vassert(
-              maybe_subscription.has_value(),
-              "invoke only after filtering, all subscriptions should be "
-              "consistent");
-            auto& subscription = maybe_subscription->get();
-            source_partition_offsets spo{
-              .log_start_offset = partition_data.start_offset,
-              .high_watermark = partition_data.high_watermark,
-              .last_stable_offset = partition_data.last_stable_offset,
-              .last_offset_update_timestamp = ss::lowres_clock::now()};
-            if (
-              subscription.last_known_source_offsets.log_start_offset
-              > spo.log_start_offset) {
-                vlog(
-                  _cluster->logger().error,
-                  "log start offset should never move backward, current: {}, "
-                  "found: {}",
-                  subscription.last_known_source_offsets.log_start_offset,
-                  spo.log_start_offset);
-            }
-            if (
-              subscription.last_known_source_offsets.high_watermark
-              > spo.high_watermark) {
-                vlog(
-                  _cluster->logger().warn,
-                  "high watermark should not normally move backward, current: "
-                  "{}, found: {}",
-                  subscription.last_known_source_offsets.high_watermark,
-                  spo.high_watermark);
-            }
-            if (
-              subscription.last_known_source_offsets.last_stable_offset
-              > spo.last_stable_offset) {
-                vlog(
-                  _cluster->logger().error,
-                  "last known stable should never move backward, "
-                  "current: {}, found: {}",
-                  subscription.last_known_source_offsets.last_stable_offset,
-                  spo.last_stable_offset);
-            }
-            subscription.last_known_source_offsets = spo;
-        }
-    }
+  chunked_vector<fetched_topic_data>& fetched_data) {
+    auto empty_topic_subsegment = std::ranges::partition(
+      fetched_data, [this](auto& topic_data) {
+          // for (auto& topic_data : fetched_data) {
+          //  remove anything with no updates: it must have no data and have no
+          //  offset updates
+          auto non_updated_subsegment = std::ranges::partition(
+            topic_data.partitions, [this, &topic_data](auto& partition_data) {
+                auto maybe_subscription = find_subscription(
+                  topic_data.topic, partition_data.partition_id);
+                vassert(
+                  maybe_subscription.has_value(),
+                  "invoke only after filtering, all subscriptions should be "
+                  "consistent");
+                auto& subscription = maybe_subscription->get();
+                source_partition_offsets spo{
+                  .log_start_offset = partition_data.start_offset,
+                  .high_watermark = partition_data.high_watermark,
+                  .last_stable_offset = partition_data.last_stable_offset,
+                  .last_offset_update_timestamp = ss::lowres_clock::now()};
+
+                // not an update, screen it out
+                if (
+                  spo == subscription.last_known_source_offsets
+                  && partition_data.data.size() == 0) {
+                    subscription.last_known_source_offsets
+                      .last_offset_update_timestamp
+                      = ss::lowres_clock::now();
+                    return false;
+                }
+
+                if (
+                  subscription.last_known_source_offsets.log_start_offset
+                  > spo.log_start_offset) {
+                    vlog(
+                      _cluster->logger().error,
+                      "log start offset should never move backward, current: "
+                      "{}, "
+                      "found: {}",
+                      subscription.last_known_source_offsets.log_start_offset,
+                      spo.log_start_offset);
+                }
+                if (
+                  subscription.last_known_source_offsets.high_watermark
+                  > spo.high_watermark) {
+                    vlog(
+                      _cluster->logger().warn,
+                      "high watermark should not normally move backward, "
+                      "current: "
+                      "{}, found: {}",
+                      subscription.last_known_source_offsets.high_watermark,
+                      spo.high_watermark);
+                }
+                if (
+                  subscription.last_known_source_offsets.last_stable_offset
+                  > spo.last_stable_offset) {
+                    vlog(
+                      _cluster->logger().error,
+                      "last known stable should never move backward, "
+                      "current: {}, found: {}",
+                      subscription.last_known_source_offsets.last_stable_offset,
+                      spo.last_stable_offset);
+                }
+                subscription.last_known_source_offsets = spo;
+                return true;
+            });
+
+          // no need to update sizes, if there were data, it would not be
+          // filtered out
+          topic_data.partitions.erase_to_end(non_updated_subsegment.begin());
+
+          // gather the empty topics to the end s.t. they can be filtered out
+          return !topic_data.partitions.empty();
+      });
+
+    fetched_data.erase_to_end(empty_topic_subsegment.begin());
 }
 
 void direct_consumer::filter_empty(

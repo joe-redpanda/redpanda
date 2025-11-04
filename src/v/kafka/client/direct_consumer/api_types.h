@@ -90,6 +90,13 @@ struct source_partition_offsets {
     kafka::offset last_stable_offset{-1};
     // The timestamp that the fetch response was received by the client
     ss::lowres_clock::time_point last_offset_update_timestamp{};
+
+    // check all except timestamp
+    bool operator==(const source_partition_offsets& other) const {
+        return log_start_offset == other.log_start_offset
+               && high_watermark == other.high_watermark
+               && last_stable_offset == other.last_stable_offset;
+    }
 };
 
 struct partition_offset {

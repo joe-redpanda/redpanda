@@ -182,8 +182,7 @@ private:
     void filter_stale_subscriptions(
       chunked_vector<fetched_topic_data>& responses_to_filter) const;
 
-    void update_start_offsets(
-      const chunked_vector<fetched_topic_data>& fetched_data);
+    void update_start_offsets(chunked_vector<fetched_topic_data>& fetched_data);
 
     void
     filter_empty(chunked_vector<fetched_topic_data>& responses_to_filter) const;
