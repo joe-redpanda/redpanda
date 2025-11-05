@@ -463,7 +463,7 @@ fetcher::process_fetch_response(
     // assignment updates are not blocked by a longstanding fetch. At this
     // point, all inconsistent fetch responses should be discarded
     for (auto& topic_response : resp.data.responses) {
-        auto consistent_subrange = std::ranges::partition(
+        auto inconsistent_subrange = std::ranges::partition(
           topic_response.partitions,
           [this, &topic_response, &epochs](partition_data& partition_response) {
               return is_consistent_fetcher_epoch(
@@ -471,8 +471,7 @@ fetcher::process_fetch_response(
                 partition_response.partition_index,
                 epochs);
           });
-        topic_response.partitions.erase_to_end(
-          topic_response.partitions.end() - consistent_subrange.size());
+        topic_response.partitions.erase_to_end(inconsistent_subrange.begin());
     } // all responses now belong to consistent tps
 
     // For fetch session maintenance, the goal is to omit partitions from each

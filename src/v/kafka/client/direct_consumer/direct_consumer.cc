@@ -84,6 +84,7 @@ direct_consumer::fetch_next(std::chrono::milliseconds timeout) {
     } catch (ss::condition_variable_timed_out&) {
         co_return chunked_vector<fetched_topic_data>{};
     }
+    // fallthrough loop case
     co_return chunked_vector<fetched_topic_data>{};
 }
 
@@ -93,7 +94,7 @@ void direct_consumer::filter_fetch_data(
     for (auto& topic_data : responses_to_filter) {
         auto& partition_data = topic_data.partitions;
 
-        auto non_stale_subsegment = std::ranges::partition(
+        auto to_remove_subsegment = std::ranges::partition(
           partition_data,
           [this,
            &topic_data](const fetched_partition_data& partition_data) mutable {
@@ -126,20 +127,18 @@ void direct_consumer::filter_fetch_data(
                 topic_data.topic, partition_data, *maybe_subscription);
           });
 
-        auto erase_iterator = partition_data.end()
-                              - non_stale_subsegment.size();
-
+        // erase everything that is stale
+        auto erase_iterator = to_remove_subsegment.begin();
         partition_data.erase_to_end(erase_iterator);
     }
 
     // remove newly empty topics
-    auto non_empty_subsegment = std::ranges::partition(
+    auto empty_subsegment = std::ranges::partition(
       responses_to_filter, [](const fetched_topic_data& topic_data) {
           return !topic_data.partitions.empty();
       });
 
-    responses_to_filter.erase_to_end(
-      responses_to_filter.end() - non_empty_subsegment.size());
+    responses_to_filter.erase_to_end(empty_subsegment.begin());
 }
 
 bool direct_consumer::is_partition_data_stale(
