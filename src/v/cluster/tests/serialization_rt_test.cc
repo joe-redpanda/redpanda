@@ -1790,22 +1790,6 @@ SEASTAR_THREAD_TEST_CASE(serde_reflection_roundtrip) {
         roundtrip_test(std::move(data));
     }
     {
-        raft::transfer_leadership_request data{
-          .group = tests::random_named_int<raft::group_id>(),
-        };
-        if (tests::random_bool()) {
-            data.target = tests::random_named_int<model::node_id>();
-        }
-        roundtrip_test(data);
-    }
-    {
-        raft::transfer_leadership_reply data{
-          .success = tests::random_bool(),
-          .result = raft::errc::append_entries_dispatch_error,
-        };
-        roundtrip_test(data);
-    }
-    {
         raft::vnode data{
           tests::random_named_int<model::node_id>(),
           tests::random_named_int<model::revision_id>()};

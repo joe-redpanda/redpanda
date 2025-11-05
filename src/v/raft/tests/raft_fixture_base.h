@@ -52,7 +52,6 @@ enum class msg_type {
     heartbeat_v2,
     install_snapshot,
     timeout_now,
-    transfer_leadership,
     remake_learner_state,
     get_compaction_mcco,
     distribute_compaction_mtro
@@ -112,7 +111,6 @@ using reply_variant = std::variant<
   heartbeat_reply_v2,
   install_snapshot_reply,
   timeout_now_reply,
-  transfer_leadership_reply,
   remake_learner_state_reply,
   get_compaction_mcco_reply,
   distribute_compaction_mtro_reply>;
@@ -141,9 +139,6 @@ public:
 
     ss::future<result<timeout_now_reply>>
       timeout_now(model::node_id, timeout_now_request, rpc::client_opts) final;
-
-    ss::future<result<transfer_leadership_reply>> transfer_leadership(
-      model::node_id, transfer_leadership_request, rpc::client_opts) final;
 
     // TODO: move those methods out of Raft protocol.
     ss::future<> reset_backoff(model::node_id) final { co_return; }

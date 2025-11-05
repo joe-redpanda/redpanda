@@ -43,9 +43,6 @@ public:
 
     ss::future<bool> ensure_disconnect(model::node_id) final;
 
-    ss::future<result<transfer_leadership_reply>> transfer_leadership(
-      model::node_id, transfer_leadership_request, rpc::client_opts) final;
-
     ss::future<> reset_backoff(model::node_id n);
 
     ss::future<result<remake_learner_state_reply>> remake_learner_state(

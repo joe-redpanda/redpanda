@@ -160,20 +160,6 @@ ss::future<result<timeout_now_reply>> buffered_protocol::timeout_now(
       &consensus_client_protocol::timeout_now);
 }
 
-ss::future<result<transfer_leadership_reply>>
-buffered_protocol::transfer_leadership(
-  model::node_id target_node,
-  transfer_leadership_request req,
-  rpc::client_opts opts) {
-    return apply_with_gate(
-      _gate,
-      _base_protocol,
-      target_node,
-      std::move(req),
-      std::move(opts),
-      &consensus_client_protocol::transfer_leadership);
-}
-
 ss::future<result<remake_learner_state_reply>>
 buffered_protocol::remake_learner_state(
   model::node_id target_node,

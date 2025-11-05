@@ -50,13 +50,6 @@ public:
     ss::future<bool> ensure_disconnect(model::node_id) final {
         return ss::make_ready_future<bool>(true);
     }
-    ss::future<result<raft::transfer_leadership_reply>> transfer_leadership(
-      model::node_id,
-      raft::transfer_leadership_request,
-      rpc::client_opts) final {
-        return ss::make_ready_future<result<raft::transfer_leadership_reply>>(
-          raft::transfer_leadership_reply{});
-    }
     ss::future<> reset_backoff(model::node_id) final {
         return ss::make_ready_future<>();
     }
