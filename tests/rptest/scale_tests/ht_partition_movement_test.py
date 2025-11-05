@@ -7,6 +7,7 @@
 # the Business Source License, use of this software will be governed
 # by the Apache License, Version 2.0
 
+from typing import Any
 from ducktape.mark import parametrize
 from ducktape.utils.util import wait_until
 
@@ -18,10 +19,11 @@ from rptest.services.kgo_verifier_services import (
 )
 from rptest.tests.partition_movement import PartitionMovementMixin
 from rptest.tests.prealloc_nodes import PreallocNodesTest
+from ducktape.tests.test import TestContext
 
 
 class HighThroughputPartitionMovementTest(PreallocNodesTest, PartitionMovementMixin):
-    def __init__(self, test_context, *args, **kwargs):
+    def __init__(self, test_context: TestContext, *args: Any, **kwargs: Any):
         super().__init__(
             test_context=test_context,
             node_prealloc_count=1,
@@ -43,12 +45,12 @@ class HighThroughputPartitionMovementTest(PreallocNodesTest, PartitionMovementMi
             self._number_of_moves = 2
         else:
             self._partitions = 32
-            self._message_size = 256 * (2**10)  # 256 KB per message
-            self._message_cnt = 819200  # 100GB data
+            self._message_size = 256 * 1024
+            self._message_cnt = 819200
             self._consumers = 8
             self._number_of_moves = 5
 
-    def _start_producer(self, topic_name):
+    def _start_producer(self, topic_name: str):
         self.producer = KgoVerifierProducer(
             self.test_context,
             self.redpanda,
@@ -65,7 +67,7 @@ class HighThroughputPartitionMovementTest(PreallocNodesTest, PartitionMovementMi
             backoff_sec=1,
         )
 
-    def _start_consumer(self, topic_name):
+    def _start_consumer(self, topic_name: str):
         self.consumer = KgoVerifierConsumerGroupConsumer(
             self.test_context,
             self.redpanda,
@@ -76,7 +78,7 @@ class HighThroughputPartitionMovementTest(PreallocNodesTest, PartitionMovementMi
         )
         self.consumer.start(clean=False)
 
-    def verify(self, topic_name):
+    def verify(self, topic_name: str):
         self.producer.wait()
 
         self.consumer.wait()
@@ -96,7 +98,7 @@ class HighThroughputPartitionMovementTest(PreallocNodesTest, PartitionMovementMi
     @cluster(num_nodes=6)
     @parametrize(replication_factor=1)
     @parametrize(replication_factor=3)
-    def test_moving_single_partition_under_load(self, replication_factor):
+    def test_moving_single_partition_under_load(self, replication_factor: int):
         topic = TopicSpec(
             partition_count=self._partitions, replication_factor=replication_factor
         )
@@ -114,7 +116,7 @@ class HighThroughputPartitionMovementTest(PreallocNodesTest, PartitionMovementMi
 
         self.verify(topic.name)
 
-    def _random_move_and_cancel(self, topic, partition):
+    def _random_move_and_cancel(self, topic: str, partition: int):
         previous_assignment, new_assignment = self._dispatch_random_partition_move(
             topic, partition, allow_no_op=False
         )
@@ -130,7 +132,7 @@ class HighThroughputPartitionMovementTest(PreallocNodesTest, PartitionMovementMi
     @cluster(num_nodes=6)
     @parametrize(replication_factor=1)
     @parametrize(replication_factor=3)
-    def test_interrupting_partition_movement_under_load(self, replication_factor):
+    def test_interrupting_partition_movement_under_load(self, replication_factor: int):
         topic = TopicSpec(
             partition_count=self._partitions, replication_factor=replication_factor
         )
