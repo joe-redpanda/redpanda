@@ -118,15 +118,10 @@ void direct_consumer::update_configuration(configuration cfg) {
 
 std::optional<source_partition_offsets>
 direct_consumer::get_source_offsets(model::topic_partition_view tp) const {
-    auto it = _subscriptions.find(tp.topic);
-    if (it == _subscriptions.end()) {
-        return std::nullopt;
-    }
-    auto p_it = it->second.find(tp.partition);
-    if (p_it == it->second.end()) {
-        return std::nullopt;
-    }
-    return p_it->second.last_known_source_offsets;
+    return find_subscription(tp.topic, tp.partition)
+      .transform([](std::reference_wrapper<const subscription> sub) {
+          return sub.get().last_known_source_offsets;
+      });
 }
 
 ss::future<> direct_consumer::update_fetchers(
@@ -231,8 +226,9 @@ fetcher& direct_consumer::get_fetcher(model::node_id id) {
     return *it->second;
 }
 
-std::optional<subscription_epoch> direct_consumer::find_subscription_epoch(
-  const model::topic& topic, model::partition_id partition_id) {
+std::optional<std::reference_wrapper<const direct_consumer::subscription>>
+direct_consumer::find_subscription(
+  const model::topic& topic, model::partition_id partition_id) const {
     auto t_it = _subscriptions.find(topic);
     if (t_it == _subscriptions.end()) {
         return std::nullopt;
@@ -243,9 +239,30 @@ std::optional<subscription_epoch> direct_consumer::find_subscription_epoch(
     if (p_it == p_map.end()) {
         return std::nullopt;
     }
-    return p_it->second.subscription_epoch;
+    return p_it->second;
 }
 
+std::optional<std::reference_wrapper<direct_consumer::subscription>>
+direct_consumer::find_subscription(
+  const model::topic& topic, model::partition_id partition_id) {
+    auto t_it = _subscriptions.find(topic);
+    if (t_it == _subscriptions.end()) {
+        return std::nullopt;
+    }
+    auto& p_map = t_it->second;
+    auto p_it = p_map.find(partition_id);
+    if (p_it == p_map.end()) {
+        return std::nullopt;
+    }
+    return p_it->second;
+}
+
+std::optional<subscription_epoch> direct_consumer::find_subscription_epoch(
+  const model::topic& topic, model::partition_id partition_id) const {
+    return find_subscription(topic, partition_id).transform([](auto sub) {
+        return sub.get().subscription_epoch;
+    });
+}
 ss::future<> direct_consumer::start() {
     if (_started) {
         co_return;

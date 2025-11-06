@@ -170,8 +170,14 @@ private:
 
     fetcher& get_fetcher(model::node_id id);
 
-    std::optional<subscription_epoch> find_subscription_epoch(
+    std::optional<std::reference_wrapper<const subscription>> find_subscription(
+      const model::topic& topic, model::partition_id partition_id) const;
+
+    std::optional<std::reference_wrapper<subscription>> find_subscription(
       const model::topic& topic, model::partition_id partition_id);
+
+    std::optional<subscription_epoch> find_subscription_epoch(
+      const model::topic& topic, model::partition_id partition_id) const;
 
     void filter_stale_subscriptions(
       chunked_vector<fetched_topic_data>& responses_to_filter);
