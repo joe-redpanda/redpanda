@@ -147,6 +147,7 @@
 #include "redpanda/admin/services/internal/breakglass.h"
 #include "redpanda/admin/services/internal/debug.h"
 #include "redpanda/admin/services/internal/metastore.h"
+#include "redpanda/admin/services/internal/shadow_link_internal.h"
 #include "redpanda/admin/services/shadow_link/shadow_link.h"
 #include "resource_mgmt/memory_groups.h"
 #include "resource_mgmt/memory_sampling.h"
@@ -1193,6 +1194,10 @@ void application::configure_admin_server(model::node_id node_id) {
                   cloud_topics_app->get_sharded_replicated_metastore(),
                   &controller->get_topics_state()));
           }
+          s.add_service(
+            std::make_unique<
+              admin::internal::shadow_link_internal_service_impl>(
+              create_client(), &_cluster_link_service, &metadata_cache));
       })
       .get();
 }
