@@ -288,6 +288,28 @@ class DataMigrationsApiTest(DataMigrationTestMixin):
     @cluster(
         num_nodes=3,
         log_allow_list=MIGRATION_LOG_ALLOW_LIST
+        + [
+            "Requested operation can not be executed as the resource is undergoing data migration"
+        ],
+    )
+    def test_conflicting_group_migrations(self):
+        topic = TopicSpec(partition_count=3)
+        self.client().create_topic(topic)
+        self.wait_partitions_appear([topic])
+        out1 = OutboundDataMigration([], consumer_groups=["group1"])
+        self.create_and_wait(out1)
+        self.assure_not_migratable(
+            topic=None,
+            group="group2",
+            expected_response={
+                "message": "Requested operation can not be executed as the resource is undergoing data migration",
+                "code": 400,
+            },
+        )
+
+    @cluster(
+        num_nodes=3,
+        log_allow_list=MIGRATION_LOG_ALLOW_LIST
         + ["The topic has already been created"],
     )
     def test_inbound_existing_topic(self):
