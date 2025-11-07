@@ -2176,9 +2176,7 @@ class RedpandaServiceCloud(KubeServiceMixin, RedpandaServiceABC):
         if uh_reason is not None:
             raise CorruptedClusterError(uh_reason)
 
-        uh_reason = self._cloud_cluster._ensure_cluster_health()
-        if uh_reason is not None:
-            raise CorruptedClusterError(uh_reason)
+        self._cloud_cluster._ensure_cluster_health()
 
         expected_nodes = int(self.config_profile["nodes_count"])
         active, _, _ = self.get_redpanda_pods_presorted()
