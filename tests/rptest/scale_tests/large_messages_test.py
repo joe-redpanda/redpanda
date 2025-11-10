@@ -333,7 +333,10 @@ class LargeMessagesTest(RedpandaTest):
             self.n_partitions = (
                 int(self.scale.partition_limit * 0.9) // self.swarm_nodes
             )
-            self.n_clients = self.scale.node_cpus * self.scale.node_count * 4
+            clients_per_cpu = 4 if self.redpanda.dedicated_nodes else 1
+            self.n_clients = (
+                self.scale.node_cpus * self.scale.node_count * clients_per_cpu
+            )
             self.unique = False
         else:
             assert False
@@ -366,7 +369,6 @@ class LargeMessagesTest(RedpandaTest):
             )
             + 1
         )
-        assert self.message_count > 2, f"message count too low: {self.message_count}"
 
         # Enable large node-wide throughput limits to verify they work at scale
         # To avoid affecting the result of the test with the limit, set them
@@ -403,6 +405,8 @@ class LargeMessagesTest(RedpandaTest):
             f"Expected throughput >= {self.expected_throughput / 1e6:5.2f} MB/s, "
             f"running_time_sec: {target_runtime_sec}"
         )
+
+        assert self.message_count > 2, f"message count too low: {self.message_count}"
 
         # # Run swarm consumers
         swarm_consumers = self._run_consumers("large_messages_group")
