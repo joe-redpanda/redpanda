@@ -1107,11 +1107,11 @@ struct shadow_topic_partition_leader_report
       serde::version<0>,
       serde::compat_version<0>> {
     ::model::partition_id partition;
-    kafka::offset source_partition_start_offset;
-    kafka::offset source_partition_high_watermark;
-    kafka::offset source_partition_last_stable_offset;
-    std::chrono::milliseconds last_update_time;
-    kafka::offset shadow_partition_high_watermark;
+    kafka::offset source_partition_start_offset{-1};
+    kafka::offset source_partition_high_watermark{-1};
+    kafka::offset source_partition_last_stable_offset{-1};
+    std::chrono::milliseconds last_update_time{0};
+    kafka::offset shadow_partition_high_watermark{-1};
 
     friend bool operator==(
       const shadow_topic_partition_leader_report&,
