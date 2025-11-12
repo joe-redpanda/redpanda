@@ -479,6 +479,28 @@ PRODUCER_MODES = [
 ]
 
 
+def query_engines_and_catalogs() -> list[list[QueryEngineType | CatalogType]]:
+    """
+    Produce a list of QueryEngineType/CatalogType pairs that includes each member
+    of each set at least once. The general idea here is to avoid redundant work,
+    in the sense that we're not interested in testing combinations of query engine
+    and catalog but rather verifying that our schema evolution approach doesn't
+    break any particular one of either.
+
+    Returns a list of lists rather than tuples so the result is json roundtrippable
+    for use in matrix params.
+    """
+    n_engines = len(QUERY_ENGINES)
+    n_catalogs = len(supported_catalog_types())
+    return [
+        [
+            QUERY_ENGINES[i % n_engines],
+            supported_catalog_types()[i % n_catalogs],
+        ]
+        for i in range(0, max(n_engines, n_catalogs))
+    ]
+
+
 class SchemaEvolutionE2ETests(RedpandaTest):
     def __init__(self, test_ctx, *args, **kwargs):
         super(SchemaEvolutionE2ETests, self).__init__(
@@ -585,15 +607,14 @@ class SchemaEvolutionE2ETests(RedpandaTest):
     @cluster(num_nodes=3)
     @matrix(
         cloud_storage_type=supported_storage_types(),
-        query_engine=QUERY_ENGINES,
-        catalog_type=supported_catalog_types(),
+        qe_and_cat=query_engines_and_catalogs(),
     )
-    def test_schema_evolution(self, cloud_storage_type, query_engine, catalog_type):
+    def test_schema_evolution(self, cloud_storage_type, qe_and_cat):
         """
         Test that rows written with schema A are still readable after evolving
         the table to schema B.
         """
-
+        query_engine, catalog_type = qe_and_cat
         with self.setup_services(
             query_engine,
             catalog_type=catalog_type,
@@ -658,14 +679,14 @@ class SchemaEvolutionE2ETests(RedpandaTest):
     @cluster(num_nodes=3)
     @matrix(
         cloud_storage_type=supported_storage_types(),
-        query_engine=QUERY_ENGINES,
-        catalog_type=supported_catalog_types(),
+        qe_and_cat=query_engines_and_catalogs(),
     )
-    def test_reorder_columns(self, cloud_storage_type, query_engine, catalog_type):
+    def test_reorder_columns(self, cloud_storage_type, qe_and_cat):
         """
         Test that changing the order of columns doesn't change the values
         associated with a column or field name.
         """
+        query_engine, catalog_type = qe_and_cat
         label = "reorder_columns"
         tc = self.valid_cases[label]
         with self.setup_services(
