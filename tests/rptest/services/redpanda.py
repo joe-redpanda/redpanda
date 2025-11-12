@@ -1711,6 +1711,13 @@ class CorruptedClusterError(Exception):
     pass
 
 
+class BrokerNotStartedError(Exception):
+    """Thrown in cases asks about or tries to perform an operation on a
+    broker that it is not started, as such an operation is bound to fail."""
+
+    pass
+
+
 class RedpandaServiceCloud(KubeServiceMixin, RedpandaServiceABC):
     """
     Service class for running tests against Redpanda Cloud.
@@ -2939,8 +2946,19 @@ class RedpandaService(Service, RedpandaServiceABC):
         self, node: ClusterNode, force_refresh: bool = False, timeout_sec: int = 30
     ) -> int:
         """
-        Returns the node ID of a given node. Uses a cached value unless
-        'force_refresh' is set to True.
+        Returns the node ID (redpanda broker ID) of a given node. Uses a cached
+        value if present unless 'force_refresh' is set to True.
+
+        :param: force_refresh if True, always queries for the node ID from the node's
+        API, never uses cached data.
+
+        :param: timeout_sec number of seconds to try to find the node before giving up,
+        which is relevant in the case there is no cached index <-> node info info and
+        we are not able to contact some some. The full timeout may apply for each node
+        in the cluster so the before this method returns may be up to timeout_sec *
+        node_count. timeout_sec=0 means do not retry failed network calls.
+
+        This throws BrokerNotStarted if the specified node is not started.
 
         NOTE: this is not thread-safe.
         """
@@ -2949,10 +2967,20 @@ class RedpandaService(Service, RedpandaServiceABC):
             if idx in self._node_id_by_idx:
                 return self._node_id_by_idx[idx]
 
+        # fail immediately if node is not started, since we cannot possibly
+        # fetch its ID in that case
+        if node not in self._started:
+            raise BrokerNotStartedError(f"node {node.name} not started")
+
+        self.logger.debug(
+            f"Fetching node ID (broker ID) for {node.name} (force_refresh={force_refresh})"
+        )
+
         def _try_get_node_id():
             try:
                 node_cfg = self._admin.get_node_config(node)
-            except Exception:
+            except Exception as e:
+                self.logger.debug(f"error in get_node_config for {node.name}: {e}")
                 return (False, -1)
             return (True, node_cfg["node_id"])
 
@@ -3595,7 +3623,7 @@ class RedpandaService(Service, RedpandaServiceABC):
     def paused_node(self, node: ClusterNode):
         """Context manager to pause redpanda on a node by sending SIGSTOP"""
         # rpk requires all nodes up to operate, so remove from started nodes
-        self.remove_from_started_nodes(node)
+        self.remove_from_started_nodes(node, "paused_node")
         self.signal_redpanda(node, signal=signal.SIGSTOP)
         try:
             yield
@@ -3755,7 +3783,7 @@ class RedpandaService(Service, RedpandaServiceABC):
         self.logger.debug("Node status prior to redpanda startup:")
         self.start_service(node, start_rp)
         if not expect_fail:
-            self._started.add(node)
+            self.add_to_started_nodes(node)
 
     def start_node_with_rpk(
         self, node: ClusterNode, additional_args: str = "", clean_node: bool = True
@@ -3802,7 +3830,7 @@ class RedpandaService(Service, RedpandaServiceABC):
 
         self.logger.debug("Node status prior to redpanda startup:")
         self.start_service(node, start_rp)
-        self._started.add(node)
+        self.add_to_started_nodes(node)
 
         # We need to manually read the config from the file and add it
         # to _node_configs since we use rpk to write the file instead of
@@ -4737,7 +4765,7 @@ class RedpandaService(Service, RedpandaServiceABC):
         # and purposes we consider it stopped not to trip other logic that expects
         # started to contain nodes that _must_ be running. E.g. crash detection
         # at end of test which iterates through "started nodes".
-        self.remove_from_started_nodes(node)
+        self.remove_from_started_nodes(node, "stop_node")
 
         pid = self.redpanda_pid(node)
 
@@ -4791,11 +4819,15 @@ class RedpandaService(Service, RedpandaServiceABC):
             node.account.signal(pid, signal.SIGKILL, allow_fail=True)
             raise
 
-    def remove_from_started_nodes(self, node: ClusterNode):
+    def remove_from_started_nodes(self, node: ClusterNode, reason: str = "unknown"):
         if node in self._started:
+            self.logger.debug(
+                f"Removed {node.name} from started nodes, reason: {reason}"
+            )
             self._started.remove(node)
 
     def add_to_started_nodes(self, node: ClusterNode):
+        self.logger.debug(f"Added {node.name} to started nodes")
         self._started.add(node)
 
     def clean(self, **kwargs: Any):
@@ -4866,8 +4898,25 @@ class RedpandaService(Service, RedpandaServiceABC):
             # installation to preserve!
             self._installer.reset_current_install([node])
 
+        self.clear_cached_broker_metadata(node)
+
     def remove_local_data(self, node: ClusterNode):
         node.account.remove(f"{RedpandaService.PERSISTENT_ROOT}/data/*")
+        # clear the cached metadata since Redpanda often comes up with new
+        # broker IDs, so the old broker IDs are invalid
+        self.clear_cached_broker_metadata(node)
+
+    def clear_cached_broker_metadata(self, node: ClusterNode):
+        """Roughly speaking, this clears any internal metadata about the given node, so that
+        the data is queried freshly from the node when it is needed. It should be
+        called when an operation that would invalidate this cached metadata is performed."""
+
+        # clear cached index -> id map: this could be invalided by changing the cluster shape
+        self.logger.debug(f"Clearing cached broker metadata for {node.name}")
+        index = self.idx(node)
+        assert index > 0
+        if index in self._node_id_by_idx:
+            del self._node_id_by_idx[index]
 
     def redpanda_pid(self, node: ClusterNode):
         try:
@@ -5203,10 +5252,19 @@ class RedpandaService(Service, RedpandaServiceABC):
 
         If you expect the node to exist, you may prefer `self.node_by_id(node_id)`,
         which raises an exception if the node is not found.
+
+        This function ignores nodes which are not started (in general it needs to node
+        to be up to query its ID).
         """
         for n in self.nodes:
-            if self.node_id(n) == node_id:
-                return n
+            try:
+                if self.node_id(n) == node_id:
+                    return n
+            except BrokerNotStartedError:
+                # skip nodes that are not started (though we may stil obtain
+                # their information if it is cached: this exception indicates
+                # the the cache was not populated for this node)
+                pass
 
         return None
 
@@ -5217,6 +5275,9 @@ class RedpandaService(Service, RedpandaServiceABC):
         """
         nid = self.get_node_by_id(node_id)
         if nid is None:
+            self.logger.info(
+                f"Node with id {node_id} not found, idx_to_id {self._node_id_by_idx}"
+            )
             raise NodeNotFoundError(f"Node with id {node_id} not found")
         return nid
 
