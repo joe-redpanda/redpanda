@@ -13,6 +13,7 @@ go_library(
         "//src/go/rpk/pkg/adminapi",
         "//src/go/rpk/pkg/config",
         "//src/go/rpk/pkg/out",
+        "//src/go/rpk/pkg/publicapi",
         "@build_buf_gen_go_redpandadata_core_protocolbuffers_go//redpanda/core/admin/v2:admin",
         "@com_connectrpc_connect//:connect",
         "@com_github_docker_go_units//:go-units",
