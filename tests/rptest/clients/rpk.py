@@ -1593,7 +1593,7 @@ class RpkTool:
         cmd = [
             self._rpk_binary(),
             "-X",
-            f"brokers={self._admin_host()}",
+            f"admin.hosts={self._admin_host()}",
             "cluster",
             "connections",
             "list",
