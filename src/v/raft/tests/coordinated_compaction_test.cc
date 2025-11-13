@@ -256,6 +256,7 @@ TEST_F_CORO(coco_fixture, test_stalled_recovery) {
         vlog(
           logger().info,
           "Waiting for recovery, target_offset: {}, recovered_offset: {}",
+          target_offset,
           recovered_offset);
         return recovered_offset == target_offset;
     });
