@@ -12,7 +12,6 @@ from time import sleep
 
 from ducktape.errors import TimeoutError
 from ducktape.mark import matrix
-from ducktape.utils.util import wait_until
 
 from rptest.clients.kafka_cli_tools import KafkaCliTools
 from rptest.clients.rpk import RpkTool
