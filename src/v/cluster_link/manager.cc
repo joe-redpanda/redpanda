@@ -220,14 +220,13 @@ ss::future<err_info> manager::broker_preflight_check(
                   versions->max,
                   min_version,
                   max_version);
-                unsupported_api_errors.push_back(
-                  fmt::format(
-                    "{}: supported [{}, {}], required [{}, {}]",
-                    api_key,
-                    versions->min,
-                    versions->max,
-                    min_version,
-                    max_version));
+                unsupported_api_errors.push_back(fmt::format(
+                  "{}: supported [{}, {}], required [{}, {}]",
+                  api_key,
+                  versions->min,
+                  versions->max,
+                  min_version,
+                  max_version));
             }
         }
         if (!unsupported_api_errors.empty()) {
@@ -841,6 +840,10 @@ manager::get_partition_offsets_report_for_link(model::id_t link_id) const {
           ssx::sformat("Link with id '{}' not found", link_id));
     }
     return link_it->second->get_partition_offsets_report();
+}
+
+members_table_provider& manager::get_members_table_provider() noexcept {
+    return *_members_table_provider;
 }
 
 ss::future<> manager::link_task_reconciler() {

@@ -212,6 +212,8 @@ public:
       chunked_hash_map<::model::ntp, replication::partition_offsets_report>>
     get_partition_offsets_report_for_link(model::id_t link_id) const;
 
+    members_table_provider& get_members_table_provider() noexcept;
+
 private:
     /// Called periodically to reconcile registered tasks on created links
     ss::future<> link_task_reconciler();
