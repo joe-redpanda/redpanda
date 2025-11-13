@@ -1482,6 +1482,7 @@ class RedpandaServiceABC(ABC, RedpandaServiceConstants):
         sample_patterns: Iterable[str] = (),
         nodes: list[ClusterNode] | list[CloudBroker] | None = None,
         metrics_endpoint: MetricsEndpoint = MetricsEndpoint.METRICS,
+        *,
         names: Iterable[str] = (),
     ) -> dict[str, MetricSamples]:
         """Implement this method to iterate over nodes to query multiple sample patterns.
