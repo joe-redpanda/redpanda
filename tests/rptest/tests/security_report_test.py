@@ -1020,37 +1020,6 @@ class SchemaRegistryClientSecurityReportTest(RedpandaTest):
         validate_report(report, schema_registry_expected={})
 
 
-class AuditlogClientNoSecurityReportTest(RedpandaTest):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, extra_rp_conf={"audit_enabled": True}, **kwargs)
-
-    def setUp(self):
-        super().setUp()
-
-    @cluster(num_nodes=3)
-    def test_security_report(self):
-        audit_log_expected = KafkaClientInterface(
-            tls_enabled=False,
-            mutual_tls_enabled=False,
-            configured_authentication_method="SCRAM_Ephemeral",
-        )
-
-        expected_alerts = [
-            SecurityAlert(
-                affected_interface="audit_log_client",
-                listener_name="audit_log_client",
-                issue="NO_TLS",
-                description='"audit_log_client" interface "audit_log_client" is not using TLS. This is insecure and not recommended.',
-            ),
-        ]
-        report = Admin(self.redpanda).security_report()
-        validate_report(
-            report,
-            audit_log_expected=audit_log_expected,
-            expected_alerts=expected_alerts,
-        )
-
-
 class AuditlogClientSecurityReportTest(RedpandaTest):
     def __init__(self, *args, **kwargs):
         super().__init__(
