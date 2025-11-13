@@ -3214,7 +3214,7 @@ disk_log_impl::index_batch_base_offset_lower_bound(model::offset o) const {
 
 ss::future<std::optional<timequery_result>>
 disk_log_impl::timequery(timequery_config cfg) {
-    vassert(!_closed, "timequery on closed log - {}", *this);
+    throw_if_closed();
     if (_segs.empty()) {
         co_return std::nullopt;
     }
