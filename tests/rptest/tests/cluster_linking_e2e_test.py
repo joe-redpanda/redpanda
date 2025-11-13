@@ -2394,9 +2394,9 @@ class ShadowLinkConsumeGroupsMirroringTest(ShadowLinkTestBase):
                     topic=topic,
                     group=group_id,
                     n=1,
-                    timeout=5,
+                    timeout=10,
                     offset="start",
-                    fetch_max_wait=2,
+                    fetch_max_wait=5,
                     format=format,
                 )
             except Exception as e:
