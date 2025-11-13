@@ -699,6 +699,8 @@ public:
         return *_ftpc;
     }
 
+    fake_members_table_provider& members_table_provider() { return *_fmtp; }
+
 private:
     void setup_cluster_mock();
 

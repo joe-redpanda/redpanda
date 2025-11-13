@@ -220,13 +220,14 @@ ss::future<err_info> manager::broker_preflight_check(
                   versions->max,
                   min_version,
                   max_version);
-                unsupported_api_errors.push_back(fmt::format(
-                  "{}: supported [{}, {}], required [{}, {}]",
-                  api_key,
-                  versions->min,
-                  versions->max,
-                  min_version,
-                  max_version));
+                unsupported_api_errors.push_back(
+                  fmt::format(
+                    "{}: supported [{}, {}], required [{}, {}]",
+                    api_key,
+                    versions->min,
+                    versions->max,
+                    min_version,
+                    max_version));
             }
         }
         if (!unsupported_api_errors.empty()) {
