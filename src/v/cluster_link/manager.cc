@@ -92,6 +92,7 @@ manager::manager(
   std::unique_ptr<consumer_groups_router> group_router,
   std::unique_ptr<partition_metadata_provider> partition_metadata_provider,
   std::unique_ptr<kafka_rpc_client_service> kafka_rpc_client_service,
+  std::unique_ptr<members_table_provider> members_table_provider,
   ss::lowres_clock::duration task_reconciler_interval,
   config::binding<int16_t> default_topic_replication,
   ss::scheduling_group scheduling_group)
@@ -107,6 +108,7 @@ manager::manager(
   , _group_router(std::move(group_router))
   , _partition_metadata_provider(std::move(partition_metadata_provider))
   , _kafka_rpc_client_service(std::move(kafka_rpc_client_service))
+  , _members_table_provider(std::move(members_table_provider))
   , _queue(
       scheduling_group,
       [](const std::exception_ptr& ex) {
