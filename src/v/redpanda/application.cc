@@ -693,12 +693,12 @@ void application::initialize(
       [this] { smp_service_groups.destroy_groups().get(); });
 
     if (groups) {
+        // Allow configuration of scheduling groups from outside for testing
         sched_groups = *groups;
-        return;
+    } else {
+        sched_groups.create_groups().get();
+        _deferred.emplace_back([this] { sched_groups.destroy_groups().get(); });
     }
-
-    sched_groups.create_groups().get();
-    _deferred.emplace_back([this] { sched_groups.destroy_groups().get(); });
 
     construct_service(_scheduling_groups_probe).get();
     _scheduling_groups_probe

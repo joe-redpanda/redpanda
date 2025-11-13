@@ -79,8 +79,8 @@ redpanda_thread_fixture::redpanda_thread_fixture(
   model::node_id node_id,
   int32_t kafka_port,
   int32_t rpc_port,
-  int32_t proxy_port,
-  int32_t schema_reg_port,
+  std::optional<int32_t> proxy_port,
+  std::optional<int32_t> schema_reg_port,
   std::vector<config::seed_server> seed_servers,
   ss::sstring base_dir,
   std::optional<scheduling_groups> sch_groups,
@@ -119,10 +119,16 @@ redpanda_thread_fixture::redpanda_thread_fixture(
       development_cluster_linking_enabled);
     try {
         app.initialize(
-          proxy_config(proxy_port),
-          proxy_client_config(kafka_port),
-          schema_reg_config(schema_reg_port),
-          proxy_client_config(kafka_port),
+          proxy_port.transform(
+            [this](auto port) { return proxy_config(port); }),
+          proxy_port.and_then([this, kafka_port](auto) {
+              return std::make_optional(proxy_client_config(kafka_port));
+          }),
+          schema_reg_port.transform(
+            [this](auto port) { return schema_reg_config(port); }),
+          schema_reg_port.and_then([this, kafka_port](auto) {
+              return std::make_optional(proxy_client_config(kafka_port));
+          }),
           audit_log_client_config(kafka_port),
           sch_groups);
         app.check_environment();

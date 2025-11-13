@@ -45,8 +45,8 @@ public:
           model::node_id(2),
           9092 + 10,
           33145 + 10,
-          8082 + 10,
-          8081 + 10,
+          std::nullopt,
+          std::nullopt,
           std::vector<config::seed_server>{
             {.addr = net::unresolved_address("127.0.0.1", 33145)}},
           test_directory(),
