@@ -2038,7 +2038,7 @@ ss::future<> disk_log_impl::new_segment(model::offset o, model::term_id t) {
       .then([this](ss::lw_shared_ptr<segment> handles) mutable {
           return remove_empty_segments().then(
             [this, h = std::move(handles)]() mutable {
-                vassert(!_closed, "cannot add log segment to closed log");
+                throw_if_closed();
                 if (config().is_locally_compacted()) {
                     h->mark_as_compacted_segment();
                 }
@@ -2065,7 +2065,7 @@ model::offset get_next_append_offset(const offset_stats& offsets) {
 
 // config timeout is for the one calling reader consumer
 log_appender disk_log_impl::make_appender(log_append_config cfg) {
-    vassert(!_closed, "make_appender on closed log - {}", *this);
+    throw_if_closed();
     auto now = log_clock::now();
     auto ofs = offsets();
     model::offset next_offset = get_next_append_offset(ofs);
@@ -2081,7 +2081,7 @@ log_appender disk_log_impl::make_appender(log_append_config cfg) {
 }
 
 ss::future<> disk_log_impl::flush() {
-    vassert(!_closed, "flush on closed log - {}", *this);
+    throw_if_closed();
     if (_segs.empty()) {
         return ss::make_ready_future<>();
     }
@@ -3346,7 +3346,7 @@ disk_log_impl::remove_prefix_full_segments(truncate_prefix_config cfg) {
 }
 
 ss::future<> disk_log_impl::truncate_prefix(truncate_prefix_config cfg) {
-    vassert(!_closed, "truncate_prefix() on closed log - {}", *this);
+    throw_if_closed();
     co_await _failure_probes.truncate_prefix().then([this, cfg]() mutable {
         // dispatch the actual truncation
         return do_truncate_prefix(cfg)
@@ -3434,7 +3434,7 @@ ss::future<> disk_log_impl::do_truncate_prefix(truncate_prefix_config cfg) {
 }
 
 ss::future<> disk_log_impl::truncate(truncate_config cfg) {
-    vassert(!_closed, "truncate() on closed log - {}", *this);
+    throw_if_closed();
     // We are truncating the offset translator before truncating the log
     // because if saving offset translator state fails (e.g. because of a
     // crash), we can retry and eventually log and offset translator will
