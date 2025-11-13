@@ -433,6 +433,7 @@ class ShadowLinkTestBase(PreallocNodesTest):
         kwargs.setdefault("extra_rp_conf", {}).update(
             {
                 "enable_shadow_linking": True,
+                "group_initial_rebalance_delay": 1000,
             }
         )
         kwargs.setdefault(
