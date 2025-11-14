@@ -2019,6 +2019,8 @@ class AuditLogTestInvalidConfig(AuditLogTestInvalidConfigBase):
         log_allow_list=[
             r"Failed to append authentication event to audit log",
             r"Failed to audit.*",
+            # This comes from logging the cluster configuration at the post-ops of the test"
+            r"modify or view cluster configuration was not audited due to audit queues being full.*",
         ],
     )
     @matrix(audit_transport_mode=get_audit_modes())
@@ -2071,6 +2073,8 @@ class AuditLogTestInvalidConfigMTLS(AuditLogTestInvalidConfigBase):
             r"Failed to append authentication event to audit log",
             r"Failed to audit.*",
             r"Failed to enqueue mTLS authentication event - audit log system error",
+            # This comes from logging the cluster configuration at the post-ops of the test"
+            r"modify or view cluster configuration was not audited due to audit queues being full.*",
         ],
     )
     @matrix(audit_transport_mode=get_audit_modes())
