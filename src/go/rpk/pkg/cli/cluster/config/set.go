@@ -66,7 +66,10 @@ func parseArgs(args []string) ([]string, error) {
 }
 
 func newSetCommand(fs afero.Fs, p *config.Params) *cobra.Command {
-	var noConfirm bool
+	var (
+		noConfirm bool
+		timeout   time.Duration
+	)
 	cmd := &cobra.Command{
 		Use:   "set [KEY] [VALUE]",
 		Short: "Set a single cluster configuration property",
@@ -103,7 +106,7 @@ Use the flag '--no-confirm' to avoid the confirmation prompt.`,
 
 				// Poll operation status
 				cloudClient := publicapi.NewCloudClientSet(cfg.DevOverrides().PublicAPIURL, vp.CurrentAuth().AuthToken)
-				finalOp, completedInTime, err := pollOperationStatus(cmd.Context(), cloudClient, operationID)
+				finalOp, completedInTime, err := pollOperationStatus(cmd.Context(), cloudClient, operationID, timeout)
 				out.MaybeDieErr(err)
 
 				// Handle the result based on state
@@ -157,6 +160,7 @@ Use the flag '--no-confirm' to avoid the confirmation prompt.`,
 	}
 
 	cmd.Flags().BoolVar(&noConfirm, "no-confirm", false, "Disable confirmation prompt")
+	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Maximum time to wait for the operation to complete (e.g. 300ms, 1.5s, 30s)")
 	return cmd
 }
 
@@ -286,12 +290,26 @@ func setCloudConfig(ctx context.Context, cfg *config.Config, p *config.RpkProfil
 	return operation.Msg, nil
 }
 
-// pollOperationStatus polls the operation status every 1 second for up to 10 seconds.
+// pollOperationStatus polls the operation status with adaptive backoff for up to the specified timeout.
+// Uses aggressive polling (500ms) in the first 5 seconds for fast operations, then falls back to 1s polling.
 // Returns the final operation state and whether it completed within the timeout.
-func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClientSet, operationID string) (*controlplanev1.Operation, bool, error) {
-	timeout := 10 * time.Second
-	pollInterval := 1 * time.Second
+func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClientSet, operationID string, timeout time.Duration) (*controlplanev1.Operation, bool, error) {
 	deadline := time.Now().Add(timeout)
+	startTime := time.Now()
+
+	// Start with 2 second delay to allow fast operations to complete before first check
+	initialDelay := 2 * time.Second
+	fastPollInterval := 500 * time.Millisecond
+	slowPollInterval := 1 * time.Second
+	fastPollThreshold := 5 * time.Second
+
+	// Wait for initial delay before first poll
+	select {
+	case <-time.After(initialDelay):
+		// Continue to first poll
+	case <-ctx.Done():
+		return nil, false, fmt.Errorf("context cancelled while waiting for initial delay: %w", ctx.Err())
+	}
 
 	for time.Now().Before(deadline) {
 		resp, err := cloudClient.Operations.GetOperation(ctx, connect.NewRequest(&controlplanev1.GetOperationRequest{
@@ -306,6 +324,13 @@ func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClient
 
 		if state == controlplanev1.Operation_STATE_COMPLETED || state == controlplanev1.Operation_STATE_FAILED {
 			return op, true, nil
+		}
+
+		// Adaptive polling: fast polling (500ms) for first 5 seconds, then slow polling (1s)
+		elapsed := time.Since(startTime)
+		pollInterval := slowPollInterval
+		if elapsed < fastPollThreshold {
+			pollInterval = fastPollInterval
 		}
 
 		// Wait for next poll or context cancellation
