@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 
@@ -96,8 +97,28 @@ Use the flag '--no-confirm' to avoid the confirmation prompt.`,
 				out.MaybeDie(err, "rpk unable to load config: %v", err)
 				operation, err := setCloudConfig(cmd.Context(), cfg, vp, configs)
 				out.MaybeDieErr(err)
-				fmt.Print("Processing configuration, this operation may take up to 10 minutes. To check the status, run 'rpk cluster config status'\n\n")
-				fmt.Printf("Operation ID: %s \n", operation.GetOperation().GetId())
+
+				operationID := operation.GetOperation().GetId()
+				fmt.Println("Processing configuration...")
+
+				// Poll operation status
+				cloudClient := publicapi.NewCloudClientSet(cfg.DevOverrides().PublicAPIURL, vp.CurrentAuth().AuthToken)
+				finalOp, completedInTime, err := pollOperationStatus(cmd.Context(), cloudClient, operationID)
+				out.MaybeDieErr(err)
+
+				// Handle the result based on state
+				state := finalOp.GetState()
+				if completedInTime {
+					if state == controlplanev1.Operation_STATE_COMPLETED {
+						fmt.Printf("Configuration update completed successfully. Operation ID: %s\n", operationID)
+					} else if state == controlplanev1.Operation_STATE_FAILED {
+						fmt.Printf("Configuration update failed. Operation ID: %s\n", operationID)
+					}
+				} else {
+					// Timeout - operation still in progress
+					fmt.Print("Processing configuration, this operation may take up to 10 minutes. To check the status, run 'rpk cluster config status'\n\n")
+					fmt.Printf("Operation ID: %s\n", operationID)
+				}
 			} else {
 				client, err := adminapi.NewClient(cmd.Context(), fs, vp)
 				out.MaybeDie(err, "unable to initialize admin client: %v", err)
@@ -263,4 +284,46 @@ func setCloudConfig(ctx context.Context, cfg *config.Config, p *config.RpkProfil
 		return nil, fmt.Errorf("internal error while updating redpanda cloud configs: %v", err)
 	}
 	return operation.Msg, nil
+}
+
+// pollOperationStatus polls the operation status every 1 second for up to 10 seconds.
+// Returns the final operation state and whether it completed within the timeout.
+func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClientSet, operationID string) (*controlplanev1.Operation, bool, error) {
+	timeout := 10 * time.Second
+	pollInterval := 1 * time.Second
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		resp, err := cloudClient.Operations.GetOperation(ctx, connect.NewRequest(&controlplanev1.GetOperationRequest{
+			Id: operationID,
+		}))
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to get operation status: %v", err)
+		}
+
+		op := resp.Msg.Operation
+		state := op.GetState()
+
+		if state == controlplanev1.Operation_STATE_COMPLETED || state == controlplanev1.Operation_STATE_FAILED {
+			return op, true, nil
+		}
+
+		// Wait for next poll or context cancellation
+		select {
+		case <-time.After(pollInterval):
+			// Continue to next iteration
+		case <-ctx.Done():
+			return nil, false, fmt.Errorf("context cancelled while polling operation status: %w", ctx.Err())
+		}
+	}
+
+	// Timeout - get the final status
+	resp, err := cloudClient.Operations.GetOperation(ctx, connect.NewRequest(&controlplanev1.GetOperationRequest{
+		Id: operationID,
+	}))
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get operation status: %v", err)
+	}
+
+	return resp.Msg.Operation, false, nil
 }
