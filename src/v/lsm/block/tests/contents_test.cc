@@ -22,17 +22,17 @@
 #include <limits>
 
 TEST_CORO(Contents, StringView) {
-    auto persistence = lsm::io::make_memory_persistence();
+    auto persistence = lsm::io::make_memory_data_persistence();
     iobuf b;
     {
         for (char c : {'a', 'b', 'c'}) {
             b.append(iobuf::from(std::string(128_KiB, c)));
         }
-        auto file = co_await persistence->open_sequential_writer("foo.txt");
+        auto file = co_await persistence->open_sequential_writer(0_file_id);
         co_await file->append(b.share());
         co_await file->close();
     }
-    auto file = co_await persistence->open_random_access_reader("foo.txt");
+    auto file = co_await persistence->open_random_access_reader(0_file_id);
     ASSERT_TRUE_CORO(bool(file));
     for (auto offset : std::to_array<size_t>({0, 1, 2, 3, 4, 5, 10, 64_KiB})) {
         auto buf = b.share(offset, b.size_bytes() - offset);
@@ -75,17 +75,17 @@ TEST_CORO(Contents, StringView) {
 }
 
 TEST_CORO(Contents, IobufShare) {
-    auto persistence = lsm::io::make_memory_persistence();
+    auto persistence = lsm::io::make_memory_data_persistence();
     iobuf b;
     {
         for (char c : {'a', 'b', 'c'}) {
             b.append(iobuf::from(std::string(128_KiB, c)));
         }
-        auto file = co_await persistence->open_sequential_writer("foo.txt");
+        auto file = co_await persistence->open_sequential_writer(0_file_id);
         co_await file->append(b.share());
         co_await file->close();
     }
-    auto file = co_await persistence->open_random_access_reader("foo.txt");
+    auto file = co_await persistence->open_random_access_reader(0_file_id);
     ASSERT_TRUE_CORO(bool(file));
     for (auto offset : std::to_array<size_t>({0, 1, 2, 3, 4, 5, 10, 64_KiB})) {
         auto buf = b.share(offset, b.size_bytes() - offset);

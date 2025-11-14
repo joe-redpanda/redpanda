@@ -43,7 +43,8 @@ public:
     constexpr static size_t default_max_entries = 10;
     void TearDown() override {
         _table_cache.close().get();
-        _persistence->close().get();
+        _data_persistence->close().get();
+        _metadata_persistence->close().get();
     }
 
     const lsm::internal::options& options() { return *_options; }
@@ -52,13 +53,12 @@ public:
     void recover() {
         _version_set = nullptr;
         _version_set = ss::make_lw_shared<lsm::db::version_set>(
-          _persistence.get(), &_table_cache, _options);
+          _metadata_persistence.get(), &_table_cache, _options);
         _version_set->recover().get();
     }
 
     void add_sst(sst_spec spec) {
-        auto filename = lsm::internal::sst_file_name(spec.id);
-        auto writer = _persistence->open_sequential_writer(filename).get();
+        auto writer = _data_persistence->open_sequential_writer(spec.id).get();
         lsm::sst::builder builder(
           std::move(writer), ss::make_lw_shared<lsm::internal::options>());
         std::ranges::sort(spec.keys);
@@ -87,15 +87,17 @@ public:
 private:
     ss::lw_shared_ptr<lsm::internal::options> _options
       = ss::make_lw_shared<lsm::internal::options>();
-    std::unique_ptr<lsm::io::persistence> _persistence
-      = lsm::io::make_memory_persistence();
+    std::unique_ptr<lsm::io::data_persistence> _data_persistence
+      = lsm::io::make_memory_data_persistence();
+    std::unique_ptr<lsm::io::metadata_persistence> _metadata_persistence
+      = lsm::io::make_memory_metadata_persistence();
     lsm::db::table_cache _table_cache{
-      _persistence.get(),
+      _data_persistence.get(),
       default_max_entries,
       ss::make_lw_shared<lsm::sst::block_cache>(1_MiB)};
     ss::lw_shared_ptr<lsm::db::version_set> _version_set
       = ss::make_lw_shared<lsm::db::version_set>(
-        _persistence.get(), &_table_cache, _options);
+        _metadata_persistence.get(), &_table_cache, _options);
 };
 
 using lsm::internal::operator""_level;

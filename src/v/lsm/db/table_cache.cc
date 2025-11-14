@@ -127,7 +127,7 @@ class table_cache::impl {
 
 public:
     impl(
-      io::persistence* p,
+      io::data_persistence* p,
       size_t max_entries,
       ss::lw_shared_ptr<sst::block_cache> block_cache)
       : _persistence(p)
@@ -295,8 +295,7 @@ private:
 
     ss::future<ss::lw_shared_ptr<sst::reader>>
     open_reader(internal::file_id id, uint64_t file_size) {
-        auto file = co_await _persistence->open_random_access_reader(
-          internal::sst_file_name(id));
+        auto file = co_await _persistence->open_random_access_reader(id);
         if (!file) {
             throw invalid_argument_exception("file for ID {} is not found", id);
         }
@@ -321,7 +320,7 @@ private:
         }
     }
 
-    io::persistence* _persistence;
+    io::data_persistence* _persistence;
     chunked_hash_map<internal::file_id, std::unique_ptr<mutex>> _mu_map;
     chunked_hash_map<internal::file_id, entry_t> _map;
     cache_t _cache;
@@ -338,7 +337,7 @@ private:
 };
 
 table_cache::table_cache(
-  io::persistence* persistence,
+  io::data_persistence* persistence,
   size_t max_entries,
   ss::lw_shared_ptr<sst::block_cache> block_cache)
   : _impl(

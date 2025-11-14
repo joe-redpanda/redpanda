@@ -74,8 +74,7 @@ database::database(database&&) noexcept = default;
 database& database::operator=(database&&) noexcept = default;
 database::~database() noexcept = default;
 
-ss::future<database>
-database::open(options opts, std::unique_ptr<io::persistence> p) {
+ss::future<database> database::open(options opts, io::persistence p) {
     auto impl = co_await db::impl::open(translate_options(opts), std::move(p));
     co_return database(std::move(impl));
 }

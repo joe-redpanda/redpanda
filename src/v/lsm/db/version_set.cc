@@ -92,31 +92,6 @@ private:
     iobuf _value_buf;
 };
 
-ss::future<std::optional<ss::sstring>> read_current_file(io::persistence* p) {
-    auto maybe_file = co_await p->open_sequential_reader(
-      internal::current_file_name());
-    if (!maybe_file) {
-        co_return std::nullopt;
-    }
-    auto file = std::move(*maybe_file);
-    constexpr static size_t buffer_size = 4_KiB;
-    auto fut = co_await ss::coroutine::as_future<iobuf>(
-      file->read(buffer_size));
-    co_await file->close();
-    auto buf = fut.get();
-    if (buf.size_bytes() >= buffer_size) {
-        throw corruption_exception(
-          "expected {} file to be less than {} bytes",
-          internal::current_file_name(),
-          buffer_size);
-    }
-    ss::sstring contents;
-    for (const auto& frag : buf) {
-        contents.append(frag.get(), frag.size());
-    }
-    co_return contents;
-}
-
 } // namespace
 
 // A helper class to apply a sequence of edits to a version.
@@ -503,7 +478,7 @@ fmt::iterator version::format_to(fmt::iterator it) const {
 }
 
 version_set::version_set(
-  io::persistence* persistence,
+  io::metadata_persistence* persistence,
   table_cache* table_cache,
   ss::lw_shared_ptr<internal::options> opts)
   : _persistence(persistence)
@@ -535,59 +510,28 @@ ss::future<> version_set::log_and_apply(version_edit edit) {
     // deltas, but just snapshot the full manifest. At somepoint we will
     // want delta writes (but that's not possible in the cloud), but for
     // now we will just write full snapshots.
-    auto manifest_id = new_file_id();
-    auto manifest_filename = internal::manifest_file_name(manifest_id);
-    auto file = co_await _persistence->open_sequential_writer(
-      manifest_filename);
     auto updated_seqno = std::max(_last_seqno, edit._last_seqno);
     auto m = manifest{
       .version = v,
       .next_file_id = _next_file_id,
       .last_seqno = updated_seqno,
     };
-    auto fut = co_await ss::coroutine::as_future<>(
-      write_manifest(std::move(m), file.get()));
-    co_await file->close();
-    if (fut.failed()) {
-        auto ex = fut.get_exception();
-        co_await _persistence->remove_file(manifest_filename);
-        reuse_file_id(manifest_id);
-        std::rethrow_exception(ex);
-    }
-    co_await _persistence->write_file_atomically(
-      internal::current_file_name(), manifest_filename);
+    co_await write_manifest(std::move(m));
     // Now that the new version is persisted successfully, install the new
     // version
     set_current(std::move(v));
     _last_seqno = updated_seqno;
-    _current_manifest_id = manifest_id;
 }
 
 ss::future<> version_set::recover() {
-    auto current = co_await read_current_file(_persistence);
-    if (!current) {
+    auto m = co_await read_manifest();
+    if (!m) {
         co_return;
     }
-    auto maybe_parsed = internal::parse_filename(*current);
-    if (!maybe_parsed) {
-        throw corruption_exception(
-          "unrecognized manifest file name: {}", *current);
-    }
-    auto manifest_file_id = maybe_parsed->id;
-    auto maybe_file = co_await _persistence->open_sequential_reader(*current);
-    if (!maybe_file) {
-        throw corruption_exception(
-          "missing current manifest file: {}", *current);
-    }
-    auto fut = co_await ss::coroutine::as_future<manifest>(
-      read_manifest(maybe_file->get()));
-    co_await (*maybe_file)->close();
-    auto m = std::move(fut.get());
-    finalize(m.version.get());
-    set_current(std::move(m.version));
-    _next_file_id = m.next_file_id;
-    _last_seqno = m.last_seqno;
-    _current_manifest_id = manifest_file_id;
+    finalize(m->version.get());
+    set_current(std::move(m->version));
+    _next_file_id = m->next_file_id;
+    _last_seqno = m->last_seqno;
 }
 
 void version_set::finalize(version* v) {
@@ -611,8 +555,7 @@ void version_set::finalize(version* v) {
     v->_compaction_score = best_score;
 }
 
-ss::future<>
-version_set::write_manifest(manifest m, io::sequential_file_writer* w) {
+ss::future<> version_set::write_manifest(manifest m) {
     proto::version version_proto;
     for (const auto& [level, files] :
          std::views::zip(std::views::iota(0), m.version->_files)) {
@@ -635,22 +578,18 @@ version_set::write_manifest(manifest m, io::sequential_file_writer* w) {
     manifest_proto.set_next_file_id(m.next_file_id());
     manifest_proto.set_last_seqno(m.last_seqno());
     auto serialized = co_await manifest_proto.to_proto();
-    co_await w->append(std::move(serialized));
+    co_await _persistence->write_manifest(std::move(serialized));
 }
 
-ss::future<version_set::manifest>
-version_set::read_manifest(io::sequential_file_reader* r) {
-    iobuf proto;
-    static constexpr size_t buffer_size = 4_KiB;
-    bool done = false;
-    while (!done) {
-        auto buf = co_await r->read(buffer_size);
-        done = buf.size_bytes() < buffer_size;
-        proto.append(std::move(buf));
+ss::future<std::optional<version_set::manifest>> version_set::read_manifest() {
+    auto proto = co_await _persistence->read_manifest();
+    if (!proto) {
+        co_return std::nullopt;
     }
     proto::manifest manifest_proto;
     try {
-        manifest_proto = co_await proto::manifest::from_proto(std::move(proto));
+        manifest_proto = co_await proto::manifest::from_proto(
+          std::move(*proto));
     } catch (const std::exception& ex) {
         throw corruption_exception(
           "unable to parse manifest file: {}", ex.what());

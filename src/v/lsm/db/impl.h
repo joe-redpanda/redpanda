@@ -35,10 +35,7 @@ class impl {
     struct ctor {};
 
 public:
-    explicit impl(
-      ctor,
-      std::unique_ptr<io::persistence>,
-      ss::lw_shared_ptr<internal::options>);
+    explicit impl(ctor, io::persistence, ss::lw_shared_ptr<internal::options>);
     impl(impl&&) = delete;
     impl(const impl&) = delete;
     impl& operator=(impl&&) = delete;
@@ -53,8 +50,8 @@ public:
     internal::sequence_number max_persisted_seqno() const;
 
     // Open the database
-    static ss::future<std::unique_ptr<impl>> open(
-      ss::lw_shared_ptr<internal::options>, std::unique_ptr<io::persistence>);
+    static ss::future<std::unique_ptr<impl>>
+      open(ss::lw_shared_ptr<internal::options>, io::persistence);
 
     // Apply a batch of writes to the database atomically.
     ss::future<> apply(internal::write_batch);
@@ -91,7 +88,7 @@ private:
 
     ss::future<> remove_obsolete_files();
 
-    std::unique_ptr<io::persistence> _persistence;
+    io::persistence _persistence;
     ss::lw_shared_ptr<internal::options> _opts;
     // The active in-memory memtable.
     ss::lw_shared_ptr<memtable> _mem;

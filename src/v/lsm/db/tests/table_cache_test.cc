@@ -25,7 +25,7 @@ class TableCacheTest : public testing::Test {
 public:
     constexpr static size_t default_max_entries = 10;
     std::pair<lsm::internal::file_id, size_t> make_sst() {
-        auto filename = lsm::internal::sst_file_name(++_latest_id);
+        auto filename = ++_latest_id;
         auto file = _persistence->open_sequential_writer(filename).get();
         lsm::sst::builder builder(
           std::move(file), ss::make_lw_shared<lsm::internal::options>());
@@ -47,8 +47,8 @@ public:
 
 private:
     lsm::internal::file_id _latest_id;
-    std::unique_ptr<lsm::io::persistence> _persistence
-      = lsm::io::make_memory_persistence();
+    std::unique_ptr<lsm::io::data_persistence> _persistence
+      = lsm::io::make_memory_data_persistence();
 };
 
 } // namespace

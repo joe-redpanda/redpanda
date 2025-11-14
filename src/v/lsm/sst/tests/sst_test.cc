@@ -23,8 +23,9 @@
 #include <gtest/gtest.h>
 
 using lsm::internal::operator""_key;
+using lsm::internal::operator""_file_id;
 using persistence_factory
-  = std::function<ss::future<std::unique_ptr<lsm::io::persistence>>()>;
+  = std::function<ss::future<std::unique_ptr<lsm::io::data_persistence>>()>;
 
 class SSTTest : public ::testing::TestWithParam<persistence_factory> {
     void SetUp() override { _persistence = GetParam()().get(); }
@@ -35,14 +36,13 @@ class SSTTest : public ::testing::TestWithParam<persistence_factory> {
     }
 
 protected:
-    std::unique_ptr<lsm::io::persistence> _persistence;
+    std::unique_ptr<lsm::io::data_persistence> _persistence;
 };
 
 TEST_P(SSTTest, CanCreateAndReadFile) {
     size_t file_size = 0;
-    ss::sstring filename = "test.sst";
     {
-        auto file = _persistence->open_sequential_writer(filename).get();
+        auto file = _persistence->open_sequential_writer(0_file_id).get();
         auto opts = ss::make_lw_shared<lsm::internal::options>();
         lsm::sst::builder builder(std::move(file), opts);
         builder.add("abc"_key, iobuf::from("value1")).get();
@@ -52,7 +52,7 @@ TEST_P(SSTTest, CanCreateAndReadFile) {
         builder.close().get();
         file_size = builder.file_size();
     }
-    auto file = _persistence->open_random_access_reader(filename).get();
+    auto file = _persistence->open_random_access_reader(0_file_id).get();
     auto reader = lsm::sst::reader::open(
                     std::move(*file),
                     lsm::internal::file_id{0},
@@ -78,12 +78,12 @@ INSTANTIATE_TEST_SUITE_P(
   SSTTestSuite,
   SSTTest,
   testing::Values(
-    [] { return ss::as_ready_future(lsm::io::make_memory_persistence()); },
+    [] { return ss::as_ready_future(lsm::io::make_memory_data_persistence()); },
     [] {
         std::filesystem::path tmpdir = std::getenv("TEST_TMPDIR");
         // Ensure each testcase has it's own directory.
         auto subdir = ss::sstring(uuid_t::create());
-        return lsm::io::open_disk_persistence(
+        return lsm::io::open_disk_data_persistence(
           tmpdir / std::string_view(subdir));
     }),
   [](const testing::TestParamInfo<persistence_factory>& info) {

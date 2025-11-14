@@ -28,7 +28,7 @@ public:
     std::unique_ptr<lsm::internal::iterator>
     make_iterator(std::map<lsm::internal::key, iobuf> map) {
         size_t file_size = 0;
-        auto filename = fmt::format("test{}.sst", ++_counter);
+        auto filename = ++_counter;
         {
             auto file = _persistence->open_sequential_writer(filename).get();
             auto opts = ss::make_lw_shared<lsm::internal::options>();
@@ -63,8 +63,8 @@ public:
 private:
     lsm::internal::file_id _counter;
     std::vector<lsm::sst::reader> _readers;
-    std::unique_ptr<lsm::io::persistence> _persistence
-      = lsm::io::make_memory_persistence();
+    std::unique_ptr<lsm::io::data_persistence> _persistence
+      = lsm::io::make_memory_data_persistence();
 };
 } // namespace
 

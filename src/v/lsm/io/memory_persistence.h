@@ -15,7 +15,10 @@
 
 namespace lsm::io {
 
-// Create an in memory ephemeral persistence layer for testing.
-std::unique_ptr<persistence> make_memory_persistence();
+// Create an in memory ephemeral data persistence layer for testing.
+std::unique_ptr<data_persistence> make_memory_data_persistence();
+
+// Create an in memory ephemeral metadata persistence layer for testing.
+std::unique_ptr<metadata_persistence> make_memory_metadata_persistence();
 
 } // namespace lsm::io

@@ -18,7 +18,15 @@
 namespace lsm::io {
 
 // Open a persistence object at the specified directory.
-ss::future<std::unique_ptr<persistence>>
-open_disk_persistence(std::filesystem::path directory);
+ss::future<std::unique_ptr<data_persistence>>
+open_disk_data_persistence(std::filesystem::path directory);
+
+// Open a persistence object at the specified directory.
+//
+// It's accepted that the metadata shares a directory with data persistence, as
+// the data persistence understands how to skip over the metadata persistence
+// layer.
+ss::future<std::unique_ptr<metadata_persistence>>
+open_disk_metadata_persistence(std::filesystem::path directory);
 
 } // namespace lsm::io

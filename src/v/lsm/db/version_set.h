@@ -134,7 +134,7 @@ class version_set {
 
 public:
     version_set(
-      io::persistence* persistence,
+      io::metadata_persistence* persistence,
       table_cache* table_cache,
       ss::lw_shared_ptr<internal::options> options);
 
@@ -177,10 +177,6 @@ public:
     // Get all the files that are currently being used by any live version.
     chunked_hash_set<internal::file_id> get_live_files();
 
-    internal::file_id current_manifest_id() const {
-        return _current_manifest_id;
-    }
-
 private:
     friend class version;
     friend class compaction;
@@ -194,10 +190,10 @@ private:
         internal::sequence_number last_seqno;
     };
     // Write this version to a manifest file as a snapshot.
-    ss::future<> write_manifest(manifest, io::sequential_file_writer*);
-    ss::future<manifest> read_manifest(io::sequential_file_reader*);
+    ss::future<> write_manifest(manifest);
+    ss::future<std::optional<manifest>> read_manifest();
 
-    io::persistence* _persistence;
+    io::metadata_persistence* _persistence;
     table_cache* _table_cache;
     ss::lw_shared_ptr<internal::options> _options;
     ss::lw_shared_ptr<version> _current;

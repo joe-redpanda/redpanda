@@ -20,47 +20,54 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 namespace io = lsm::io;
+using lsm::internal::file_id;
 
 namespace {
 
-class proxy_persistence : public io::persistence {
+class proxy_persistence
+  : public io::data_persistence
+  , public io::metadata_persistence {
 public:
-    explicit proxy_persistence(io::persistence* p)
-      : _p(p) {}
-
-    ss::future<io::optional_pointer<io::sequential_file_reader>>
-    open_sequential_reader(std::string_view name) override {
-        return _p->open_sequential_reader(name);
-    }
+    explicit proxy_persistence(
+      io::data_persistence* p, io::metadata_persistence* mdp)
+      : _p(p)
+      , _mdp(mdp) {}
 
     ss::future<io::optional_pointer<io::random_access_file_reader>>
-    open_random_access_reader(std::string_view name) override {
-        return _p->open_random_access_reader(name);
+    open_random_access_reader(file_id id) override {
+        return _p->open_random_access_reader(id);
     }
 
     ss::future<std::unique_ptr<io::sequential_file_writer>>
-    open_sequential_writer(std::string_view name) override {
-        return _p->open_sequential_writer(name);
+    open_sequential_writer(file_id id) override {
+        return _p->open_sequential_writer(id);
     }
 
-    ss::future<> write_file_atomically(
-      std::string_view name, std::string_view contents) override {
-        return _p->write_file_atomically(name, contents);
+    ss::future<> remove_file(file_id id) override {
+        return _p->remove_file(id);
     }
 
-    ss::future<> remove_file(std::string_view file) override {
-        return _p->remove_file(file);
-    }
-
-    ss::coroutine::experimental::generator<ss::sstring> list_files() override {
+    ss::coroutine::experimental::generator<file_id> list_files() override {
         return _p->list_files();
+    }
+
+    ss::future<std::optional<iobuf>> read_manifest() override {
+        return _mdp->read_manifest();
+    }
+
+    // Write the manifest atomically to durable storage.
+    ss::future<> write_manifest(iobuf b) override {
+        return _mdp->write_manifest(std::move(b));
     }
 
     ss::future<> close() override { co_return; };
 
 private:
-    io::persistence* _p;
+    io::data_persistence* _p;
+    io::metadata_persistence* _mdp;
 };
 
 class ImplTest : public testing::Test {
@@ -73,16 +80,23 @@ public:
           .level_one_compaction_trigger = 2,
           .max_file_size = 2_MiB,
         });
-        _persistence = lsm::io::make_memory_persistence();
+        _data_persistence = lsm::io::make_memory_data_persistence();
+        _meta_persistence = lsm::io::make_memory_metadata_persistence();
         _db = lsm::db::impl::open(
                 _options,
-                std::make_unique<proxy_persistence>(_persistence.get()))
+                {
+                  .data = std::make_unique<proxy_persistence>(
+                    _data_persistence.get(), _meta_persistence.get()),
+                  .metadata = std::make_unique<proxy_persistence>(
+                    _data_persistence.get(), _meta_persistence.get()),
+                })
                 .get();
     }
 
     void TearDown() override {
         _db->close().get();
-        _persistence->close().get();
+        _data_persistence->close().get();
+        _meta_persistence->close().get();
     }
 
     void write_at_least(size_t size) {
@@ -137,16 +151,21 @@ public:
         _db->close().get();
         _db = lsm::db::impl::open(
                 _options,
-                std::make_unique<proxy_persistence>(_persistence.get()))
+                {
+                  .data = std::make_unique<proxy_persistence>(
+                    _data_persistence.get(), _meta_persistence.get()),
+                  .metadata = std::make_unique<proxy_persistence>(
+                    _data_persistence.get(), _meta_persistence.get()),
+                })
                 .get();
     }
 
     auto max_applied_seqno() { return _db->max_applied_seqno(); }
     auto max_persisted_seqno() { return _db->max_persisted_seqno(); }
 
-    ss::future<std::vector<ss::sstring>> list_files() {
-        auto gen = _persistence->list_files();
-        std::vector<ss::sstring> files;
+    ss::future<std::vector<file_id>> list_files() {
+        auto gen = _data_persistence->list_files();
+        std::vector<file_id> files;
         while (auto file = co_await gen()) {
             files.push_back(*file);
         }
@@ -156,7 +175,8 @@ public:
 protected:
     std::map<ss::sstring, iobuf> _shadow;
     ss::lw_shared_ptr<lsm::internal::options> _options;
-    std::unique_ptr<lsm::io::persistence> _persistence;
+    std::unique_ptr<lsm::io::data_persistence> _data_persistence;
+    std::unique_ptr<lsm::io::metadata_persistence> _meta_persistence;
     std::unique_ptr<lsm::db::impl> _db;
 };
 

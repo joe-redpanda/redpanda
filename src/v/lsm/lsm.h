@@ -43,7 +43,7 @@ public:
     ~database() noexcept;
 
     // Open the database.
-    static ss::future<database> open(options, std::unique_ptr<io::persistence>);
+    static ss::future<database> open(options, io::persistence);
 
     // Close the database, no more operations should happen to the database at
     // this point, and all iterators should be closed before calling this

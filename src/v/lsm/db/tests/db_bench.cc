@@ -173,11 +173,13 @@ public:
                                             : lsm::compression_type::none,
           });
 
-        std::unique_ptr<lsm::io::persistence> persistence;
+        std::unique_ptr<lsm::io::data_persistence> data;
+        std::unique_ptr<lsm::io::metadata_persistence> metadata;
 
         if (_cfg.db_path == ":memory:") {
             // Use in-memory persistence
-            persistence = lsm::io::make_memory_persistence();
+            data = lsm::io::make_memory_data_persistence();
+            metadata = lsm::io::make_memory_metadata_persistence();
             bench_log.info(
               "Using in-memory persistence on shard {} with "
               "write_buffer_size={}, compression={}",
@@ -198,10 +200,10 @@ public:
                 } catch (const std::exception& e) {
                     std::ignore = e;
                 }
-                co_await ss::recursive_touch_directory(shard_db_path);
             }
 
-            persistence = co_await lsm::io::open_disk_persistence(
+            data = co_await lsm::io::open_disk_data_persistence(shard_db_path);
+            metadata = co_await lsm::io::open_disk_metadata_persistence(
               shard_db_path);
             bench_log.info(
               "Database opened at {} with write_buffer_size={}, "
@@ -211,7 +213,12 @@ public:
               _cfg.compression ? "zstd" : "none");
         }
 
-        _db = co_await lsm::db::impl::open(opts, std::move(persistence));
+        _db = co_await lsm::db::impl::open(
+          opts,
+          {
+            .data = std::move(data),
+            .metadata = std::move(metadata),
+          });
     }
 
     ss::future<> interrupt() {

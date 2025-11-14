@@ -30,7 +30,7 @@ public:
     class impl;
 
     table_cache(
-      io::persistence*,
+      io::data_persistence*,
       size_t max_entries,
       ss::lw_shared_ptr<sst::block_cache>);
     table_cache(const table_cache&) = delete;

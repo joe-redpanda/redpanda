@@ -37,26 +37,22 @@ namespace lsm::db {
 
 using internal::operator""_level;
 
-impl::impl(
-  ctor,
-  std::unique_ptr<io::persistence> p,
-  ss::lw_shared_ptr<internal::options> o)
+impl::impl(ctor, io::persistence p, ss::lw_shared_ptr<internal::options> o)
   : _persistence(std::move(p))
   , _opts(std::move(o))
   , _mem(ss::make_lw_shared<memtable>())
   , _table_cache(
       std::make_unique<table_cache>(
-        _persistence.get(),
+        _persistence.data.get(),
         _opts->max_open_files,
         ss::make_lw_shared<sst::block_cache>(
           _opts->block_cache_size / _opts->sst_block_size)))
   , _versions(
       std::make_unique<version_set>(
-        _persistence.get(), _table_cache.get(), _opts)) {}
+        _persistence.metadata.get(), _table_cache.get(), _opts)) {}
 
 ss::future<std::unique_ptr<impl>> impl::open(
-  ss::lw_shared_ptr<internal::options> opts,
-  std::unique_ptr<io::persistence> persistence) {
+  ss::lw_shared_ptr<internal::options> opts, io::persistence persistence) {
     auto db = std::make_unique<impl>(
       ctor{}, std::move(persistence), std::move(opts));
     auto fut = co_await ss::coroutine::as_future(db->recover());
@@ -240,7 +236,11 @@ ss::future<> impl::close() {
         fut = co_await ss::coroutine::as_future(std::move(*fut));
     }
     co_await _table_cache->close();
-    co_await _persistence->close();
+    co_await _persistence.data->close();
+    co_await _persistence.metadata->close();
+    if (fut && fut->failed()) {
+        std::rethrow_exception(fut->get_exception());
+    }
 }
 
 ss::future<> impl::recover() {
@@ -274,11 +274,10 @@ struct compaction_state {
 
     ss::future<> open_current_builder(
       internal::file_id id,
-      io::persistence* p,
+      io::data_persistence* p,
       ss::lw_shared_ptr<internal::options> opts) {
         outputs.emplace_back(id);
-        auto w = co_await p->open_sequential_writer(
-          internal::sst_file_name(id));
+        auto w = co_await p->open_sequential_writer(id);
         builder.emplace(std::move(w), std::move(opts));
     }
     ss::future<> finish_current_builder() {
@@ -383,7 +382,7 @@ ss::future<> impl::run_background_compaction() {
             if (!drop) {
                 if (!state.builder) {
                     co_await state.open_current_builder(
-                      _versions->new_file_id(), _persistence.get(), _opts);
+                      _versions->new_file_id(), _persistence.data.get(), _opts);
                 }
                 auto& current = state.current_output();
                 if (state.builder->num_entries() == 0) {
@@ -434,7 +433,7 @@ ss::future<> impl::flush_memtable() {
     auto v = _versions->current();
     auto id = _versions->new_file_id();
     auto result = co_await build_table(
-      _persistence.get(), id, (*_imm)->create_iterator(), _opts, &_as);
+      _persistence.data.get(), id, (*_imm)->create_iterator(), _opts, &_as);
     if (!result) {
         _versions->reuse_file_id(id);
         co_return;
@@ -464,32 +463,11 @@ ss::future<> impl::flush_memtable() {
 
 ss::future<> impl::remove_obsolete_files() {
     chunked_hash_set<internal::file_id> files = _versions->get_live_files();
-    auto gen = _persistence->list_files();
-    while (auto filename = co_await gen()) {
-        auto parsed = internal::parse_filename(*filename);
-        if (!parsed) {
-            continue;
-        }
-        bool keep = true;
-        switch (parsed->type) {
-        case internal::file_type::manifest:
-            keep = parsed->id >= _versions->current_manifest_id();
-            break;
-        case internal::file_type::sst:
-            keep = files.contains(parsed->id);
-            break;
-        case internal::file_type::tmp:
-            keep = false;
-            break;
-        case internal::file_type::current:
-            keep = true;
-            break;
-        }
-        if (!keep) {
-            if (parsed->type == internal::file_type::sst) {
-                co_await _table_cache->evict(parsed->id);
-            }
-            co_await _persistence->remove_file(*filename);
+    auto gen = _persistence.data->list_files();
+    while (auto file_id = co_await gen()) {
+        if (!files.contains(*file_id)) {
+            co_await _table_cache->evict(*file_id);
+            co_await _persistence.data->remove_file(*file_id);
         }
     }
 }
