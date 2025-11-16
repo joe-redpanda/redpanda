@@ -169,7 +169,7 @@ func TestPollOperationStatus(t *testing.T) {
 			startTime := time.Now()
 
 			// Call the function under test
-			operation, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, 10*time.Second)
+			operation, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, 10*time.Second, false)
 
 			// Verify no error occurred
 			require.NoError(t, err)
@@ -239,7 +239,7 @@ func TestPollOperationStatus_ContextCancellation(t *testing.T) {
 	}()
 
 	startTime := time.Now()
-	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, 10*time.Second)
+	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, 10*time.Second, false)
 	elapsed := time.Since(startTime)
 
 	// Should get a context cancellation error
@@ -269,7 +269,7 @@ func TestPollOperationStatus_APIError(t *testing.T) {
 	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
 
 	ctx := context.Background()
-	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, 10*time.Second)
+	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, 10*time.Second, false)
 
 	// Should return an error
 	require.Error(t, err)
@@ -302,7 +302,7 @@ func TestPollOperationStatus_CustomTimeout(t *testing.T) {
 	// Test with a shorter timeout (3 seconds)
 	ctx := context.Background()
 	startTime := time.Now()
-	_, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, 3*time.Second)
+	_, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, 3*time.Second, false)
 	elapsed := time.Since(startTime)
 
 	// Should timeout without error

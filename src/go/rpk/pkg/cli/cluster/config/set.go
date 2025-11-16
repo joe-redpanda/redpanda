@@ -13,10 +13,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
 
+	"golang.org/x/term"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 
 	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
@@ -102,12 +104,21 @@ Use the flag '--no-confirm' to avoid the confirmation prompt.`,
 				out.MaybeDieErr(err)
 
 				operationID := operation.GetOperation().GetId()
-				fmt.Println("Processing configuration...")
+				fmt.Print("Processing configuration...")
 
+				// Check if stdout is a terminal for progress indication
+				isTerminal := term.IsTerminal(int(os.Stdout.Fd()))
 				// Poll operation status
 				cloudClient := publicapi.NewCloudClientSet(cfg.DevOverrides().PublicAPIURL, vp.CurrentAuth().AuthToken)
-				finalOp, completedInTime, err := pollOperationStatus(cmd.Context(), cloudClient, operationID, timeout)
+				finalOp, completedInTime, err := pollOperationStatus(cmd.Context(), cloudClient, operationID, timeout, isTerminal)
 				out.MaybeDieErr(err)
+
+				// Clear the progress line
+				if isTerminal {
+					fmt.Print("\r\033[K")
+				} else {
+					fmt.Println() // Add newline for non-terminal output
+				}
 
 				// Handle the result based on state
 				state := finalOp.GetState()
@@ -293,7 +304,7 @@ func setCloudConfig(ctx context.Context, cfg *config.Config, p *config.RpkProfil
 // pollOperationStatus polls the operation status with adaptive backoff for up to the specified timeout.
 // Uses aggressive polling (500ms) in the first 5 seconds for fast operations, then falls back to 1s polling.
 // Returns the final operation state and whether it completed within the timeout.
-func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClientSet, operationID string, timeout time.Duration) (*controlplanev1.Operation, bool, error) {
+func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClientSet, operationID string, timeout time.Duration, isTerminal bool) (*controlplanev1.Operation, bool, error) {
 	deadline := time.Now().Add(timeout)
 	startTime := time.Now()
 
@@ -306,7 +317,10 @@ func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClient
 	// Wait for initial delay before first poll
 	select {
 	case <-time.After(initialDelay):
-		// Continue to first poll
+		// Print initial progress after initial delay
+		if isTerminal {
+			fmt.Printf("\rProcessing configuration... (%ds elapsed)", int(time.Since(startTime).Seconds()))
+		}
 	case <-ctx.Done():
 		return nil, false, fmt.Errorf("context cancelled while waiting for initial delay: %w", ctx.Err())
 	}
@@ -326,8 +340,13 @@ func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClient
 			return op, true, nil
 		}
 
-		// Adaptive polling: fast polling (500ms) for first 5 seconds, then slow polling (1s)
+		// Print progress with elapsed time
 		elapsed := time.Since(startTime)
+		if isTerminal {
+			fmt.Printf("\rProcessing configuration... (%ds elapsed)", int(elapsed.Seconds()))
+		}
+
+		// Adaptive polling: fast polling (500ms) for first 5 seconds, then slow polling (1s)
 		pollInterval := slowPollInterval
 		if elapsed < fastPollThreshold {
 			pollInterval = fastPollInterval
