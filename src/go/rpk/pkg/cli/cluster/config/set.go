@@ -108,9 +108,10 @@ Use the flag '--no-confirm' to avoid the confirmation prompt.`,
 
 				// Check if stdout is a terminal for progress indication
 				isTerminal := term.IsTerminal(int(os.Stdout.Fd()))
-				// Poll operation status
 				cloudClient := publicapi.NewCloudClientSet(cfg.DevOverrides().PublicAPIURL, vp.CurrentAuth().AuthToken)
-				finalOp, completedInTime, err := pollOperationStatus(cmd.Context(), cloudClient, operationID, timeout, isTerminal)
+				pollCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
+				defer cancel()
+				finalOp, completedInTime, err := pollOperationStatus(pollCtx, cloudClient, operationID, isTerminal)
 				out.MaybeDieErr(err)
 
 				// Clear the progress line
@@ -300,11 +301,10 @@ func setCloudConfig(ctx context.Context, cfg *config.Config, p *config.RpkProfil
 	return operation.Msg, nil
 }
 
-// pollOperationStatus polls the operation status with adaptive backoff for up to the specified timeout.
+// pollOperationStatus polls the operation status with adaptive backoff until the context deadline is reached.
 // Uses aggressive polling (500ms) in the first 5 seconds for fast operations, then falls back to 1s polling.
 // Returns the final operation state and whether it completed within the timeout.
-func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClientSet, operationID string, timeout time.Duration, isTerminal bool) (*controlplanev1.Operation, bool, error) {
-	deadline := time.Now().Add(timeout)
+func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClientSet, operationID string, isTerminal bool) (*controlplanev1.Operation, bool, error) {
 	startTime := time.Now()
 
 	// Initial 2 second delay before first poll:
@@ -323,14 +323,22 @@ func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClient
 			fmt.Printf("\rProcessing configuration... (%ds elapsed)", int(time.Since(startTime).Seconds()))
 		}
 	case <-ctx.Done():
+		if ctx.Err() == context.DeadlineExceeded {
+			// Timeout during initial delay - get final status
+			return getFinalOperationStatus(cloudClient, operationID)
+		}
 		return nil, false, fmt.Errorf("context cancelled while waiting for initial delay: %w", ctx.Err())
 	}
 
-	for time.Now().Before(deadline) {
+	for {
 		resp, err := cloudClient.Operations.GetOperation(ctx, connect.NewRequest(&controlplanev1.GetOperationRequest{
 			Id: operationID,
 		}))
 		if err != nil {
+			// Check if timeout was reached
+			if ctx.Err() == context.DeadlineExceeded {
+				return getFinalOperationStatus(cloudClient, operationID)
+			}
 			return nil, false, fmt.Errorf("failed to get operation status: %v", err)
 		}
 
@@ -358,17 +366,22 @@ func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClient
 		case <-time.After(pollInterval):
 			// Continue to next iteration
 		case <-ctx.Done():
+			if ctx.Err() == context.DeadlineExceeded {
+				return getFinalOperationStatus(cloudClient, operationID)
+			}
 			return nil, false, fmt.Errorf("context cancelled while polling operation status: %w", ctx.Err())
 		}
 	}
+}
 
-	// Timeout - get the final status
-	resp, err := cloudClient.Operations.GetOperation(ctx, connect.NewRequest(&controlplanev1.GetOperationRequest{
+// getFinalOperationStatus retrieves the operation status one final time after timeout.
+// Uses context.Background() to ensure this call isn't affected by the timeout.
+func getFinalOperationStatus(cloudClient *publicapi.CloudClientSet, operationID string) (*controlplanev1.Operation, bool, error) {
+	resp, err := cloudClient.Operations.GetOperation(context.Background(), connect.NewRequest(&controlplanev1.GetOperationRequest{
 		Id: operationID,
 	}))
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to get operation status: %v", err)
+		return nil, false, fmt.Errorf("failed to get final operation status: %v", err)
 	}
-
 	return resp.Msg.Operation, false, nil
 }
