@@ -165,11 +165,12 @@ func TestPollOperationStatus(t *testing.T) {
 			// Create a cloud client pointing to our mock server
 			cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
 
-			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
 			startTime := time.Now()
 
 			// Call the function under test
-			operation, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, 10*time.Second, false)
+			operation, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, false)
 
 			// Verify no error occurred
 			require.NoError(t, err)
@@ -239,7 +240,7 @@ func TestPollOperationStatus_ContextCancellation(t *testing.T) {
 	}()
 
 	startTime := time.Now()
-	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, 10*time.Second, false)
+	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, false)
 	elapsed := time.Since(startTime)
 
 	// Should get a context cancellation error
@@ -268,8 +269,9 @@ func TestPollOperationStatus_APIError(t *testing.T) {
 
 	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
 
-	ctx := context.Background()
-	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, 10*time.Second, false)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, false)
 
 	// Should return an error
 	require.Error(t, err)
@@ -300,9 +302,10 @@ func TestPollOperationStatus_CustomTimeout(t *testing.T) {
 	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
 
 	// Test with a shorter timeout (3 seconds)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 	startTime := time.Now()
-	_, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, 3*time.Second, false)
+	_, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, false)
 	elapsed := time.Since(startTime)
 
 	// Should timeout without error
