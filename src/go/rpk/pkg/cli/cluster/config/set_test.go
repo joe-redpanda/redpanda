@@ -356,3 +356,45 @@ func TestPollOperationStatus_CustomTimeout(t *testing.T) {
 	require.GreaterOrEqual(t, elapsed, customTimeout, "should have waited full timeout period")
 	require.Less(t, elapsed, 200*time.Millisecond, "should not have exceeded timeout significantly")
 }
+
+func TestPollOperationStatus_TimeoutShorterThanInitialDelay(t *testing.T) {
+	t.Parallel()
+
+	// Use config where initialDelay (200ms) is longer than timeout (150ms)
+	testCfg := &pollConfig{
+		initialDelay:      200 * time.Millisecond,
+		fastPollInterval:  10 * time.Millisecond,
+		slowPollInterval:  10 * time.Millisecond,
+		fastPollThreshold: 50 * time.Millisecond,
+	}
+
+	operationID := "test-operation-id"
+
+	// Create server that returns completed immediately
+	server, pollCount := createMockOperationServer(t, operationID, func(count int32) controlplanev1.Operation_State {
+		return controlplanev1.Operation_STATE_COMPLETED
+	})
+	defer server.Close()
+
+	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
+
+	// Use timeout (150ms) that is shorter than initialDelay (200ms)
+	// Initial delay will be capped at timeout/2 = 75ms to reserve time for polling
+	shortTimeout := 150 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), shortTimeout)
+	defer cancel()
+	startTime := time.Now()
+	operation, completedInTime, err := pollOperationStatusWithConfig(ctx, cloudClient, operationID, false, testCfg)
+	elapsed := time.Since(startTime)
+
+	// Should complete successfully with capped initial delay
+	require.NoError(t, err)
+	require.True(t, completedInTime, "should have completed")
+	require.Equal(t, controlplanev1.Operation_STATE_COMPLETED, operation.GetState())
+
+	// Should have completed quickly (initial delay capped at ~75ms instead of 200ms)
+	require.Less(t, elapsed, 150*time.Millisecond, "should cap initial delay to timeout/2")
+
+	// Should have polled at least once
+	require.GreaterOrEqual(t, pollCount.Load(), int32(1), "should have polled at least once")
+}
