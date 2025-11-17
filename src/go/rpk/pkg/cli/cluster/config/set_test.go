@@ -74,6 +74,16 @@ func TestParseArgs(t *testing.T) {
 }
 
 func TestPollOperationStatus(t *testing.T) {
+	t.Parallel()
+
+	// Use fast polling intervals for tests to speed up execution
+	testCfg := &pollConfig{
+		initialDelay:      10 * time.Millisecond,
+		fastPollInterval:  10 * time.Millisecond,
+		slowPollInterval:  10 * time.Millisecond,
+		fastPollThreshold: 50 * time.Millisecond,
+	}
+
 	tests := []struct {
 		name               string
 		initialState       controlplanev1.Operation_State
@@ -128,6 +138,7 @@ func TestPollOperationStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var pollCount atomic.Int32
 			operationID := "test-operation-id"
 
@@ -165,12 +176,17 @@ func TestPollOperationStatus(t *testing.T) {
 			// Create a cloud client pointing to our mock server
 			cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			// Use shorter timeout for tests since we're using fast polling intervals
+			testTimeout := 200 * time.Millisecond
+			if tt.expectTimeout {
+				testTimeout = 200 * time.Millisecond // Enough time for multiple polls
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 			defer cancel()
 			startTime := time.Now()
 
-			// Call the function under test
-			operation, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, false)
+			// Call the function under test with fast test config
+			operation, completedInTime, err := pollOperationStatusWithConfig(ctx, cloudClient, operationID, false, testCfg)
 
 			// Verify no error occurred
 			require.NoError(t, err)
@@ -188,17 +204,19 @@ func TestPollOperationStatus(t *testing.T) {
 			// Additional time-based checks
 			elapsed := time.Since(startTime)
 			if tt.expectTimeout {
-				// Should take at least 10 seconds when timing out
-				require.GreaterOrEqual(t, elapsed, 10*time.Second, "should have waited full timeout period")
+				// Should take at least the test timeout period (200ms)
+				require.GreaterOrEqual(t, elapsed, testTimeout, "should have waited full timeout period")
 			} else {
-				// Should complete before the 10 second timeout
-				require.Less(t, elapsed, 10*time.Second, "should complete before timeout")
+				// Should complete before the test timeout
+				require.Less(t, elapsed, testTimeout, "should complete before timeout")
 			}
 
 			// Verify polling happened the expected number of times
 			if tt.expectTimeout {
-				// Should poll multiple times (approximately 10 times for 10 seconds with 1 second interval)
-				require.GreaterOrEqual(t, pollCount.Load(), int32(9), "should have polled multiple times during timeout")
+				// Should poll multiple times during the timeout period
+				// With 10ms intervals and 200ms timeout, expect at least 5 polls
+				// (actual may vary due to network latency and goroutine scheduling)
+				require.GreaterOrEqual(t, pollCount.Load(), int32(5), "should have polled multiple times during timeout")
 			} else if tt.transitionAfter > 0 {
 				// Should have polled at least until the transition
 				require.GreaterOrEqual(t, pollCount.Load(), int32(tt.transitionAfter), "should have polled until transition")
@@ -208,6 +226,16 @@ func TestPollOperationStatus(t *testing.T) {
 }
 
 func TestPollOperationStatus_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	// Use fast polling intervals for tests
+	testCfg := &pollConfig{
+		initialDelay:      10 * time.Millisecond,
+		fastPollInterval:  10 * time.Millisecond,
+		slowPollInterval:  10 * time.Millisecond,
+		fastPollThreshold: 50 * time.Millisecond,
+	}
+
 	operationID := "test-operation-id"
 
 	// Create a mock server that always returns in_progress
@@ -230,34 +258,44 @@ func TestPollOperationStatus_ContextCancellation(t *testing.T) {
 
 	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
 
-	// Create a context that we'll cancel after 500ms (during the initial delay)
+	// Create a context that we'll cancel after 50ms
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Cancel the context after 500ms
+	// Cancel the context after 50ms (after initial delay but during polling)
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		cancel()
 	}()
 
 	startTime := time.Now()
-	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, false)
+	_, _, err := pollOperationStatusWithConfig(ctx, cloudClient, operationID, false, testCfg)
 	elapsed := time.Since(startTime)
 
 	// Should get a context cancellation error
-	// Can happen during initial delay or polling loop
+	// Can happen during initial delay, polling loop, or API call
 	require.Error(t, err)
 	require.True(t,
 		strings.Contains(err.Error(), "context cancelled while polling operation status") ||
-			strings.Contains(err.Error(), "context cancelled while waiting for initial delay"),
+			strings.Contains(err.Error(), "context cancelled while waiting for initial delay") ||
+			strings.Contains(err.Error(), "failed to get operation status") && strings.Contains(err.Error(), "canceled"),
 		"expected context cancellation error, got: %v", err)
 
-	// Should return quickly after cancellation (within ~600ms), not wait for full polling interval
-	// Give some buffer for test execution, but it should be much less than 2 seconds
-	require.Less(t, elapsed, 1500*time.Millisecond, "should have been cancelled immediately, not waited for next poll")
-	require.GreaterOrEqual(t, elapsed, 500*time.Millisecond, "should have waited at least until cancellation")
+	// Should return quickly after cancellation (within ~100ms), not wait for full polling interval
+	require.Less(t, elapsed, 100*time.Millisecond, "should have been cancelled immediately, not waited for next poll")
+	require.GreaterOrEqual(t, elapsed, 50*time.Millisecond, "should have waited at least until cancellation")
 }
 
 func TestPollOperationStatus_APIError(t *testing.T) {
+	t.Parallel()
+
+	// Use fast polling intervals for tests
+	testCfg := &pollConfig{
+		initialDelay:      10 * time.Millisecond,
+		fastPollInterval:  10 * time.Millisecond,
+		slowPollInterval:  10 * time.Millisecond,
+		fastPollThreshold: 50 * time.Millisecond,
+	}
+
 	operationID := "test-operation-id"
 
 	// Create a mock server that returns an error
@@ -269,16 +307,31 @@ func TestPollOperationStatus_APIError(t *testing.T) {
 
 	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	_, _, err := pollOperationStatus(ctx, cloudClient, operationID, false)
+	_, _, err := pollOperationStatusWithConfig(ctx, cloudClient, operationID, false, testCfg)
 
 	// Should return an error
+	// Can be either "failed to get operation status" or "failed to get final operation status"
+	// depending on when the error occurs
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to get operation status")
+	require.True(t,
+		strings.Contains(err.Error(), "failed to get operation status") ||
+			strings.Contains(err.Error(), "failed to get final operation status"),
+		"expected operation status error, got: %v", err)
 }
 
 func TestPollOperationStatus_CustomTimeout(t *testing.T) {
+	t.Parallel()
+
+	// Use fast polling intervals for tests
+	testCfg := &pollConfig{
+		initialDelay:      10 * time.Millisecond,
+		fastPollInterval:  10 * time.Millisecond,
+		slowPollInterval:  10 * time.Millisecond,
+		fastPollThreshold: 50 * time.Millisecond,
+	}
+
 	operationID := "test-operation-id"
 
 	// Create a mock server that always returns in_progress
@@ -301,18 +354,19 @@ func TestPollOperationStatus_CustomTimeout(t *testing.T) {
 
 	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
 
-	// Test with a shorter timeout (3 seconds)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// Test with a custom timeout (150ms)
+	customTimeout := 150 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), customTimeout)
 	defer cancel()
 	startTime := time.Now()
-	_, completedInTime, err := pollOperationStatus(ctx, cloudClient, operationID, false)
+	_, completedInTime, err := pollOperationStatusWithConfig(ctx, cloudClient, operationID, false, testCfg)
 	elapsed := time.Since(startTime)
 
 	// Should timeout without error
 	require.NoError(t, err)
 	require.False(t, completedInTime, "should have timed out")
 
-	// Should have taken approximately 3 seconds, not 10
-	require.GreaterOrEqual(t, elapsed, 3*time.Second, "should have waited full timeout period")
-	require.Less(t, elapsed, 4*time.Second, "should not have exceeded timeout significantly")
+	// Should have taken approximately 150ms
+	require.GreaterOrEqual(t, elapsed, customTimeout, "should have waited full timeout period")
+	require.Less(t, elapsed, 200*time.Millisecond, "should not have exceeded timeout significantly")
 }

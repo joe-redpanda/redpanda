@@ -301,19 +301,39 @@ func setCloudConfig(ctx context.Context, cfg *config.Config, p *config.RpkProfil
 	return operation.Msg, nil
 }
 
+// pollConfig contains timing configuration for operation polling.
+type pollConfig struct {
+	initialDelay      time.Duration
+	fastPollInterval  time.Duration
+	slowPollInterval  time.Duration
+	fastPollThreshold time.Duration
+}
+
 // pollOperationStatus polls the operation status with adaptive backoff until the context deadline is reached.
 // Uses aggressive polling (500ms) in the first 5 seconds for fast operations, then falls back to 1s polling.
 // Returns the final operation state and whether it completed within the timeout.
 func pollOperationStatus(ctx context.Context, cloudClient *publicapi.CloudClientSet, operationID string, isTerminal bool) (*controlplanev1.Operation, bool, error) {
-	startTime := time.Now()
+	return pollOperationStatusWithConfig(ctx, cloudClient, operationID, isTerminal, nil)
+}
 
-	// Initial 2 second delay before first poll:
-	// This avoids unnecessary early checks for operations that typically take at least a few seconds,
-	// reducing load and noise from polling. Most operations are not expected to complete instantly.
-	initialDelay := 2 * time.Second
-	fastPollInterval := 500 * time.Millisecond
-	slowPollInterval := 1 * time.Second
-	fastPollThreshold := 5 * time.Second
+// pollOperationStatusWithConfig is the same as pollOperationStatus but allows overriding timing configuration.
+// This is primarily useful for testing with shorter intervals.
+func pollOperationStatusWithConfig(ctx context.Context, cloudClient *publicapi.CloudClientSet, operationID string, isTerminal bool, cfg *pollConfig) (*controlplanev1.Operation, bool, error) {
+	// Use default production timing if no config provided
+	if cfg == nil {
+		cfg = &pollConfig{
+			initialDelay:      2 * time.Second,
+			fastPollInterval:  500 * time.Millisecond,
+			slowPollInterval:  1 * time.Second,
+			fastPollThreshold: 5 * time.Second,
+		}
+	}
+
+	startTime := time.Now()
+	initialDelay := cfg.initialDelay
+	fastPollInterval := cfg.fastPollInterval
+	slowPollInterval := cfg.slowPollInterval
+	fastPollThreshold := cfg.fastPollThreshold
 
 	// Wait for initial delay before first poll
 	select {
