@@ -73,6 +73,43 @@ func TestParseArgs(t *testing.T) {
 	}
 }
 
+// createMockOperationServer creates a test server that simulates the operation status API.
+// The handler function receives the request count and returns the operation state.
+func createMockOperationServer(t *testing.T, operationID string, handler func(requestCount int32) controlplanev1.Operation_State) (*httptest.Server, *atomic.Int32) {
+	var requestCount atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Contains(t, r.URL.Path, "redpanda.api.controlplane.v1.OperationService/GetOperation")
+
+		count := requestCount.Add(1)
+		state := handler(count)
+
+		response := &controlplanev1.GetOperationResponse{
+			Operation: &controlplanev1.Operation{
+				Id:    operationID,
+				State: state,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/proto")
+		w.WriteHeader(http.StatusOK)
+
+		marshaled, err := proto.Marshal(response)
+		require.NoError(t, err)
+		_, _ = w.Write(marshaled)
+	}))
+
+	return server, &requestCount
+}
+
+// createMockErrorServer creates a test server that returns an HTTP error.
+func createMockErrorServer(statusCode int, message string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(statusCode)
+		_, _ = w.Write([]byte(message))
+	}))
+}
+
 func TestPollOperationStatus(t *testing.T) {
 	t.Parallel()
 
@@ -139,38 +176,16 @@ func TestPollOperationStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			var pollCount atomic.Int32
 			operationID := "test-operation-id"
 
-			// Create a mock server that simulates the operation status API
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Check that it's a GetOperation request
-				require.Contains(t, r.URL.Path, "redpanda.api.controlplane.v1.OperationService/GetOperation")
-
-				count := pollCount.Add(1)
+			server, pollCount := createMockOperationServer(t, operationID, func(count int32) controlplanev1.Operation_State {
 				state := tt.initialState
-
 				// Transition to the target state after the specified number of polls
 				if tt.transitionAfter > 0 && int(count) >= tt.transitionAfter {
 					state = tt.transitionToState
 				}
-
-				response := &controlplanev1.GetOperationResponse{
-					Operation: &controlplanev1.Operation{
-						Id:    operationID,
-						State: state,
-					},
-				}
-
-				// Use application/proto content type for Connect RPC
-				w.Header().Set("Content-Type", "application/proto")
-				w.WriteHeader(http.StatusOK)
-
-				// Marshal the response using proto binary format
-				marshaled, err := proto.Marshal(response)
-				require.NoError(t, err)
-				_, _ = w.Write(marshaled)
-			}))
+				return state
+			})
 			defer server.Close()
 
 			// Create a cloud client pointing to our mock server
@@ -238,22 +253,9 @@ func TestPollOperationStatus_ContextCancellation(t *testing.T) {
 
 	operationID := "test-operation-id"
 
-	// Create a mock server that always returns in_progress
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := &controlplanev1.GetOperationResponse{
-			Operation: &controlplanev1.Operation{
-				Id:    operationID,
-				State: controlplanev1.Operation_STATE_IN_PROGRESS,
-			},
-		}
-
-		w.Header().Set("Content-Type", "application/proto")
-		w.WriteHeader(http.StatusOK)
-
-		marshaled, err := proto.Marshal(response)
-		require.NoError(t, err)
-		_, _ = w.Write(marshaled)
-	}))
+	server, _ := createMockOperationServer(t, operationID, func(count int32) controlplanev1.Operation_State {
+		return controlplanev1.Operation_STATE_IN_PROGRESS
+	})
 	defer server.Close()
 
 	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
@@ -299,10 +301,7 @@ func TestPollOperationStatus_APIError(t *testing.T) {
 	operationID := "test-operation-id"
 
 	// Create a mock server that returns an error
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"code":"internal","message":"internal server error"}`))
-	}))
+	server := createMockErrorServer(http.StatusInternalServerError, `{"code":"internal","message":"internal server error"}`)
 	defer server.Close()
 
 	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
@@ -334,22 +333,9 @@ func TestPollOperationStatus_CustomTimeout(t *testing.T) {
 
 	operationID := "test-operation-id"
 
-	// Create a mock server that always returns in_progress
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := &controlplanev1.GetOperationResponse{
-			Operation: &controlplanev1.Operation{
-				Id:    operationID,
-				State: controlplanev1.Operation_STATE_IN_PROGRESS,
-			},
-		}
-
-		w.Header().Set("Content-Type", "application/proto")
-		w.WriteHeader(http.StatusOK)
-
-		marshaled, err := proto.Marshal(response)
-		require.NoError(t, err)
-		_, _ = w.Write(marshaled)
-	}))
+	server, _ := createMockOperationServer(t, operationID, func(count int32) controlplanev1.Operation_State {
+		return controlplanev1.Operation_STATE_IN_PROGRESS
+	})
 	defer server.Close()
 
 	cloudClient := publicapi.NewCloudClientSet(server.URL, "test-token")
