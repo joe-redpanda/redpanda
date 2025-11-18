@@ -191,7 +191,7 @@ ss::future<> state_machine::write_last_applied(model::offset o) {
     return _raft->write_last_applied(o);
 }
 
-ss::future<result<std::pair<model::offset, model::term_id>>>
+ss::future<state_machine::barrier_ret_t>
 state_machine::insert_linearizable_barrier(
   model::timeout_clock::time_point timeout) {
     /**
@@ -201,21 +201,19 @@ state_machine::insert_linearizable_barrier(
     return _raft->linearizable_barrier(timeout)
       .then([this, timeout](result<model::offset> r) {
           if (!r) {
-              return ss::make_ready_future<
-                result<std::pair<model::offset, model::term_id>>>(r.error());
+              return ss::make_ready_future<barrier_ret_t>(r.error());
           }
 
           // wait for the returned offset to be applied
-          return wait(r.value(), timeout).then([this, r] {
-              return result<std::pair<model::offset, model::term_id>>(
-                std::make_pair(r.value(), _raft->get_term(r.value())));
+          return wait(r.value(), timeout).then([this, r] -> barrier_ret_t {
+              return std::make_pair(r.value(), _raft->get_term(r.value()));
           });
       })
       .handle_exception([](const std::exception_ptr& e) {
           if (ssx::is_shutdown_exception(e)) {
-              return ssx::now<result<model::offset>>(errc::shutting_down);
+              return ssx::now<barrier_ret_t>(errc::shutting_down);
           }
-          return ss::make_exception_future<result<model::offset>>(e);
+          return ss::make_exception_future<barrier_ret_t>(e);
       });
 }
 
