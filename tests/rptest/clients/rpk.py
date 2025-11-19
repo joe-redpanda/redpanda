@@ -682,8 +682,12 @@ class RpkTool:
     @overload
     def list_topics(self, detailed: Literal[True]) -> list[list[str]]: ...
 
-    def list_topics(self, detailed: bool = False) -> list[str | list[str]]:
+    def list_topics(
+        self, detailed: bool = False, internal: bool = False
+    ) -> list[str | list[str]]:
         cmd = ["list"]
+        if internal:
+            cmd.append("-i")
 
         output = self._run_topic(cmd)
         if "No topics found." in output:
