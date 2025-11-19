@@ -24,6 +24,7 @@ import (
 	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
 	iamv1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/iam/v1"
 	"connectrpc.com/connect"
+	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/oauth/authtoken"
 )
 
 // CloudClientSet holds the respective service clients to interact with
@@ -78,6 +79,17 @@ func NewCloudClientSet(host, authToken string, opts ...connect.ClientOption) *Cl
 	ccs.ServerlessRegion = controlplanev1connect.NewServerlessRegionServiceClient(httpCl, host, opts...)
 	ccs.BYOCPlugin = byocpluginv1alpha1connect.NewBYOCPluginServiceClient(httpCl, host, opts...)
 	return ccs
+}
+
+// NewValidatedCloudClientSet creates a Public API client set after validating
+// the provided auth token against the given audience and client IDs.
+func NewValidatedCloudClientSet(host, authToken, audience string, clientIDs []string, opts ...connect.ClientOption) (*CloudClientSet, error) {
+	err := authtoken.ValidateTokenOrExpire(authToken, audience, clientIDs...)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Redpanda Cloud token: %v", err)
+	}
+
+	return NewCloudClientSet(host, authToken, opts...), nil
 }
 
 func (cpCl *CloudClientSet) UpdateAuthToken(authToken string) {
