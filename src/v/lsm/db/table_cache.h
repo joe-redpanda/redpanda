@@ -42,18 +42,18 @@ public:
     // Create an iterator. All iterators returned from this method must
     // be destructed before the `close` method is called.
     ss::future<std::unique_ptr<internal::iterator>>
-    create_iterator(internal::file_id, uint64_t file_size);
+    create_iterator(internal::file_handle, uint64_t file_size);
 
     // Calls `fn` if the seek to `key` on this table would return a valid value.
     ss::future<> get(
-      internal::file_id,
+      internal::file_handle,
       uint64_t file_size,
       internal::key_view key,
       absl::FunctionRef<ss::future<>(internal::key_view, iobuf)> fn);
 
     // Manually evict this file from the cache. There must not be any
     // open iterators or concurrent calls to `get` for this file.
-    ss::future<> evict(internal::file_id);
+    ss::future<> evict(internal::file_handle);
 
     // Close the cache and any readers that are cached.
     //

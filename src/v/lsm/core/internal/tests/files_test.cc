@@ -18,32 +18,47 @@
 
 namespace {
 using namespace lsm::internal;
-using ::testing::AllOf;
-using ::testing::Eq;
-using ::testing::Field;
 using ::testing::Optional;
 } // namespace
 
 TEST(Files, SstFileName) {
-    EXPECT_EQ("00000000000000000001.sst", sst_file_name(1_file_id));
-    EXPECT_EQ("00000000000000000123.sst", sst_file_name(123_file_id));
-    EXPECT_EQ("00000000000000000000.sst", sst_file_name(0_file_id));
     EXPECT_EQ(
-      "18446744073709551615.sst",
-      sst_file_name(file_id{std::numeric_limits<uint64_t>::max()}));
+      "00000000000000000001-00000000000000000000-00000000000000000000.sst",
+      std::string(sst_file_name({1_file_id, 0_db_epoch})));
+    EXPECT_EQ(
+      "00000000000000000123-00000000000000000001-00000000000000000000.sst",
+      std::string(sst_file_name({123_file_id, 1_db_epoch})));
+    EXPECT_EQ(
+      "00000000000000000000-00000000000000000123-00000000000000000000.sst",
+      std::string(sst_file_name({0_file_id, 123_db_epoch})));
+    EXPECT_EQ(
+      "18446744073709551615-18446744073709551615-18446744073709551615.sst",
+      std::string(sst_file_name({
+        file_id::max(),
+        database_epoch{
+          .inter = std::numeric_limits<uint64_t>::max(),
+          .intra = std::numeric_limits<uint64_t>::max(),
+        },
+      })));
 }
 
 TEST(Files, ParseFilename_SstFile) {
     EXPECT_THAT(
-      parse_sst_file_name(sst_file_name(1_file_id)), Optional(1_file_id));
+      parse_sst_file_name(sst_file_name({1_file_id, 2_db_epoch})),
+      Optional(file_handle{1_file_id, 2_db_epoch}));
 
     EXPECT_THAT(
-      parse_sst_file_name(sst_file_name(123_file_id)), Optional(123_file_id));
+      parse_sst_file_name(sst_file_name({123_file_id, 432_db_epoch})),
+      Optional(file_handle{123_file_id, 432_db_epoch}));
 
+    auto max_epoch = database_epoch{
+      .inter = std::numeric_limits<uint64_t>::max(),
+      .intra = std::numeric_limits<uint64_t>::max(),
+    };
     EXPECT_THAT(
       parse_sst_file_name(
-        sst_file_name(file_id{std::numeric_limits<uint64_t>::max()})),
-      Optional(file_id{std::numeric_limits<uint64_t>::max()}));
+        sst_file_name(file_handle{file_id::max(), max_epoch})),
+      Optional(file_handle{file_id::max(), max_epoch}));
 }
 
 TEST(Files, ParseFilename_Invalid) {
@@ -54,9 +69,22 @@ TEST(Files, ParseFilename_Invalid) {
     EXPECT_EQ(std::nullopt, parse_sst_file_name("file.txt"));
     EXPECT_EQ(std::nullopt, parse_sst_file_name("00000000000000000001.log"));
 
+    // Missing splits
+    EXPECT_EQ(std::nullopt, parse_sst_file_name("00000000000000000001.sst"));
+    EXPECT_EQ(
+      std::nullopt,
+      parse_sst_file_name("00000000000000000001-00000000000000000001.sst"));
+
+    // Extra split
+    EXPECT_EQ(
+      std::nullopt,
+      parse_sst_file_name(
+        "00000000000000000001-00000000000000000001-00000000000000000001-"
+        "00000000000000000001.sst"));
+
     // Invalid numeric ID for sst
-    EXPECT_EQ(std::nullopt, parse_sst_file_name("notanumber.sst"));
-    EXPECT_EQ(std::nullopt, parse_sst_file_name("abc123.sst"));
+    EXPECT_EQ(std::nullopt, parse_sst_file_name("notanumber-123.sst"));
+    EXPECT_EQ(std::nullopt, parse_sst_file_name("4321-abc123.sst"));
 
     // Empty string
     EXPECT_EQ(std::nullopt, parse_sst_file_name(""));

@@ -29,8 +29,8 @@ constexpr static int32_t default_allowed_seeks = 1024 * 1024 * 1024;
 
 // All the metadata for a single SST file.
 struct file_meta_data {
-    // The file's numeric ID.
-    internal::file_id id;
+    // The pointer to a file
+    internal::file_handle handle;
     // Size of the file in bytes
     uint64_t file_size = 0;
     internal::key smallest; // smallest key in the table
@@ -66,7 +66,7 @@ public:
     // The parameters to `add_file`
     struct added_file {
         internal::level level;
-        internal::file_id file_id;
+        internal::file_handle file_handle;
         uint64_t file_size;
         internal::key smallest;
         internal::key largest;
@@ -78,7 +78,7 @@ public:
     void add_file(added_file params) {
         _mutations_by_level[params.level].added_files.push_back(
           ss::make_lw_shared<file_meta_data>({
-            .id = params.file_id,
+            .handle = params.file_handle,
             .file_size = params.file_size,
             .smallest = std::move(params.smallest),
             .largest = std::move(params.largest),
@@ -88,8 +88,8 @@ public:
     }
 
     // Remove a file from this version.
-    void remove_file(internal::level level, internal::file_id file_id) {
-        _mutations_by_level[level].removed_files.insert(file_id);
+    void remove_file(internal::level level, internal::file_handle h) {
+        _mutations_by_level[level].removed_files.insert(h);
     }
 
     fmt::iterator format_to(fmt::iterator it) const;
@@ -97,7 +97,7 @@ public:
 private:
     friend class version_set;
     struct mutation {
-        chunked_hash_set<internal::file_id> removed_files;
+        chunked_hash_set<internal::file_handle> removed_files;
         chunked_vector<ss::lw_shared_ptr<file_meta_data>> added_files;
         std::optional<internal::key> compact_pointer;
 

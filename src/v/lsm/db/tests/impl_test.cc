@@ -22,10 +22,10 @@
 
 #include <memory>
 
-namespace io = lsm::io;
-using lsm::internal::file_id;
-
 namespace {
+
+namespace io = lsm::io;
+using lsm::internal::file_handle;
 
 class proxy_persistence
   : public io::data_persistence
@@ -37,30 +37,32 @@ public:
       , _mdp(mdp) {}
 
     ss::future<io::optional_pointer<io::random_access_file_reader>>
-    open_random_access_reader(file_id id) override {
-        return _p->open_random_access_reader(id);
+    open_random_access_reader(file_handle h) override {
+        return _p->open_random_access_reader(h);
     }
 
     ss::future<std::unique_ptr<io::sequential_file_writer>>
-    open_sequential_writer(file_id id) override {
-        return _p->open_sequential_writer(id);
+    open_sequential_writer(file_handle h) override {
+        return _p->open_sequential_writer(h);
     }
 
-    ss::future<> remove_file(file_id id) override {
-        return _p->remove_file(id);
+    ss::future<> remove_file(file_handle h) override {
+        return _p->remove_file(h);
     }
 
-    ss::coroutine::experimental::generator<file_id> list_files() override {
+    ss::coroutine::experimental::generator<file_handle> list_files() override {
         return _p->list_files();
     }
 
-    ss::future<std::optional<iobuf>> read_manifest() override {
-        return _mdp->read_manifest();
+    ss::future<std::optional<iobuf>>
+    read_manifest(lsm::internal::database_epoch e) override {
+        return _mdp->read_manifest(e);
     }
 
     // Write the manifest atomically to durable storage.
-    ss::future<> write_manifest(iobuf b) override {
-        return _mdp->write_manifest(std::move(b));
+    ss::future<>
+    write_manifest(lsm::internal::database_epoch e, iobuf b) override {
+        return _mdp->write_manifest(e, std::move(b));
     }
 
     ss::future<> close() override { co_return; };
@@ -163,9 +165,9 @@ public:
     auto max_applied_seqno() { return _db->max_applied_seqno(); }
     auto max_persisted_seqno() { return _db->max_persisted_seqno(); }
 
-    ss::future<std::vector<file_id>> list_files() {
+    ss::future<std::vector<file_handle>> list_files() {
         auto gen = _data_persistence->list_files();
-        std::vector<file_id> files;
+        std::vector<file_handle> files;
         while (auto file = co_await gen()) {
             files.push_back(*file);
         }

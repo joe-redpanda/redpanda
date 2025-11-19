@@ -25,7 +25,8 @@ struct by_smallest_key {
       const ss::lw_shared_ptr<file_meta_data>& a,
       const ss::lw_shared_ptr<file_meta_data>& b) const {
         // Sort by smallest key, and break ties using file ID.
-        return std::tie(a->smallest, a->id) < std::tie(b->smallest, b->id);
+        return std::tie(a->smallest, a->handle.id)
+               < std::tie(b->smallest, b->handle.id);
     }
 };
 

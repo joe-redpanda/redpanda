@@ -42,9 +42,9 @@ public:
     ~impl() override = default;
 
     ss::future<optional_pointer<random_access_file_reader>>
-    open_random_access_reader(internal::file_id id) override {
+    open_random_access_reader(internal::file_handle h) override {
         try {
-            auto filepath = path(internal::sst_file_name(id));
+            auto filepath = path(internal::sst_file_name(h));
             auto file = co_await ss::open_file_dma(
               filepath.native(), ss::open_flags::ro);
             std::unique_ptr<random_access_file_reader> ptr;
@@ -64,9 +64,9 @@ public:
     }
 
     ss::future<std::unique_ptr<sequential_file_writer>>
-    open_sequential_writer(internal::file_id id) override {
+    open_sequential_writer(internal::file_handle h) override {
         try {
-            auto filepath = path(internal::sst_file_name(id));
+            auto filepath = path(internal::sst_file_name(h));
             auto file = ss::open_file_dma(
               filepath.native(),
               ss::open_flags::create | ss::open_flags::rw
@@ -87,9 +87,29 @@ public:
         }
     }
 
-    ss::future<std::optional<iobuf>> read_manifest() override {
+    ss::future<std::optional<iobuf>>
+    read_manifest(internal::database_epoch epoch) override {
+        auto latest_filename = fmt::format(
+          "{:020}-{:020}.MANIFEST", epoch.inter, epoch.intra);
+        std::string filename;
+        auto generator = list_all_files();
+        while (auto entry = co_await generator()) {
+            if (!entry->name.ends_with(".MANIFEST")) {
+                continue;
+            }
+            // Skip newer files
+            if (entry->name > latest_filename) {
+                continue;
+            }
+            if (entry->name > filename) {
+                filename = entry->name;
+            }
+        }
+        if (filename.empty()) {
+            co_return std::nullopt;
+        }
         try {
-            co_return co_await read_fully(path("MANIFEST").native());
+            co_return co_await read_fully(path(filename).native());
         } catch (const std::system_error& e) {
             if (e.code() != std::errc::no_such_file_or_directory) {
                 throw io_error_exception(
@@ -102,13 +122,16 @@ public:
         }
     }
 
-    ss::future<> write_manifest(iobuf b) override {
+    ss::future<>
+    write_manifest(internal::database_epoch epoch, iobuf b) override {
+        auto filename = fmt::format(
+          "{:020}-{:020}.MANIFEST", epoch.inter, epoch.intra);
         auto staging_name = fmt::format(
-          "MANIFEST.{}.lsm-staging", uuid_t::create());
+          "{}.lsm-staging", filename, uuid_t::create());
         try {
             co_await write_fully(path(staging_name), std::move(b));
             co_await ss::rename_file(
-              path(staging_name).native(), path("MANIFEST").native());
+              path(staging_name).native(), (_root / filename).native());
             co_await ss::sync_directory(_root.native());
         } catch (const std::system_error& e) {
             throw io_error_exception(
@@ -119,12 +142,41 @@ public:
             throw io_error_exception(
               "io error writing manifest: {}", std::current_exception());
         }
+        // Clean up old manifest files
+        auto generator = list_all_files();
+        while (auto entry = co_await generator()) {
+            if (!entry->name.ends_with(".MANIFEST")) {
+                continue;
+            }
+            // They are lexicographically ordered, so we can check
+            // if it's older via string compare.
+            if (entry->name < filename) {
+                co_await remove_any_file(entry->name);
+            }
+        }
     }
 
-    ss::future<> remove_file(internal::file_id id) override {
+    ss::future<> remove_file(internal::file_handle handle) override {
+        return remove_any_file(internal::sst_file_name(handle));
+    }
+
+    ss::coroutine::experimental::generator<internal::file_handle>
+    list_files() override {
+        auto generator = list_all_files();
+        while (auto entry = co_await generator()) {
+            auto maybe_id = internal::parse_sst_file_name(entry->name);
+            if (maybe_id) {
+                co_yield *maybe_id;
+            }
+        }
+    }
+
+    ss::future<> close() override { co_return; }
+
+private:
+    ss::future<> remove_any_file(std::string_view filename) {
         try {
-            co_await ss::remove_file(
-              path(internal::sst_file_name(id)).native());
+            co_await ss::remove_file(path(filename).native());
         } catch (const std::system_error& e) {
             if (e.code() != std::errc::no_such_file_or_directory) {
                 throw io_error_exception(
@@ -136,18 +188,15 @@ public:
         }
     }
 
-    ss::coroutine::experimental::generator<internal::file_id>
-    list_files() override {
+    ss::coroutine::experimental::generator<ss::directory_entry>
+    list_all_files() {
         ss::file dir;
         std::exception_ptr ep;
         try {
             dir = co_await ss::open_directory(_root.native());
             auto generator = dir.experimental_list_directory();
             while (auto entry = co_await generator()) {
-                auto maybe_id = internal::parse_sst_file_name(entry->name);
-                if (maybe_id) {
-                    co_yield *maybe_id;
-                }
+                co_yield *entry;
             }
         } catch (const std::system_error& e) {
             ep = std::make_exception_ptr(
@@ -164,10 +213,9 @@ public:
         }
     }
 
-    ss::future<> close() override { co_return; }
-
-private:
-    std::filesystem::path path(std::string_view name) { return _root / name; }
+    std::filesystem::path path(std::string_view name) const {
+        return _root / name;
+    }
 
     std::filesystem::path _root;
 };

@@ -30,7 +30,8 @@ public:
         size_t file_size = 0;
         auto filename = ++_counter;
         {
-            auto file = _persistence->open_sequential_writer(filename).get();
+            auto file
+              = _persistence->open_sequential_writer({.id = filename}).get();
             auto opts = ss::make_lw_shared<lsm::internal::options>();
             opts->compression = CompressionType;
             lsm::sst::builder builder(std::move(file), opts);
@@ -41,7 +42,8 @@ public:
             builder.close().get();
             file_size = builder.file_size();
         }
-        auto file = _persistence->open_random_access_reader(filename).get();
+        auto file
+          = _persistence->open_random_access_reader({.id = filename}).get();
         auto reader = lsm::sst::reader::open(
                         std::move(*file),
                         lsm::internal::file_id{_counter},

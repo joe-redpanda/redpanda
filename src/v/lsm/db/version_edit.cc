@@ -18,9 +18,9 @@ namespace lsm::db {
 fmt::iterator file_meta_data::format_to(fmt::iterator it) const {
     return fmt::format_to(
       it,
-      "{{id:{},file_size:{},smallest:{},largest:{},allowed_seeks:{},oldest:{},"
-      "newest:{}}}",
-      id,
+      "{{handle:{},file_size:{},smallest:{},largest:{},allowed_seeks:{},oldest:"
+      "{},newest:{}}}",
+      handle,
       file_size,
       smallest,
       largest,

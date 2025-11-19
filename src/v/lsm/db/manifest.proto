@@ -41,18 +41,28 @@ message Version {
     repeated Level levels = 1;
 }
 
+// The version of the database being opened.
+message DatabaseEpoch {
+    // The inter-process epoch
+    uint64 inter = 1;
+    // The intra-process epoch
+    uint64 intra = 2;
+}
+
 // Metadata for an SST file in the database.
 message FileMetaData {
     // The file's ID.
     uint64 id = 1;
+    // The database epoch when the file as created.
+    DatabaseEpoch epoch = 2;
     // The size of the file in bytes.
-    uint64 file_size = 2;
+    uint64 file_size = 3;
     // The smallest key in the table.
-    bytes encoded_smallest_key = 3;
+    bytes encoded_smallest_key = 4;
     // The largest key in the table.
-    bytes encoded_largest_key = 4;
+    bytes encoded_largest_key = 5;
     // The oldest seqno in this table.
-    uint64 oldest_seqno = 5;
+    uint64 oldest_seqno = 6;
     // the newest seqno in this table.
-    uint64 newest_seqno = 6;
+    uint64 newest_seqno = 7;
 }

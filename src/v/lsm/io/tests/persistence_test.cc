@@ -22,8 +22,9 @@
 #include <gtest/gtest.h>
 
 using namespace lsm::io;
-using lsm::internal::file_id;
+using lsm::internal::file_handle;
 using lsm::internal::operator""_file_id;
+using lsm::internal::operator""_db_epoch;
 
 using data_persistence_factory
   = std::function<ss::future<std::unique_ptr<data_persistence>>()>;
@@ -39,9 +40,9 @@ protected:
         }
     }
 
-    ss::future<std::vector<file_id>> list_files() {
+    ss::future<std::vector<file_handle>> list_files() {
         auto gen = persistence->list_files();
-        std::vector<file_id> files;
+        std::vector<file_handle> files;
         while (auto file = co_await gen()) {
             files.push_back(*file);
         }
@@ -53,13 +54,13 @@ protected:
 
 TEST_P(PersistenceTest, CanWriteAndReadAFile) {
     {
-        auto w = persistence->open_sequential_writer(0_file_id).get();
+        auto w = persistence->open_sequential_writer({}).get();
         auto _ = ss::defer([&w] { w->close().get(); });
         w->append(iobuf::from("hello")).get();
         w->append(iobuf::from("world")).get();
     }
     {
-        auto maybe_r = persistence->open_random_access_reader(0_file_id).get();
+        auto maybe_r = persistence->open_random_access_reader({}).get();
         ASSERT_TRUE(bool(maybe_r));
         auto r = std::move(*maybe_r);
         auto _ = ss::defer([&r] { r->close().get(); });
@@ -72,28 +73,30 @@ TEST_P(PersistenceTest, CanWriteAndReadAFile) {
 }
 
 TEST_P(PersistenceTest, ListFiles) {
-    std::vector<file_id> files;
+    std::vector<file_handle> files;
     {
         for (auto i = 0_file_id; i < 25_file_id; ++i) {
-            files.emplace_back(i);
-            auto w = persistence->open_sequential_writer(i).get();
+            files.emplace_back(i, 0_db_epoch);
+            auto w = persistence
+                       ->open_sequential_writer({.id = i, .epoch = 0_db_epoch})
+                       .get();
             auto _ = ss::defer([&w] { w->close().get(); });
             w->append(iobuf::from(fmt::format("hello, world: {}", i))).get();
         }
     }
     EXPECT_THAT(list_files().get(), testing::UnorderedElementsAreArray(files));
-    persistence->remove_file(10_file_id).get();
+    persistence->remove_file({.id = 10_file_id, .epoch = 0_db_epoch}).get();
     files.erase(files.begin() + 10);
     EXPECT_THAT(list_files().get(), testing::UnorderedElementsAreArray(files));
 }
 
 TEST_P(PersistenceTest, OverwriteFile) {
     for (int i = 0; i < 3; ++i) {
-        auto w = persistence->open_sequential_writer(0_file_id).get();
+        auto w = persistence->open_sequential_writer({}).get();
         auto _ = ss::defer([&w] { w->close().get(); });
         w->append(iobuf::from(fmt::format("hello, world: {}", i))).get();
     }
-    auto maybe_r = persistence->open_random_access_reader(0_file_id).get();
+    auto maybe_r = persistence->open_random_access_reader({}).get();
     ASSERT_TRUE(bool(maybe_r));
     auto r = std::move(*maybe_r);
     auto _ = ss::defer([&r] { r->close().get(); });
@@ -103,7 +106,7 @@ TEST_P(PersistenceTest, OverwriteFile) {
 }
 
 TEST_P(PersistenceTest, ReadNonExisting) {
-    auto maybe_r = persistence->open_random_access_reader(0_file_id).get();
+    auto maybe_r = persistence->open_random_access_reader({}).get();
     EXPECT_FALSE(bool(maybe_r));
 }
 
@@ -113,7 +116,7 @@ TEST_P(PersistenceTest, RandomAccessReaderComprehensive) {
 
     // Create file with a pattern that's easy to verify
     {
-        auto w = persistence->open_sequential_writer(0_file_id).get();
+        auto w = persistence->open_sequential_writer({}).get();
         auto _ = ss::defer([&w] { w->close().get(); });
         iobuf content;
         // Build content in chunks for efficiency
@@ -135,7 +138,7 @@ TEST_P(PersistenceTest, RandomAccessReaderComprehensive) {
     }
 
     // Open reader for all tests
-    auto maybe_r = persistence->open_random_access_reader(0_file_id).get();
+    auto maybe_r = persistence->open_random_access_reader({}).get();
     ASSERT_TRUE(bool(maybe_r));
     auto r = std::move(*maybe_r);
 
@@ -239,7 +242,7 @@ TEST_P(PersistenceTest, RandomAccessReaderComprehensive) {
     r->close().get();
 
     // Clean up
-    persistence->remove_file(0_file_id).get();
+    persistence->remove_file({}).get();
 }
 
 INSTANTIATE_TEST_SUITE_P(

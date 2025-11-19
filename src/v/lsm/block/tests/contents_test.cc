@@ -28,11 +28,11 @@ TEST_CORO(Contents, StringView) {
         for (char c : {'a', 'b', 'c'}) {
             b.append(iobuf::from(std::string(128_KiB, c)));
         }
-        auto file = co_await persistence->open_sequential_writer(0_file_id);
+        auto file = co_await persistence->open_sequential_writer({});
         co_await file->append(b.share());
         co_await file->close();
     }
-    auto file = co_await persistence->open_random_access_reader(0_file_id);
+    auto file = co_await persistence->open_random_access_reader({});
     ASSERT_TRUE_CORO(bool(file));
     for (auto offset : std::to_array<size_t>({0, 1, 2, 3, 4, 5, 10, 64_KiB})) {
         auto buf = b.share(offset, b.size_bytes() - offset);
@@ -81,11 +81,11 @@ TEST_CORO(Contents, IobufShare) {
         for (char c : {'a', 'b', 'c'}) {
             b.append(iobuf::from(std::string(128_KiB, c)));
         }
-        auto file = co_await persistence->open_sequential_writer(0_file_id);
+        auto file = co_await persistence->open_sequential_writer({});
         co_await file->append(b.share());
         co_await file->close();
     }
-    auto file = co_await persistence->open_random_access_reader(0_file_id);
+    auto file = co_await persistence->open_random_access_reader({});
     ASSERT_TRUE_CORO(bool(file));
     for (auto offset : std::to_array<size_t>({0, 1, 2, 3, 4, 5, 10, 64_KiB})) {
         auto buf = b.share(offset, b.size_bytes() - offset);

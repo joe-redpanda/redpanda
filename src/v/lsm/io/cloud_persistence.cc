@@ -22,6 +22,7 @@
 #include <seastar/core/reactor.hh>
 
 #include <memory>
+#include <ranges>
 
 namespace lsm::io {
 
@@ -177,10 +178,10 @@ public:
       , _prefix(std::move(prefix)) {}
 
     ss::future<optional_pointer<random_access_file_reader>>
-    open_random_access_reader(internal::file_id id) override {
+    open_random_access_reader(internal::file_handle h) override {
         _as.check();
         auto _ = _gate.hold();
-        auto filename = internal::sst_file_name(id);
+        auto filename = internal::sst_file_name(h);
         auto filepath = staging_path(filename);
         auto reader = co_await open_local_reader(filepath);
         if (reader) {
@@ -217,11 +218,11 @@ public:
     }
 
     ss::future<std::unique_ptr<sequential_file_writer>>
-    open_sequential_writer(internal::file_id id) override {
+    open_sequential_writer(internal::file_handle h) override {
         _as.check();
         auto _ = _gate.hold();
         try {
-            auto filename = internal::sst_file_name(id);
+            auto filename = internal::sst_file_name(h);
             auto filepath = staging_path(filename);
             auto file = ss::open_file_dma(
               filepath.native(),
@@ -248,11 +249,11 @@ public:
         }
     }
 
-    ss::future<> remove_file(internal::file_id id) override {
+    ss::future<> remove_file(internal::file_handle h) override {
         _as.check();
         auto _ = _gate.hold();
         retry_chain_node rtc(_as);
-        auto filename = internal::sst_file_name(id);
+        auto filename = internal::sst_file_name(h);
         cloud_io::upload_result result{};
         try {
             co_await ss::remove_file(staging_path(filename).native());
@@ -273,7 +274,7 @@ public:
         check_result(result);
     }
 
-    ss::coroutine::experimental::generator<internal::file_id>
+    ss::coroutine::experimental::generator<internal::file_handle>
     list_files() override {
         _as.check();
         auto _ = _gate.hold();
@@ -389,21 +390,30 @@ public:
     cloud_metadata_persistence(
       cloud_io::remote* remote,
       cloud_storage_clients::bucket_name bucket,
-      const cloud_storage_clients::object_key& prefix)
+      cloud_storage_clients::object_key prefix)
       : _remote(remote)
       , _bucket(std::move(bucket))
-      , _manifest_key(join(prefix, "MANIFEST")) {}
+      , _prefix(std::move(prefix)) {}
 
-    ss::future<std::optional<iobuf>> read_manifest() override {
+    ss::future<std::optional<iobuf>>
+    read_manifest(internal::database_epoch epoch) override {
         _as.check();
         auto _ = _gate.hold();
         retry_chain_node root{_as};
+        auto max_key = manifest_key(epoch);
+        auto keys = co_await list_manifests();
+        // list_manifests gives you biggest to smallest key, so find the first
+        // key that is not greater than our max value passed in.
+        auto it = std::ranges::find_if(
+          keys, [&max_key](const auto& key) { return key <= max_key; });
+        if (it == keys.end()) {
+            co_return std::nullopt;
+        }
         iobuf b;
-        // TODO: Use CAS or term (term requires listing, which is fine)
         auto result = co_await _remote->download_object({
           .transfer_details = {
             .bucket = _bucket,
-            .key = _manifest_key,
+            .key = std::move(*it),
             .parent_rtc = root,
           },
           .display_str = "LSM Manifest download",
@@ -414,21 +424,32 @@ public:
                                        : std::nullopt;
     }
 
-    ss::future<> write_manifest(iobuf b) override {
+    ss::future<>
+    write_manifest(internal::database_epoch epoch, iobuf b) override {
         _as.check();
         auto _ = _gate.hold();
         retry_chain_node root{_as};
-        // TODO: Use CAS or term
+        auto my_key = manifest_key(epoch);
         auto result = co_await _remote->upload_object({
           .transfer_details = {
             .bucket = _bucket,
-            .key = _manifest_key,
+            .key = my_key,
             .parent_rtc = root,
           },
           .display_str = "LSM Manifest upload",
           .payload = std::move(b),
         });
         check_result(result);
+        // Now cleanup old manifests
+        chunked_vector<cloud_storage_clients::object_key> keys_to_delete;
+        for (const auto& key : co_await list_manifests()) {
+            if (key >= my_key) {
+                continue;
+            }
+            keys_to_delete.push_back(key);
+        }
+        result = co_await _remote->delete_objects(
+          _bucket, std::move(keys_to_delete), root, [](size_t) {});
     }
 
     ss::future<> close() override {
@@ -438,9 +459,49 @@ public:
     }
 
 private:
+    ss::future<chunked_vector<cloud_storage_clients::object_key>>
+    list_manifests() {
+        using namespace cloud_storage_clients;
+        retry_chain_node root{_as};
+        auto list_result = co_await _remote->list_objects(
+          _bucket, root, manifest_prefix());
+        if (list_result.has_error()) {
+            switch (list_result.error()) {
+            case error_outcome::fail:
+                throw io_error_exception("failure listing manifest files");
+            case error_outcome::retry:
+            case error_outcome::key_not_found:
+            case error_outcome::operation_not_supported:
+            case error_outcome::authentication_failed:
+                throw io_error_exception(
+                  "unexpected error when listing manifest files: {}",
+                  list_result.error());
+            }
+        }
+        auto& items = list_result.value().contents;
+        chunked_vector<cloud_storage_clients::object_key> manifest_keys;
+        manifest_keys.reserve(items.size());
+        for (const auto& item : items) {
+            manifest_keys.emplace_back(item.key);
+        }
+        std::ranges::sort(manifest_keys, std::greater<>{});
+        co_return manifest_keys;
+    }
+
+    cloud_storage_clients::object_key manifest_prefix() const {
+        return cloud_storage_clients::object_key{_prefix() / "MANIFEST."};
+    }
+
+    cloud_storage_clients::object_key
+    manifest_key(internal::database_epoch epoch) const {
+        return cloud_storage_clients::object_key{
+          _prefix()
+          / fmt::format("MANIFEST.{:020}-{:020}", epoch.inter, epoch.intra)};
+    }
+
     cloud_io::remote* _remote;
     cloud_storage_clients::bucket_name _bucket;
-    cloud_storage_clients::object_key _manifest_key;
+    cloud_storage_clients::object_key _prefix;
     ss::abort_source _as;
     ss::gate _gate;
 };
@@ -465,7 +526,7 @@ open_cloud_metadata_persistence(
   cloud_storage_clients::bucket_name bucket,
   cloud_storage_clients::object_key prefix) {
     co_return std::make_unique<cloud_metadata_persistence>(
-      remote, std::move(bucket), prefix);
+      remote, std::move(bucket), std::move(prefix));
 }
 
 } // namespace lsm::io

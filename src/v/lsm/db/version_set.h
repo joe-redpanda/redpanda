@@ -175,7 +175,7 @@ public:
     make_input_iterator(compaction*);
 
     // Get all the files that are currently being used by any live version.
-    chunked_hash_set<internal::file_id> get_live_files();
+    chunked_hash_set<internal::file_handle> get_live_files();
 
 private:
     friend class version;

@@ -264,7 +264,7 @@ void impl::maybe_schedule_compaction() {
 namespace {
 struct compaction_state {
     struct output {
-        internal::file_id id;
+        internal::file_handle handle;
         uint64_t file_size = 0;
         internal::key smallest, largest;
         internal::sequence_number oldest, newest;
@@ -273,11 +273,11 @@ struct compaction_state {
     output& current_output() { return outputs.back(); }
 
     ss::future<> open_current_builder(
-      internal::file_id id,
+      internal::file_handle h,
       io::data_persistence* p,
       ss::lw_shared_ptr<internal::options> opts) {
-        outputs.emplace_back(id);
-        auto w = co_await p->open_sequential_writer(id);
+        outputs.emplace_back(h);
+        auto w = co_await p->open_sequential_writer(h);
         builder.emplace(std::move(w), std::move(opts));
     }
     ss::future<> finish_current_builder() {
@@ -321,10 +321,10 @@ ss::future<> impl::run_background_compaction() {
           "trivial compactions should only be for a single input file: {}",
           input_level_files);
         auto file = compaction.input(compaction::which::input_level, 0);
-        compaction.edit()->remove_file(compaction.level(), file->id);
+        compaction.edit()->remove_file(compaction.level(), file->handle);
         compaction.edit()->add_file({
           .level = compaction.level() + 1_level,
-          .file_id = file->id,
+          .file_handle = file->handle,
           .file_size = file->file_size,
           .smallest = file->smallest,
           .largest = file->largest,
@@ -382,7 +382,12 @@ ss::future<> impl::run_background_compaction() {
             if (!drop) {
                 if (!state.builder) {
                     co_await state.open_current_builder(
-                      _versions->new_file_id(), _persistence.data.get(), _opts);
+                      {
+                        .id = _versions->new_file_id(),
+                        .epoch = _opts->database_epoch,
+                      },
+                      _persistence.data.get(),
+                      _opts);
                 }
                 auto& current = state.current_output();
                 if (state.builder->num_entries() == 0) {
@@ -416,7 +421,7 @@ ss::future<> impl::run_background_compaction() {
     for (auto& output : state.outputs) {
         edit->add_file({
           .level = compaction.level() + 1_level,
-          .file_id = output.id,
+          .file_handle = output.handle,
           .file_size = output.file_size,
           .smallest = std::move(output.smallest),
           .largest = std::move(output.largest),
@@ -433,7 +438,11 @@ ss::future<> impl::flush_memtable() {
     auto v = _versions->current();
     auto id = _versions->new_file_id();
     auto result = co_await build_table(
-      _persistence.data.get(), id, (*_imm)->create_iterator(), _opts, &_as);
+      _persistence.data.get(),
+      {.id = id, .epoch = _opts->database_epoch},
+      (*_imm)->create_iterator(),
+      _opts,
+      &_as);
     if (!result) {
         _versions->reuse_file_id(id);
         co_return;
@@ -444,7 +453,7 @@ ss::future<> impl::flush_memtable() {
     edit.set_last_seqno(result->newest_seqno);
     edit.add_file({
       .level = level,
-      .file_id = id,
+      .file_handle = {.id = id, .epoch = _opts->database_epoch},
       .file_size = result->file_size,
       .smallest = std::move(result->smallest),
       .largest = std::move(result->largest),
@@ -462,13 +471,17 @@ ss::future<> impl::flush_memtable() {
 }
 
 ss::future<> impl::remove_obsolete_files() {
-    chunked_hash_set<internal::file_id> files = _versions->get_live_files();
+    chunked_hash_set<internal::file_handle> files = _versions->get_live_files();
     auto gen = _persistence.data->list_files();
-    while (auto file_id = co_await gen()) {
-        if (!files.contains(*file_id)) {
-            co_await _table_cache->evict(*file_id);
-            co_await _persistence.data->remove_file(*file_id);
+    while (auto file_handle = co_await gen()) {
+        if (files.contains(*file_handle)) {
+            continue;
         }
+        if (file_handle->epoch > _opts->database_epoch) {
+            continue;
+        }
+        co_await _table_cache->evict(*file_handle);
+        co_await _persistence.data->remove_file(*file_handle);
     }
 }
 

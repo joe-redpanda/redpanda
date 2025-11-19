@@ -82,11 +82,12 @@ public:
     metadata_persistence& operator=(metadata_persistence&&) = delete;
     virtual ~metadata_persistence() = default;
 
-    // Read the latest written manifest if one exists.
-    virtual ss::future<std::optional<iobuf>> read_manifest() = 0;
+    // Read the latest written manifest before the given epoch if one exists.
+    virtual ss::future<std::optional<iobuf>>
+      read_manifest(internal::database_epoch) = 0;
 
-    // Write the manifest atomically to durable storage.
-    virtual ss::future<> write_manifest(iobuf) = 0;
+    // Write the manifest atomically to durable storage at the given epoch.
+    virtual ss::future<> write_manifest(internal::database_epoch, iobuf) = 0;
 
     // Closes the persistence layer.
     virtual ss::future<> close() = 0;
@@ -115,19 +116,19 @@ public:
     // If the file does not exist then the implementation should return
     // `std::nullopt`.
     virtual ss::future<optional_pointer<random_access_file_reader>>
-      open_random_access_reader(internal::file_id) = 0;
+      open_random_access_reader(internal::file_handle) = 0;
 
     // Create a writer that writes to a new file with the specified name.
     //
     // Deletes any existing file with the same name and creates a new file.
     virtual ss::future<std::unique_ptr<sequential_file_writer>>
-      open_sequential_writer(internal::file_id) = 0;
+      open_sequential_writer(internal::file_handle) = 0;
 
     // Remove a file. This is a noop if the file does not exist.
-    virtual ss::future<> remove_file(internal::file_id) = 0;
+    virtual ss::future<> remove_file(internal::file_handle) = 0;
 
     // List all the files in the persistence layer.
-    virtual ss::coroutine::experimental::generator<internal::file_id>
+    virtual ss::coroutine::experimental::generator<internal::file_handle>
     list_files() = 0;
 
     // Closes the persistence layer, this must happen after all files are

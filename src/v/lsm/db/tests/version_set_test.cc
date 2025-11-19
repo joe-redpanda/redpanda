@@ -58,7 +58,8 @@ public:
     }
 
     void add_sst(sst_spec spec) {
-        auto writer = _data_persistence->open_sequential_writer(spec.id).get();
+        auto writer
+          = _data_persistence->open_sequential_writer({.id = spec.id}).get();
         lsm::sst::builder builder(
           std::move(writer), ss::make_lw_shared<lsm::internal::options>());
         std::ranges::sort(spec.keys);
@@ -76,7 +77,7 @@ public:
         lsm::db::version_edit edit(*_options);
         edit.add_file({
           .level = spec.level,
-          .file_id = spec.id,
+          .file_handle = {.id = spec.id},
           .file_size = file_size,
           .smallest = spec.keys.front(),
           .largest = spec.keys.back(),
@@ -118,7 +119,7 @@ TEST_F(VersionSetTest, ApplyEdit) {
     lsm::db::version_edit edit(options());
     edit.add_file({
       .level = 0_level,
-      .file_id = 1_file_id,
+      .file_handle = {.id = 1_file_id},
       .file_size = 100,
       .smallest = "a"_key,
       .largest = "z"_key,
@@ -134,7 +135,7 @@ TEST_F(VersionSetTest, ApplyEditWithDelete) {
         lsm::db::version_edit edit(options());
         edit.add_file({
           .level = 0_level,
-          .file_id = 1_file_id,
+          .file_handle = {.id = 1_file_id},
           .file_size = 100,
           .smallest = "a"_key,
           .largest = "z"_key,
@@ -144,17 +145,17 @@ TEST_F(VersionSetTest, ApplyEditWithDelete) {
         EXPECT_EQ(vset.current()->num_files(1_level), 0);
     }
     lsm::db::version_edit edit(options());
-    edit.remove_file(0_level, 1_file_id);
+    edit.remove_file(0_level, {.id = 1_file_id});
     edit.add_file({
       .level = 1_level,
-      .file_id = 1_file_id,
+      .file_handle = {.id = 1_file_id},
       .file_size = 100,
       .smallest = "a"_key,
       .largest = "z"_key,
     });
     edit.add_file({
       .level = 0_level,
-      .file_id = 2_file_id,
+      .file_handle = {.id = 2_file_id},
       .file_size = 80,
       .smallest = "c"_key,
       .largest = "d"_key,
@@ -171,14 +172,14 @@ TEST_F(VersionSetTest, Recovery) {
         lsm::db::version_edit edit(options());
         edit.add_file({
           .level = 0_level,
-          .file_id = 1_file_id,
+          .file_handle = {.id = 1_file_id},
           .file_size = 100,
           .smallest = "a"_key,
           .largest = "z"_key,
         });
         edit.add_file({
           .level = 0_level,
-          .file_id = 2_file_id,
+          .file_handle = {.id = 2_file_id},
           .file_size = 80,
           .smallest = "c"_key,
           .largest = "d"_key,
@@ -198,21 +199,21 @@ TEST_F(VersionSetTest, OverlapInLevel0) {
     lsm::db::version_edit edit(options());
     edit.add_file({
       .level = 0_level,
-      .file_id = 1_file_id,
+      .file_handle = {.id = 1_file_id},
       .file_size = 100,
       .smallest = "d"_key,
       .largest = "g"_key,
     });
     edit.add_file({
       .level = 0_level,
-      .file_id = 2_file_id,
+      .file_handle = {.id = 2_file_id},
       .file_size = 80,
       .smallest = "i"_key,
       .largest = "k"_key,
     });
     edit.add_file({
       .level = 0_level,
-      .file_id = 3_file_id,
+      .file_handle = {.id = 3_file_id},
       .file_size = 80,
       .smallest = "b"_key,
       .largest = "e"_key,
@@ -241,14 +242,14 @@ TEST_F(VersionSetTest, OverlapInLevel1) {
     lsm::db::version_edit edit(options());
     edit.add_file({
       .level = 1_level,
-      .file_id = 1_file_id,
+      .file_handle = {.id = 1_file_id},
       .file_size = 100,
       .smallest = "d"_key,
       .largest = "g"_key,
     });
     edit.add_file({
       .level = 1_level,
-      .file_id = 2_file_id,
+      .file_handle = {.id = 2_file_id},
       .file_size = 80,
       .smallest = "i"_key,
       .largest = "k"_key,

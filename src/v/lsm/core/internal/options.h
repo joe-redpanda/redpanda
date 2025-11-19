@@ -21,6 +21,12 @@
 namespace lsm::internal {
 
 struct options {
+    // The epoch of the database this time it was opened.
+    //
+    // See the direct description of what an epoch is, but allows for shared
+    // storage.
+    internal::database_epoch database_epoch;
+
     struct level_config {
         // The level number in the database.
         internal::level number;

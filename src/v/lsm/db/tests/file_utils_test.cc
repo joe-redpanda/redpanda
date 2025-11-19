@@ -36,7 +36,9 @@ protected:
       internal::sequence_number largest_seq = default_seqno) {
         _files.push_back(
           ss::make_lw_shared<db::file_meta_data>(db::file_meta_data{
-            .id = internal::file_id{static_cast<uint64_t>(_files.size())},
+            .handle = {
+              .id = internal::file_id{static_cast<uint64_t>(_files.size())},
+            },
             .file_size = 100,
             .smallest = internal::key::encode(
               {.key = smallest, .seqno = smallest_seq}),
@@ -207,7 +209,7 @@ public:
       internal::key::parts smallest,
       internal::key::parts largest) {
         auto meta_data = ss::make_lw_shared<db::file_meta_data>();
-        meta_data->id = internal::file_id{id};
+        meta_data->handle = {.id = internal::file_id{id}};
         meta_data->file_size = 100;
         meta_data->smallest = internal::key::encode(std::move(smallest));
         meta_data->largest = internal::key::encode(std::move(largest));

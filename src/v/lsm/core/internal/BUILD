@@ -74,7 +74,6 @@ redpanda_cc_library(
     srcs = ["files.cc"],
     hdrs = ["files.h"],
     implementation_deps = [
-        "//src/v/strings:string_switch",
         "@abseil-cpp//absl/strings",
     ],
     deps = [

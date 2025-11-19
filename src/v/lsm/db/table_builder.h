@@ -37,7 +37,7 @@ struct build_table_result {
 // Create an SST file with the given ID from the provided iterator.
 ss::future<std::optional<build_table_result>> build_table(
   io::data_persistence* persistence,
-  internal::file_id id,
+  internal::file_handle handle,
   std::unique_ptr<internal::iterator> iter,
   ss::lw_shared_ptr<internal::options> opts,
   ss::abort_source*);

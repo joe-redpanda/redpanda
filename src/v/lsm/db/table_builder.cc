@@ -64,16 +64,16 @@ ss::future<std::optional<build_table_result>> write_sst_file(
 
 ss::future<std::optional<build_table_result>> build_table(
   io::data_persistence* persistence,
-  internal::file_id id,
+  internal::file_handle handle,
   std::unique_ptr<internal::iterator> iter,
   ss::lw_shared_ptr<internal::options> opts,
   ss::abort_source* as) {
-    auto writer = co_await persistence->open_sequential_writer(id);
+    auto writer = co_await persistence->open_sequential_writer(handle);
     sst::builder builder{std::move(writer), std::move(opts)};
     auto result = co_await write_sst_file(std::move(iter), &builder, as)
                     .finally([&builder] { return builder.close(); });
     if (!result) {
-        co_await persistence->remove_file(id);
+        co_await persistence->remove_file(handle);
     }
     co_return result;
 }

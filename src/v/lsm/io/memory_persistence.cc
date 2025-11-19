@@ -25,7 +25,7 @@ namespace lsm::io {
 namespace {
 
 struct memory_file_state {
-    internal::file_id file_id;
+    internal::file_handle file_handle;
     iobuf data;
     int32_t open_read_handles = 0;
     int32_t open_write_handles = 0;
@@ -77,7 +77,7 @@ public:
         return fmt::format_to(
           it,
           "{{file={}, size={}}}",
-          _state->file_id,
+          _state->file_handle,
           _state->data.size_bytes());
     }
 
@@ -116,7 +116,7 @@ public:
     }
 
     fmt::iterator format_to(fmt::iterator it) const override {
-        return fmt::format_to(it, "{{file={}}}", _state->file_id);
+        return fmt::format_to(it, "{{file={}}}", _state->file_handle);
     }
 
 private:
@@ -127,8 +127,8 @@ private:
 class data_impl : public data_persistence {
 public:
     ss::future<optional_pointer<random_access_file_reader>>
-    open_random_access_reader(internal::file_id id) override {
-        auto it = _data.find(id);
+    open_random_access_reader(internal::file_handle h) override {
+        auto it = _data.find(h);
         std::unique_ptr<random_access_file_reader> ptr;
         if (it != _data.end()) {
             ptr = std::make_unique<memory_random_access_file_reader>(
@@ -138,26 +138,26 @@ public:
     }
 
     ss::future<std::unique_ptr<sequential_file_writer>>
-    open_sequential_writer(internal::file_id id) override {
+    open_sequential_writer(internal::file_handle h) override {
         auto it = _data.try_emplace(
-          id, ss::make_lw_shared<memory_file_state>(id));
+          h, ss::make_lw_shared<memory_file_state>(h));
         co_return std::make_unique<memory_sequential_file_writer>(
           it.first->second);
     }
 
-    ss::future<> remove_file(internal::file_id name) override {
-        auto it = _data.find(name);
+    ss::future<> remove_file(internal::file_handle h) override {
+        auto it = _data.find(h);
         if (it == _data.end()) {
             co_return;
         }
         if (it->second->open_handles() != 0) {
             throw io_error_exception(
-              "unable to remove file {}, there are still open handles", name);
+              "unable to remove file {}, there are still open handles", h);
         }
         _data.erase(it);
     }
 
-    ss::coroutine::experimental::generator<internal::file_id>
+    ss::coroutine::experimental::generator<internal::file_handle>
     list_files() override {
         auto it = _data.begin();
         while (it != _data.end()) {
@@ -184,7 +184,7 @@ public:
 
 private:
     bool _closed = false;
-    std::map<internal::file_id, ss::lw_shared_ptr<memory_file_state>> _data;
+    std::map<internal::file_handle, ss::lw_shared_ptr<memory_file_state>> _data;
 };
 
 class metadata_impl : public metadata_persistence {
@@ -197,10 +197,16 @@ public:
     ~metadata_impl() override {
         vassert(_closed, "metadata persistence not properly closed");
     }
-    ss::future<std::optional<iobuf>> read_manifest() override {
+    ss::future<std::optional<iobuf>>
+    read_manifest(internal::database_epoch e) override {
+        if (e > _epoch) {
+            co_return std::nullopt;
+        }
         co_return _latest.transform([](iobuf& b) { return b.share(); });
     }
-    ss::future<> write_manifest(iobuf b) override {
+    ss::future<>
+    write_manifest(internal::database_epoch epoch, iobuf b) override {
+        _epoch = epoch;
         _latest = std::move(b);
         co_return;
     }
@@ -212,6 +218,7 @@ public:
 
 private:
     bool _closed = false;
+    internal::database_epoch _epoch;
     std::optional<iobuf> _latest;
 };
 

@@ -141,17 +141,17 @@ public:
       }) {}
 
     ss::future<std::unique_ptr<internal::iterator>>
-    create_iterator(internal::file_id id, uint64_t file_size) {
-        auto table = co_await find_reader(id, file_size);
+    create_iterator(internal::file_handle h, uint64_t file_size) {
+        auto table = co_await find_reader(h, file_size);
         co_return std::make_unique<wrapped_iterator>(this, table);
     }
 
     ss::future<> get(
-      internal::file_id id,
+      internal::file_handle h,
       uint64_t file_size,
       internal::key_view key,
       absl::FunctionRef<ss::future<>(internal::key_view, iobuf)> fn) {
-        auto table = co_await find_reader(id, file_size);
+        auto table = co_await find_reader(h, file_size);
         co_await table->internal_get(key, fn);
         // It's possible (although unlikely), that while `internal_get` was
         // going on the table was evicted from the cache, if that's the case
@@ -160,10 +160,10 @@ public:
         maybe_enqueue_cleanup(std::move(table));
     }
 
-    ss::future<> evict(internal::file_id id) {
+    ss::future<> evict(internal::file_handle h) {
         gc_ghost_fifo();
-        auto guard = co_await reader_lock_guard::acquire(&_mu_map, id);
-        auto it = _map.find(id);
+        auto guard = co_await reader_lock_guard::acquire(&_mu_map, h.id);
+        auto it = _map.find(h.id);
         if (it == _map.end()) {
             co_return;
         }
@@ -261,22 +261,24 @@ private:
     }
 
     ss::future<ss::lw_shared_ptr<sst::reader>>
-    find_reader(internal::file_id id, uint64_t file_size) {
+    find_reader(internal::file_handle handle, uint64_t file_size) {
         gc_ghost_fifo();
-        auto it = _map.find(id);
+        auto it = _map.find(handle.id);
         if (it == _map.end()) {
             // Use fine grained locking to prevent opening unrelated tables from
             // being a bottleneck.
-            auto guard = co_await reader_lock_guard::acquire(&_mu_map, id);
+            auto guard = co_await reader_lock_guard::acquire(
+              &_mu_map, handle.id);
             // Make sure since we had a scheduling point that something else
             // didn't come along and insert what we were looking for into the
             // map, if it did, we can continue as usual, as the units will be
             // released after the `if` statement.
-            it = _map.find(id);
+            it = _map.find(handle.id);
             if (it == _map.end()) {
-                auto reader = co_await open_reader(id, file_size);
+                auto reader = co_await open_reader(handle, file_size);
                 auto [it, succ] = _map.try_emplace(
-                  id, std::make_unique<cached_value>(id, std::move(reader)));
+                  handle.id,
+                  std::make_unique<cached_value>(handle.id, std::move(reader)));
                 vassert(succ, "lock is held, who mutated _map?");
                 _cache.insert(*it->second);
                 co_return it->second->value;
@@ -294,13 +296,13 @@ private:
     }
 
     ss::future<ss::lw_shared_ptr<sst::reader>>
-    open_reader(internal::file_id id, uint64_t file_size) {
-        auto file = co_await _persistence->open_random_access_reader(id);
+    open_reader(internal::file_handle h, uint64_t file_size) {
+        auto file = co_await _persistence->open_random_access_reader(h);
         if (!file) {
-            throw invalid_argument_exception("file for ID {} is not found", id);
+            throw invalid_argument_exception("file for ID {} is not found", h);
         }
         auto reader = co_await sst::reader::open(
-          std::move(*file), id, file_size, _block_cache);
+          std::move(*file), h.id, file_size, _block_cache);
         co_return ss::make_lw_shared(std::move(reader));
     }
 
@@ -347,20 +349,20 @@ table_cache::table_cache(
 table_cache::~table_cache() = default;
 
 ss::future<std::unique_ptr<internal::iterator>>
-table_cache::create_iterator(internal::file_id id, uint64_t file_size) {
-    return _impl->create_iterator(id, file_size);
+table_cache::create_iterator(internal::file_handle h, uint64_t file_size) {
+    return _impl->create_iterator(h, file_size);
 }
 
 ss::future<> table_cache::get(
-  internal::file_id id,
+  internal::file_handle h,
   uint64_t file_size,
   internal::key_view key,
   absl::FunctionRef<ss::future<>(internal::key_view, iobuf)> fn) {
-    return _impl->get(id, file_size, key, fn);
+    return _impl->get(h, file_size, key, fn);
 }
 
-ss::future<> table_cache::evict(internal::file_id id) {
-    return _impl->evict(id);
+ss::future<> table_cache::evict(internal::file_handle h) {
+    return _impl->evict(h);
 }
 
 ss::future<> table_cache::close() { return _impl->close(); }

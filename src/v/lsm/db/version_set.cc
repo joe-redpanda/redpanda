@@ -43,6 +43,24 @@ using internal::operator""_file_id;
 // alive.
 class level_file_num_iterator : public internal::iterator {
 public:
+    static std::pair<internal::file_handle, uint64_t>
+    decode_value(const iobuf& v) {
+        // We always know it's a single fragment due to how we allocate and
+        // write it in the `level_file_num_iterator`.
+        const auto& fragment = *v.begin();
+        auto it = fragment.get();
+        internal::file_handle handle;
+        std::memcpy(&handle.id, it, sizeof(handle.id));
+        std::advance(it, sizeof(handle.id));
+        std::memcpy(&handle.epoch.inter, it, sizeof(handle.epoch.inter));
+        std::advance(it, sizeof(handle.epoch.inter));
+        std::memcpy(&handle.epoch.intra, it, sizeof(handle.epoch.intra));
+        std::advance(it, sizeof(handle.epoch.intra));
+        uint64_t file_size = 0;
+        std::memcpy(&file_size, it, sizeof(file_size));
+        return std::make_pair(handle, file_size);
+    }
+
     explicit level_file_num_iterator(
       chunked_vector<ss::lw_shared_ptr<file_meta_data>>* files)
       : _files(files)
@@ -76,10 +94,17 @@ public:
     internal::key_view key() override { return (*_files)[_index]->largest; }
     iobuf value() override {
         iobuf v;
-        auto placeholder = v.reserve(sizeof(uint64_t) * 2);
+        auto placeholder = v.reserve(sizeof(uint64_t) * 4);
         const auto& f = (*_files)[_index];
-        auto id = std::bit_cast<std::array<char, sizeof(uint64_t)>>(f->id);
+        auto id = std::bit_cast<std::array<char, sizeof(uint64_t)>>(
+          f->handle.id);
         placeholder.write(id.data(), id.size());
+        auto epoch_hi = std::bit_cast<std::array<char, sizeof(uint64_t)>>(
+          f->handle.epoch.inter);
+        placeholder.write(epoch_hi.data(), epoch_hi.size());
+        auto epoch_lo = std::bit_cast<std::array<char, sizeof(uint64_t)>>(
+          f->handle.epoch.intra);
+        placeholder.write(epoch_lo.data(), epoch_lo.size());
         auto size = std::bit_cast<std::array<char, sizeof(uint64_t)>>(
           f->file_size);
         placeholder.write(size.data(), size.size());
@@ -113,7 +138,7 @@ public:
             } else {
                 _vset->_compact_pointer[level] = std::nullopt;
             }
-            for (internal::file_id removed_file : mutation.removed_files) {
+            for (internal::file_handle removed_file : mutation.removed_files) {
                 _levels[level].removed_files.insert(removed_file);
             }
             for (const auto& added_file : mutation.added_files) {
@@ -124,7 +149,7 @@ public:
                 if (copy->allowed_seeks < min_allowed_seeks) {
                     copy->allowed_seeks = min_allowed_seeks;
                 }
-                _levels[level].removed_files.erase(copy->id);
+                _levels[level].removed_files.erase(copy->handle);
                 _levels[level].added_files.insert(copy);
             }
         }
@@ -175,7 +200,7 @@ private:
       version* v,
       internal::level level,
       ss::lw_shared_ptr<file_meta_data> file) {
-        if (_levels[level].removed_files.contains(file->id)) {
+        if (_levels[level].removed_files.contains(file->handle)) {
             return;
         }
         auto& files = v->_files[level];
@@ -192,7 +217,7 @@ private:
     version_set* _vset;
     ss::lw_shared_ptr<version> _base;
     struct level_state {
-        chunked_hash_set<internal::file_id> removed_files;
+        chunked_hash_set<internal::file_handle> removed_files;
         absl::btree_set<ss::lw_shared_ptr<file_meta_data>, by_smallest_key>
           added_files;
     };
@@ -208,7 +233,7 @@ ss::future<> version::add_iterators(
     // Merge all level zero files together since they may overlap.
     for (const auto& file : _files[0_level]) {
         auto iter = co_await _vset->_table_cache->create_iterator(
-          file->id, file->file_size);
+          file->handle, file->file_size);
         iters->push_back(std::move(iter));
     }
     // For levels > 0, we can use a concatenating iterator that sequentially
@@ -319,7 +344,7 @@ ss::future<ss::stop_iteration> lookup_state::on_file(
     last_file_read.seek_file = file;
     last_file_read.seek_file_level = level;
     co_await table_cache->get(
-      file->id,
+      file->handle,
       file->file_size,
       target,
       [this](internal::key_view key, iobuf value) {
@@ -396,16 +421,9 @@ version::create_concatenating_iterator(internal::level level) {
     // Keep a strong reference at least in the lambda.
     return internal::create_two_level_iterator(
       std::move(index_iter), [self = shared_from_this()](iobuf value) {
-          // We always know it's a single fragment due to how we allocate and
-          // write it in the `level_file_num_iterator`.
-          const auto& fragment = *value.begin();
-          auto it = fragment.get();
-          internal::file_id id;
-          std::memcpy(&id, it, sizeof(id));
-          uint64_t file_size = 0;
-          std::advance(it, sizeof(id));
-          std::memcpy(&file_size, it, sizeof(file_size));
-          return self->_vset->_table_cache->create_iterator(id, file_size);
+          auto [handle, file_size] = level_file_num_iterator::decode_value(
+            value);
+          return self->_vset->_table_cache->create_iterator(handle, file_size);
       });
 }
 
@@ -427,7 +445,7 @@ ss::future<> version::for_each_overlapping(
           [](
             const ss::lw_shared_ptr<file_meta_data>& a,
             const ss::lw_shared_ptr<file_meta_data>& b) {
-              return a->id > b->id;
+              return a->handle.id > b->handle.id;
           });
         for (const auto& file : tmp) {
             auto stop = co_await fn(0_level, file);
@@ -468,7 +486,7 @@ fmt::iterator version::format_to(fmt::iterator it) const {
             it = fmt::format_to(
               it,
               "{}:{}['{}' .. '{}']\n",
-              file->id,
+              file->handle,
               file->file_size,
               file->smallest,
               file->largest);
@@ -563,7 +581,9 @@ ss::future<> version_set::write_manifest(manifest m) {
         level_proto.set_number(level);
         for (const auto& file : files) {
             proto::file_meta_data file_proto;
-            file_proto.set_id(file->id());
+            file_proto.set_id(file->handle.id());
+            file_proto.get_epoch().set_inter(file->handle.epoch.inter);
+            file_proto.get_epoch().set_intra(file->handle.epoch.intra);
             file_proto.set_file_size(file->file_size);
             file_proto.set_encoded_smallest_key(iobuf(file->smallest));
             file_proto.set_encoded_largest_key(iobuf(file->largest));
@@ -578,11 +598,12 @@ ss::future<> version_set::write_manifest(manifest m) {
     manifest_proto.set_next_file_id(m.next_file_id());
     manifest_proto.set_last_seqno(m.last_seqno());
     auto serialized = co_await manifest_proto.to_proto();
-    co_await _persistence->write_manifest(std::move(serialized));
+    co_await _persistence->write_manifest(
+      _options->database_epoch, std::move(serialized));
 }
 
 ss::future<std::optional<version_set::manifest>> version_set::read_manifest() {
-    auto proto = co_await _persistence->read_manifest();
+    auto proto = co_await _persistence->read_manifest(_options->database_epoch);
     if (!proto) {
         co_return std::nullopt;
     }
@@ -600,7 +621,11 @@ ss::future<std::optional<version_set::manifest>> version_set::read_manifest() {
           static_cast<uint8_t>(level_proto.get_number())}];
         for (const auto& file_proto : level_proto.get_files()) {
             auto meta = ss::make_lw_shared<file_meta_data>();
-            meta->id = internal::file_id{file_proto.get_id()};
+            meta->handle.id = internal::file_id{file_proto.get_id()};
+            meta->handle.epoch = internal::database_epoch{
+              .inter = file_proto.get_epoch().get_inter(),
+              .intra = file_proto.get_epoch().get_intra(),
+            };
             meta->file_size = file_proto.get_file_size();
             meta->smallest = internal::key(
               file_proto.get_encoded_smallest_key());
@@ -731,7 +756,7 @@ version_set::make_input_iterator(compaction* c) {
             for (auto& file : inputs) {
                 list.push_back(
                   co_await _table_cache->create_iterator(
-                    file->id, file->file_size));
+                    file->handle, file->file_size));
             }
         } else {
             auto index_iter = std::make_unique<level_file_num_iterator>(
@@ -739,17 +764,10 @@ version_set::make_input_iterator(compaction* c) {
             list.push_back(
               internal::create_two_level_iterator(
                 std::move(index_iter), [self = c->_input_version](iobuf value) {
-                    // We always know it's a single fragment due to how we
-                    // allocate and write it in the `level_file_num_iterator`.
-                    const auto& fragment = *value.begin();
-                    auto it = fragment.get();
-                    internal::file_id id;
-                    std::memcpy(&id, it, sizeof(id));
-                    uint64_t file_size = 0;
-                    std::advance(it, sizeof(id));
-                    std::memcpy(&file_size, it, sizeof(file_size));
+                    auto [handle, file_size]
+                      = level_file_num_iterator::decode_value(value);
                     return self->_vset->_table_cache->create_iterator(
-                      id, file_size);
+                      handle, file_size);
                 }));
         }
     }
@@ -761,12 +779,12 @@ version_set::make_input_iterator(compaction* c) {
     co_return internal::create_merging_iterator(std::move(list));
 }
 
-chunked_hash_set<internal::file_id> version_set::get_live_files() {
-    chunked_hash_set<internal::file_id> all_files;
+chunked_hash_set<internal::file_handle> version_set::get_live_files() {
+    chunked_hash_set<internal::file_handle> all_files;
     for (auto v = _current; v != nullptr; v = *v->next()) {
         for (const auto& files : v->_files) {
             for (const auto& file : files) {
-                all_files.insert(file->id);
+                all_files.insert(file->handle);
             }
         }
     }
@@ -788,7 +806,7 @@ bool compaction::is_trivial_move() const {
 void compaction::add_input_deletions(version_edit* edit) {
     for (uint8_t i = 0; static_cast<size_t>(i) < _inputs.size(); ++i) {
         for (const auto& file : _inputs[i]) { // NOLINT(*bounds-constant-array*)
-            edit->remove_file(_level + internal::level{i}, file->id);
+            edit->remove_file(_level + internal::level{i}, file->handle);
         }
     }
 }

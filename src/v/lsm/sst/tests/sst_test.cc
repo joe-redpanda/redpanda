@@ -23,7 +23,6 @@
 #include <gtest/gtest.h>
 
 using lsm::internal::operator""_key;
-using lsm::internal::operator""_file_id;
 using persistence_factory
   = std::function<ss::future<std::unique_ptr<lsm::io::data_persistence>>()>;
 
@@ -42,7 +41,7 @@ protected:
 TEST_P(SSTTest, CanCreateAndReadFile) {
     size_t file_size = 0;
     {
-        auto file = _persistence->open_sequential_writer(0_file_id).get();
+        auto file = _persistence->open_sequential_writer({}).get();
         auto opts = ss::make_lw_shared<lsm::internal::options>();
         lsm::sst::builder builder(std::move(file), opts);
         builder.add("abc"_key, iobuf::from("value1")).get();
@@ -52,7 +51,7 @@ TEST_P(SSTTest, CanCreateAndReadFile) {
         builder.close().get();
         file_size = builder.file_size();
     }
-    auto file = _persistence->open_random_access_reader(0_file_id).get();
+    auto file = _persistence->open_random_access_reader({}).get();
     auto reader = lsm::sst::reader::open(
                     std::move(*file),
                     lsm::internal::file_id{0},
