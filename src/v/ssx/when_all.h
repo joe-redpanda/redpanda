@@ -46,7 +46,7 @@ concept emplace_backable = requires(Container c, Args&&... args) {
 /// \return a \c future<ResolvedContainer> with all
 /// the resolved values of \c futures
 template<typename ResolvedContainer, typename FutureRange>
-requires seastar::Future<typename FutureRange::value_type>
+requires seastar::Future<std::ranges::range_value_t<FutureRange>>
          && std::ranges::input_range<FutureRange>
          && std::constructible_from<
            typename ResolvedContainer::value_type,
@@ -70,7 +70,7 @@ seastar::future<ResolvedContainer> when_all_succeed(FutureRange futures) {
 
     std::exception_ptr excp;
 
-    for (auto& fut : futures) {
+    for (auto&& fut : futures) {
         auto ready_future = co_await seastar::coroutine::as_future(
           std::move(fut));
 
