@@ -28,6 +28,12 @@ concept emplace_backable = requires(Container c, Args&&... args) {
     c.emplace_back(std::forward<Args>(args)...);
 };
 
+template<typename ValueType>
+struct fake_container {
+    using value_type = ValueType;
+    void emplace_back(ValueType&&) {}
+};
+
 } // namespace detail
 
 /// \brief Wait for a range of futures to complete.
@@ -94,4 +100,10 @@ seastar::future<ResolvedContainer> when_all_succeed(FutureRange futures) {
     co_return result;
 }
 
+template<typename FutureRange>
+seastar::future<> when_all_succeed(FutureRange futures) {
+    using value_t = std::ranges::range_value_t<FutureRange>::value_type;
+    return when_all_succeed<detail::fake_container<value_t>>(std::move(futures))
+      .discard_result();
+}
 } // namespace ssx
