@@ -567,7 +567,9 @@ ss::future<result<T, error_outcome>> s3_client::send_request(
               key,
               bucket);
             outcome = error_outcome::retry;
-        } else if (err.code() == s3_error_code::expired_token) {
+        } else if (
+          err.code() == s3_error_code::expired_token
+          || err.code() == s3_error_code::authentication_required) {
             // Unexpected REST API error, we can't recover from this
             vlog(
               s3_log.error,
