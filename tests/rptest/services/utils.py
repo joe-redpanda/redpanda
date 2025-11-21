@@ -3,7 +3,7 @@ from logging import Logger
 import re
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Generator, Iterable, TypedDict
+from typing import Any, Generator, Iterable, Mapping, TypedDict
 
 from rptest.clients.kubectl import KubectlTool
 
@@ -11,6 +11,7 @@ from ducktape.tests.test import TestContext
 from ducktape.cluster.cluster import ClusterNode
 
 from rptest.services.cloud_broker import CloudBroker
+from rptest.services.redpanda_types import CompiledLogAllowList
 
 VersionedNodes = Iterable[tuple[str | None, ClusterNode | CloudBroker]]
 
@@ -20,7 +21,7 @@ class VersionAndLines(TypedDict):
     lines: list[str]
 
 
-NodeToLines = dict[ClusterNode, VersionAndLines]
+NodeToLines = dict[ClusterNode | CloudBroker, VersionAndLines]
 
 
 def assert_int(v: Any) -> int:
@@ -34,9 +35,9 @@ def assert_int_or_none(v: Any) -> int | None:
 
 
 class Stopwatch:
-    def __init__(self):
-        self._start = 0
-        self._end = 0
+    def __init__(self) -> None:
+        self._start: float = 0
+        self._end: float = 0
 
     def start(self) -> None:
         self._start = time.time()
@@ -68,7 +69,7 @@ class Stopwatch:
 
 
 class BadLogLines(Exception):
-    def __init__(self, node_to_lines: NodeToLines):
+    def __init__(self, node_to_lines: NodeToLines) -> None:
         self.node_to_lines = node_to_lines
         self._str = self._make_str(node_to_lines)
 
@@ -92,21 +93,21 @@ class BadLogLines(Exception):
         summary = ",".join(summary_list)
         return f'<BadLogLines nodes={summary} example="{example}">'
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self._str
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
 
 class NodeCrash(Exception):
-    def __init__(self, crashes):
+    def __init__(self, crashes: list[tuple[Any, str]]) -> None:
         self.crashes = crashes
 
         # Not legal to construct empty
         assert len(crashes)
 
-    def __str__(self):
+    def __str__(self) -> str:
         example = f"{self.crashes[0][0].name}: {self.crashes[0][1]}"
         if len(self.crashes) == 1:
             return f"<NodeCrash {example}>"
@@ -114,7 +115,7 @@ class NodeCrash(Exception):
             names = ",".join([c[0].name for c in self.crashes])
             return f"<NodeCrash ({names}) {example}>"
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
 
@@ -135,70 +136,76 @@ class LogSearch(ABC):
         "oversized allocation",
     ]
 
-    def __init__(self, test_context: TestContext, allow_list, logger: Logger) -> None:
+    def __init__(
+        self,
+        test_context: TestContext,
+        allow_list: CompiledLogAllowList,
+        logger: Logger,
+    ) -> None:
         self._context = test_context
         self.allow_list = allow_list
         self.logger = logger
-        self._raise_on_errors = self._context.globals.get(
+        self._raise_on_errors: bool = self._context.globals.get(
             self.RAISE_ON_ERRORS_KEY, True
         )
 
         # Prepare matching terms
-        self.match_terms = self.DEFAULT_MATCH_TERMS
+        self.match_terms: list[str] = self.DEFAULT_MATCH_TERMS
         if self._raise_on_errors:
             self.match_terms.append("^ERROR")
-        self.match_expr = " ".join(f'-e "{t}"' for t in self.match_terms)
+        self.match_expr: str = " ".join(f'-e "{t}"' for t in self.match_terms)
 
     @abstractmethod
-    def _capture_log(self, x, s) -> Generator[str, None, None]:
+    def _capture_log(self, node: Any, expr: str) -> Generator[str, None, None]:
         """Method to get log from host node. Overriden by each child."""
         # Fake return type for type hint silence
         # And proper handling when called directly
-        for x in []:
-            yield x
+        yield from []
 
     @abstractmethod
     def _get_hostname(self, host: Any) -> str:
         """Method to get name of the host. Overriden by each child."""
         return ""
 
-    def _check_if_line_allowed(self, line):
+    def _check_if_line_allowed(self, line: str) -> bool:
         for a in self.allow_list:
             if a.search(line) is not None:
                 self.logger.info(f"Ignoring allow-listed log line '{line}'")
                 return True
         return False
 
-    def _check_memory_leak(self, host):
+    def _check_memory_leak(self, host: Any) -> bool:
         # Special case for LeakSanitizer errors, where tiny leaks
         # are permitted, as they can occur during Seastar shutdown.
         # See https://github.com/redpanda-data/redpanda/issues/3626
         for summary_line in self._capture_log(host, "SUMMARY: AddressSanitizer:"):
             m = re.match(
-                "SUMMARY: AddressSanitizer: (\d+) byte\(s\) leaked in (\d+) allocation\(s\).",
+                r"SUMMARY: AddressSanitizer: (\d+) byte\(s\) leaked in (\d+) allocation\(s\).",
                 summary_line.strip(),
             )
             if m and int(m.group(1)) < 1024:
-                self.logger.warn(
+                self.logger.warning(
                     f"Ignoring memory leak, small quantity: {summary_line}"
                 )
                 return True
         return False
 
-    def _check_oversized_allocations(self, line):
-        m = re.search("oversized allocation: (\d+) byte", line)
+    def _check_oversized_allocations(self, line: str) -> bool:
+        m = re.search(r"oversized allocation: (\d+) byte", line)
         if m and int(m.group(1)) <= self.MAX_ALLOCATION_SIZE:
-            self.logger.warn(
+            self.logger.warning(
                 f"Ignoring oversized allocation, {m.group(1)} is less than the max allowable allocation size of {self.MAX_ALLOCATION_SIZE} bytes"
             )
             return True
         return False
 
-    def _search(self, versioned_nodes: VersionedNodes):
+    def _search(self, versioned_nodes: VersionedNodes) -> NodeToLines:
         def make_vl() -> VersionAndLines:
             return {"version": None, "lines": []}
 
-        bad_lines: defaultdict[ClusterNode, VersionAndLines] = defaultdict(make_vl)
+        bad_lines: defaultdict[ClusterNode | CloudBroker, VersionAndLines] = (
+            defaultdict(make_vl)
+        )
         test_name = self._context.function_name
         sw = Stopwatch()
         for version, node in versioned_nodes:
@@ -221,7 +228,7 @@ class LogSearch(ABC):
                 if not allowed:
                     bad_lines[node]["version"] = version
                     bad_lines[node]["lines"].append(line)
-                    self.logger.warn(
+                    self.logger.warning(
                         f"[{test_name}] Unexpected log line on {hostname}: {line}"
                     )
             self.logger.info(
@@ -229,7 +236,7 @@ class LogSearch(ABC):
             )
         return dict(bad_lines)
 
-    def search_logs(self, versioned_nodes: VersionedNodes):
+    def search_logs(self, versioned_nodes: VersionedNodes) -> None:
         """
         versioned_nodes is a list of Tuple[version, node]
         """
@@ -242,22 +249,33 @@ class LogSearch(ABC):
 
 
 class LogSearchLocal(LogSearch):
-    def __init__(self, test_context, allow_list, logger, targetpath) -> None:
+    def __init__(
+        self,
+        test_context: TestContext,
+        allow_list: CompiledLogAllowList,
+        logger: Logger,
+        targetpath: str,
+    ) -> None:
         super().__init__(test_context, allow_list, logger)
         self.targetpath = targetpath
 
-    def _capture_log(self, node, expr) -> Generator[str, None, None]:
+    def _capture_log(self, node: ClusterNode, expr: str) -> Generator[str, None, None]:
         cmd = f"grep {expr} {self.targetpath} || true"
         for line in node.account.ssh_capture(cmd):
             yield line
 
-    def _get_hostname(self, host) -> str:
+    def _get_hostname(self, host: ClusterNode) -> str:
         return host.account.hostname
 
 
 class LogSearchCloud(LogSearch):
     def __init__(
-        self, test_context, allow_list, logger, kubectl: KubectlTool, test_start_time
+        self,
+        test_context: TestContext,
+        allow_list: CompiledLogAllowList,
+        logger: Logger,
+        kubectl: KubectlTool,
+        test_start_time: float,
     ) -> None:
         super().__init__(test_context, allow_list, logger)
 
@@ -265,12 +283,12 @@ class LogSearchCloud(LogSearch):
         self.kubectl = kubectl
         self.test_start_time = test_start_time
 
-    def _capture_log(self, pod, expr) -> Generator[str, None, None]:
+    def _capture_log(self, node: CloudBroker, expr: str) -> Generator[str, None, None]:
         """Capture log and check test timing.
         If logline produced before test start, ignore it
         """
 
-        def parse_k8s_time(logline, tz):
+        def parse_k8s_time(logline: str, tz: str) -> time.struct_time:
             k8s_time_format = "%Y-%m-%dT%H:%M:%S.%f %z"
             # containerd has nanoseconds format (9 digits)
             # python supports only 6
@@ -280,27 +298,39 @@ class LogSearchCloud(LogSearch):
             return time.strptime(logline_time, k8s_time_format)
 
         # Load log, output is in binary form
-        loglines = []
-        tz = "+00:00"
+        loglines: list[str] = []
+        tz: str = "+00:00"
         try:
             # get time zone in +00:00 format
-            tz = pod.nodeshell("date +'%:z'")
+            # nodeshell return type is not well-typed, cast result to list[str]
+            tz_result = node.nodeshell("date +'%:z'")
             # Assume UTC if output is empty
             # But this should never happen
-            tz = tz[0] if len(tz) > 0 else "+00:00"
+            if isinstance(tz_result, list) and len(tz_result) > 0:
+                tz = str(tz_result[0])
             # Find all log files for target pod
             # Return type without capture is always str, so ignore type
-            logfiles = pod.nodeshell("find /var/log/pods -type f")
+            logfiles_result = node.nodeshell("find /var/log/pods -type f")
+            logfiles = (
+                [str(f) for f in logfiles_result]
+                if isinstance(logfiles_result, list)
+                else []
+            )
             for logfile in logfiles:
-                if pod.name in logfile and "redpanda-configurator" not in logfile:
+                if node.name in logfile and "redpanda-configurator" not in logfile:
                     self.logger.info(f"Inspecting '{logfile}'")
-                    lines = pod.nodeshell(f"cat {logfile} | grep {expr}")
+                    lines_result = node.nodeshell(f"cat {logfile} | grep {expr}")
+                    lines = (
+                        [str(line) for line in lines_result]
+                        if isinstance(lines_result, list)
+                        else []
+                    )
                     loglines += lines
         except Exception as e:
-            self.logger.warning(f"Error getting logs for {pod.name}: {e}")
+            self.logger.warning(f"Error getting logs for {node.name}: {e}")
         else:
             _size = len(loglines)
-            self.logger.debug(f"Received {_size}B of data from {pod.name}")
+            self.logger.debug(f"Received {_size}B of data from {node.name}")
 
         # check log lines for proper timing.
         # Log lines will have two timing objects:
@@ -320,5 +350,5 @@ class LogSearchCloud(LogSearch):
                 continue
             yield line
 
-    def _get_hostname(self, host) -> str:
+    def _get_hostname(self, host: CloudBroker) -> str:
         return host.hostname
