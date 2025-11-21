@@ -1902,7 +1902,7 @@ class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):
 
         def wait_for_records(rpk: RpkTool, offset: int, expected_partition_count: int):
             num_parts = 0
-            for part in rpk.describe_topic("source-topic"):
+            for part in rpk.describe_topic(topic_name):
                 num_parts += 1
                 if (part.high_watermark or 0) < offset:
                     return False
@@ -1924,14 +1924,14 @@ class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):
 
             self.logger.info(f"Trimming source topic prefixes to {o}")
             self.source_cluster_rpk.trim_prefix(
-                topic="source-topic", partitions=partitions, offset=o
+                topic=topic_name, partitions=partitions, offset=o
             )
 
             def wait_for_start_offset(
                 rpk: RpkTool, offset: int, expected_partition_count: int
             ):
                 num_parts = 0
-                for part in rpk.describe_topic("source-topic"):
+                for part in rpk.describe_topic(topic_name):
                     num_parts += 1
                     self.logger.info(
                         f"Offset for source-topic/{part.id} is {part.start_offset}"
@@ -1955,7 +1955,7 @@ class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):
             for part in range(0, partition_count):
                 self.logger.info(f"Producing trim-trigger message to partition {part}")
                 self.source_cluster_rpk.produce(
-                    topic="source-topic",
+                    topic=topic_name,
                     key="trim-trigger",
                     msg="trim-trigger",
                     partition=part,
