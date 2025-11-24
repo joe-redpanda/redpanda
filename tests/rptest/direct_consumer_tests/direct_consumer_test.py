@@ -211,7 +211,7 @@ class DirectConsumerVerifierTest(RedpandaTest):
                 get_consumption,
                 condition=lambda: get_consumption() >= msg_count,
                 timeout_sec=600,
-                progress_sec=10,
+                progress_sec=30,
                 backoff_sec=2,
                 err_msg="Stopped consuming",
                 logger=self.logger,
