@@ -73,8 +73,6 @@ class LoopThread(threading.Thread):
         return self._stop_event.is_set()
 
 
-# TODO: This test must be enabled once the direct consumer verifier support
-# is added to vtools.
 class DirectConsumerVerifierTest(RedpandaTest):
     def __init__(self, test_context: TestContext, **kwargs: Any):
         super().__init__(test_context, **kwargs)
