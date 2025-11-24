@@ -9,7 +9,6 @@
 
 import confluent_kafka as ck
 from ducktape.cluster.cluster import ClusterNode
-from ducktape.mark import ignore
 from ducktape.utils.util import wait_until
 
 from rptest.clients.rpk import AclList, RpkTool

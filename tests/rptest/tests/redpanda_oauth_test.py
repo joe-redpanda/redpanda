@@ -12,12 +12,10 @@ import socket
 import threading
 import time
 from urllib.parse import urlparse
-from typing import cast
 
 import requests
-import confluent_kafka as ck
 from ducktape.cluster.cluster import ClusterNode
-from ducktape.mark import ignore, parametrize
+from ducktape.mark import parametrize
 from ducktape.tests.test import Test
 from ducktape.utils.util import wait_until
 from keycloak import KeycloakOpenID
