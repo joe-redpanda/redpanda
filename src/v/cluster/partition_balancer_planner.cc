@@ -260,6 +260,9 @@ private:
       _topic2node_counts;
     absl::node_hash_map<model::ntp, reassignment_info> _reassignments;
     absl::node_hash_map<model::ntp, allocated_partition> _force_reassignments;
+    // nodes to request to decommission, not nodes which are currently
+    // decommissioning
+    absl::flat_hash_set<model::node_id> _nodes_to_be_decommed;
     size_t _failed_actions_count = 0;
     // we track missing partition size info separately as it requires force
     // refresh of health report
@@ -377,6 +380,13 @@ void partition_balancer_planner::init_per_node_state(
                   model::timestamp_clock::now()
                   - std::chrono::duration_cast<
                     model::timestamp_clock::duration>(time_since_last_seen));
+
+                // get all nodes which are unresponsive enough to decom
+                if (time_since_last_seen > _config.decommission_timeout) {
+                    if (!ctx.decommissioning_nodes.contains(id)) {
+                        ctx._nodes_to_be_decommed.insert(id);
+                    }
+                }
 
                 result.violations.unavailable_nodes.emplace_back(
                   id, unavailable_since);
@@ -2170,9 +2180,14 @@ void partition_balancer_planner::request_context::collect_actions(
 
     result.reallocation_failures = std::move(_reallocation_failures);
 
+    result.decommissions.reserve(_nodes_to_be_decommed.size());
+    std::ranges::move(
+      std::move(_nodes_to_be_decommed),
+      std::back_inserter(result.decommissions));
+
     if (
       !result.cancellations.empty() || !result.reassignments.empty()
-      || result.counts_rebalancing_finished) {
+      || result.counts_rebalancing_finished || !result.decommissions.empty()) {
         result.status = status::actions_planned;
     }
 }
@@ -2213,6 +2228,8 @@ partition_balancer_planner::plan_actions(
           change_reason::node_unavailable);
         co_await get_full_node_actions(ctx);
         co_await get_rack_constraint_repair_actions(ctx);
+        // get node decommission actions is already part of
+        // init_per_node_state
     }
     co_await get_counts_rebalancing_actions(ctx);
     co_await get_force_repair_actions(ctx);
