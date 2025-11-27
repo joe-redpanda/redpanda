@@ -211,6 +211,32 @@ func (cpCl *CloudClientSet) ShadowLinkListItems(ctx context.Context, filter *con
 	return Paginate(ctx, maxPages, fetchPage)
 }
 
+func (cpCl *CloudClientSet) ShadowLinkByNameAndRPID(ctx context.Context, name, redpandaID string) (*controlplanev1beta2.ShadowLink, error) {
+	list, err := cpCl.ShadowLinkListItems(ctx, &controlplanev1beta2.ListShadowLinksRequest_Filter{
+		DestinationRedpandaId: redpandaID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to list Shadow Links for cluster with ID %q: %w", redpandaID, err)
+	}
+	var foundSLID string
+	for _, l := range list {
+		if l.GetName() == name {
+			foundSLID = l.GetId()
+			break
+		}
+	}
+	if foundSLID == "" {
+		return nil, fmt.Errorf("unable to find Shadow Link %q in the cluster with ID %q", name, redpandaID)
+	}
+	link, err := cpCl.ShadowLink.GetShadowLink(ctx, connect.NewRequest(&controlplanev1beta2.GetShadowLinkRequest{
+		Id: foundSLID,
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("unable to get Shadow Link %q for cluster with ID %q: %w", name, redpandaID, err)
+	}
+	return link.Msg.ShadowLink, nil
+}
+
 // OrgResourceGroupsClusters is a helper function to concurrently query many
 // APIs at once. Any non-nil error result is returned, as well as
 // an errors.Joined error.
