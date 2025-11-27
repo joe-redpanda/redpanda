@@ -11,14 +11,18 @@ package shadow
 
 import (
 	"fmt"
+	"strings"
 
 	adminv2 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/admin/v2"
+	dataplanev1alpha3 "buf.build/gen/go/redpandadata/dataplane/protocolbuffers/go/redpanda/api/dataplane/v1alpha3"
 	"connectrpc.com/connect"
+	"github.com/spf13/afero"
+	"github.com/spf13/cobra"
+
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/adminapi"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/config"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/out"
-	"github.com/spf13/afero"
-	"github.com/spf13/cobra"
+	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/publicapi"
 )
 
 func newFailoverCommand(fs afero.Fs, p *config.Params) *cobra.Command {
@@ -63,14 +67,52 @@ Failover without confirmation:
 			if !all && topic == "" {
 				out.Die("either --all or --topic must be provided")
 			}
-			p, err := p.LoadVirtualProfile(fs)
+			cfg, err := p.Load(fs)
 			out.MaybeDie(err, "unable to load rpk config: %v", err)
-			config.CheckExitCloudAdmin(p)
-
-			cl, err := adminapi.NewClient(cmd.Context(), fs, p)
-			out.MaybeDie(err, "unable to initialize admin client: %v", err)
+			prof := cfg.VirtualProfile()
+			config.CheckExitServerlessAdmin(prof)
 
 			linkName := args[0]
+
+			if prof.CheckFromCloud() {
+				dpClient, err := publicapi.DataplaneClientFromRpkProfile(prof)
+				out.MaybeDie(err, "unable to initialize dataplane client: %v", err)
+
+				if !noConfirm {
+					sl, err := dpClient.ShadowLink.GetShadowLink(cmd.Context(), connect.NewRequest(&dataplanev1alpha3.GetShadowLinkRequest{
+						Name: linkName,
+					}))
+					out.MaybeDie(err, "unable to get Shadow Link %q: %v", linkName, handleConnectError(err, "get", linkName))
+
+					printDataplaneCloudOverview(sl.Msg.GetShadowLink())
+
+					var confirmed bool
+					if all {
+						confirmed, err = out.Confirm("Are you sure you want to failover all topics for Shadow Link %q?", linkName)
+					} else {
+						confirmed, err = out.Confirm("Are you sure you want to failover the topic %q for Shadow Link %q?", topic, linkName)
+					}
+					out.MaybeDie(err, "unable to confirm Shadow Link failover: %v", err)
+					if !confirmed {
+						out.Exit("Command execution canceled.")
+					}
+				}
+
+				_, err = dpClient.ShadowLink.FailOver(cmd.Context(), connect.NewRequest(&adminv2.FailOverRequest{
+					Name:            linkName,
+					ShadowTopicName: topic,
+				}))
+				out.MaybeDie(err, "unable to failover Shadow Link: %v", handleConnectError(err, "failover", linkName))
+
+				fmt.Printf(`Successfully initiated the Fail Over for Shadow Link %q. To check the status, run:
+  rpk shadow status %[1]s
+`, linkName)
+				return
+			}
+
+			cl, err := adminapi.NewClient(cmd.Context(), fs, prof)
+			out.MaybeDie(err, "unable to initialize admin client: %v", err)
+
 			if !noConfirm {
 				sl, err := cl.ShadowLinkService().GetShadowLink(cmd.Context(), connect.NewRequest(&adminv2.GetShadowLinkRequest{
 					Name: linkName,
@@ -106,4 +148,12 @@ Failover without confirmation:
 
 	cmd.MarkFlagsMutuallyExclusive("all", "topic")
 	return cmd
+}
+
+func printDataplaneCloudOverview(link *dataplanev1alpha3.ShadowLink) {
+	tw := out.NewTabWriter()
+	defer tw.Flush()
+	tw.Print("NAME", link.GetName())
+	tw.Print("UID", link.GetUid())
+	tw.Print("STATE", strings.TrimPrefix(link.GetState().String(), "SHADOW_LINK_STATE_"))
 }

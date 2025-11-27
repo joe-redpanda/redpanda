@@ -11,7 +11,6 @@ package shadow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -82,7 +81,7 @@ func waitForOperation(ctx context.Context, cloudClient *publicapi.CloudClientSet
 		case controlplanev1.Operation_STATE_COMPLETED:
 			return true, nil
 		case controlplanev1.Operation_STATE_FAILED:
-			return false, errors.New("an error occurred while attempting to perform the operation.\nPlease run the command again or contact Redpanda Cloud Support")
+			return false, fmt.Errorf("an error occurred while attempting to perform the operation. %v", shadowLink.Msg.GetOperation().GetError().GetMessage())
 		default:
 			if i < maxOpRetries-1 {
 				backoff(i)
