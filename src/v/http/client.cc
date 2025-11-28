@@ -314,6 +314,7 @@ client::response_stream::response_stream(
   , _sprobe(client->_probe->create_request_subprobe(convert_to_pverb(v))) {
     _parser.body_limit(std::numeric_limits<uint64_t>::max());
     _parser.eager(true);
+    _parser.skip(v == client::response_stream::verb::head);
 }
 
 client::response_stream::~response_stream() {

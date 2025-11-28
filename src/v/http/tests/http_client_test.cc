@@ -78,6 +78,15 @@ void set_routes(ss::httpd::routes& r) {
     });
     r.add(operation_type::GET, url("/fail-status-500"), fail_handler);
 
+    auto head_handler = new function_handler(
+      [](const_req, ss::http::reply& rep) {
+          rep.add_header(
+            "Content-Length", std::to_string(strlen(httpd_server_reply)));
+          return "";
+      },
+      "text/plain");
+    r.add(operation_type::HEAD, url("/get"), head_handler);
+
     auto get_handler = new function_handler(
       [](const_req) -> ss::sstring { return httpd_server_reply; });
     r.add(operation_type::GET, url("/get"), get_handler);
@@ -338,6 +347,22 @@ SEASTAR_THREAD_TEST_CASE(test_error_500) {
             header.result(), boost::beast::http::status::internal_server_error);
           std::string actual = body.linearize_to_string();
           BOOST_REQUIRE(actual.find("/fail-status-500") != std::string::npos);
+      });
+}
+
+SEASTAR_THREAD_TEST_CASE(test_http_HEAD_roundtrip) {
+    // No request data
+    auto config = transport_configuration();
+    http::client::request_header header;
+    header.method(boost::beast::http::verb::head);
+    header.target("/get");
+    header_set_host(header, config.server_addr);
+    test_http_request(
+      config,
+      std::move(header),
+      std::nullopt,
+      [](const http::client::response_header& header, const iobuf&) {
+          BOOST_REQUIRE_EQUAL(header.result(), boost::beast::http::status::ok);
       });
 }
 

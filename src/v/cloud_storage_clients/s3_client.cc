@@ -824,7 +824,7 @@ ss::future<s3_client::head_object_result> s3_client::do_head_object(
       .then(
         [key](const http::client::response_stream_ref& ref)
           -> ss::future<head_object_result> {
-            return ref->prefetch_headers().then(
+            return http::drain<void>(ref).then(
               [ref, key]() -> ss::future<head_object_result> {
                   auto status = ref->get_headers().result();
                   if (status == boost::beast::http::status::not_found) {
