@@ -14,7 +14,8 @@ import (
 	"strings"
 	"time"
 
-	controlplanev1beta2 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1beta2"
+	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
+
 	adminv2 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/admin/v2"
 	corecommonv1 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/common/v1"
 	"connectrpc.com/connect"
@@ -166,7 +167,7 @@ func printShadowLinkDescription(link *adminv2.ShadowLink, opts slDescribeOptions
 	})
 }
 
-func printCloudShadowLinkDescription(link *controlplanev1beta2.ShadowLink, opts slDescribeOptions) {
+func printCloudShadowLinkDescription(link *controlplanev1.ShadowLink, opts slDescribeOptions) {
 	const (
 		secOverview       = "Overview"
 		secClient         = "Client"
@@ -216,14 +217,14 @@ func printOverview(link *adminv2.ShadowLink) {
 	}
 }
 
-func printCloudOverview(link *controlplanev1beta2.ShadowLink) {
+func printCloudOverview(link *controlplanev1.ShadowLink) {
 	tw := out.NewTabWriter()
 	defer tw.Flush()
 	tw.Print("NAME", link.GetName())
 	tw.Print("ID", link.GetId())
 	tw.Print("STATE", strings.TrimPrefix(link.GetState().String(), "STATE_"))
 	tw.Print("RESOURCE GROUP ID", link.GetResourceGroupId())
-	tw.Print("DESTINATION REDPANDA ID", link.GetDestinationRedpandaId())
+	tw.Print("SHADOW REDPANDA ID", link.GetShadowRedpandaId())
 	if createdAt := link.GetCreatedAt(); createdAt != nil {
 		tw.Print("CREATED AT", createdAt.AsTime().Format(time.RFC3339))
 	}
@@ -303,7 +304,7 @@ func printClient(opts *adminv2.ShadowLinkClientOptions) {
 	tw.Print("fetch_partition_max_bytes", opts.GetEffectiveFetchPartitionMaxBytes())
 }
 
-func printCloudClient(opts *controlplanev1beta2.ShadowLinkClientOptions) {
+func printCloudClient(opts *controlplanev1.ShadowLinkClientOptions) {
 	tw := out.NewTabWriter()
 	defer tw.Flush()
 	if opts == nil {

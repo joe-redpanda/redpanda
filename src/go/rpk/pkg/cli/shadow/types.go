@@ -31,9 +31,9 @@ type ShadowLinkConfig struct {
 }
 
 type CloudShadowLinkOptions struct {
-	SourceRedpandaID      string `json:"source_redpanda_id,omitempty" yaml:"source_redpanda_id,omitempty"`
-	ResourceGroupID       string `json:"resource_group_id,omitempty" yaml:"resource_group_id,omitempty"`
-	DestinationRedpandaID string `json:"destination_redpanda_id,omitempty" yaml:"destination_redpanda_id,omitempty"`
+	SourceRedpandaID string `json:"source_redpanda_id,omitempty" yaml:"source_redpanda_id,omitempty"`
+	ResourceGroupID  string `json:"resource_group_id,omitempty" yaml:"resource_group_id,omitempty"`
+	ShadowRedpandaID string `json:"shadow_redpanda_id,omitempty" yaml:"shadow_redpanda_id,omitempty"`
 }
 
 type ShadowLinkClientOptions struct {

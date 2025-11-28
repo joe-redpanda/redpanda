@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	controlplanev1beta2 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1beta2"
+	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
 
 	adminv2 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/admin/v2"
 	"connectrpc.com/connect"
@@ -68,8 +68,8 @@ List all Shadow Links:
 				)
 				out.MaybeDieErr(err)
 
-				link, err := cloudClient.ShadowLinkListItems(cmd.Context(), &controlplanev1beta2.ListShadowLinksRequest_Filter{
-					DestinationRedpandaId: prof.CloudCluster.ClusterID,
+				link, err := cloudClient.ShadowLinkListItems(cmd.Context(), &controlplanev1.ListShadowLinksRequest_Filter{
+					ShadowRedpandaId: prof.CloudCluster.ClusterID,
 				})
 				out.MaybeDie(err, "unable to list Shadow Links for cluster with ID %q: %v", prof.CloudCluster.ClusterID, err)
 

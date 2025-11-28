@@ -19,11 +19,9 @@ import (
 
 	"buf.build/gen/go/redpandadata/cloud/connectrpc/go/redpanda/api/byocplugin/v1alpha1/byocpluginv1alpha1connect"
 	"buf.build/gen/go/redpandadata/cloud/connectrpc/go/redpanda/api/controlplane/v1/controlplanev1connect"
-	"buf.build/gen/go/redpandadata/cloud/connectrpc/go/redpanda/api/controlplane/v1beta2/controlplanev1beta2connect"
 	"buf.build/gen/go/redpandadata/cloud/connectrpc/go/redpanda/api/iam/v1/iamv1connect"
 	byocpluginv1alpha1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/byocplugin/v1alpha1"
 	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
-	controlplanev1beta2 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1beta2"
 	iamv1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/iam/v1"
 	"connectrpc.com/connect"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/oauth/authtoken"
@@ -42,7 +40,7 @@ type CloudClientSet struct {
 	Operations       controlplanev1connect.OperationServiceClient
 	ServerlessRegion controlplanev1connect.ServerlessRegionServiceClient
 	BYOCPlugin       byocpluginv1alpha1connect.BYOCPluginServiceClient
-	ShadowLink       controlplanev1beta2connect.ShadowLinkServiceClient // TODO: move this to v1 before release.
+	ShadowLink       controlplanev1connect.ShadowLinkServiceClient
 
 	m         sync.RWMutex
 	authToken string
@@ -81,7 +79,7 @@ func NewCloudClientSet(host, authToken string, opts ...connect.ClientOption) *Cl
 	ccs.Operations = controlplanev1connect.NewOperationServiceClient(httpCl, host, opts...)
 	ccs.ServerlessRegion = controlplanev1connect.NewServerlessRegionServiceClient(httpCl, host, opts...)
 	ccs.BYOCPlugin = byocpluginv1alpha1connect.NewBYOCPluginServiceClient(httpCl, host, opts...)
-	ccs.ShadowLink = controlplanev1beta2connect.NewShadowLinkServiceClient(httpCl, host, opts...)
+	ccs.ShadowLink = controlplanev1connect.NewShadowLinkServiceClient(httpCl, host, opts...)
 	return ccs
 }
 
@@ -194,10 +192,10 @@ func (cpCl *CloudClientSet) ClusterForID(ctx context.Context, ID string) (*contr
 
 // ShadowLinkListItems returns all the ShadowLinkListItems using the pagination
 // feature to traverse all pages of the list.
-func (cpCl *CloudClientSet) ShadowLinkListItems(ctx context.Context, filter *controlplanev1beta2.ListShadowLinksRequest_Filter) ([]*controlplanev1beta2.ShadowLinkListItem, error) {
+func (cpCl *CloudClientSet) ShadowLinkListItems(ctx context.Context, filter *controlplanev1.ListShadowLinksRequest_Filter) ([]*controlplanev1.ShadowLinkListItem, error) {
 	maxPages := 500
-	fetchPage := func(ctx context.Context, pageToken string) ([]*controlplanev1beta2.ShadowLinkListItem, string, error) {
-		req := connect.NewRequest(&controlplanev1beta2.ListShadowLinksRequest{
+	fetchPage := func(ctx context.Context, pageToken string) ([]*controlplanev1.ShadowLinkListItem, string, error) {
+		req := connect.NewRequest(&controlplanev1.ListShadowLinksRequest{
 			Filter:    filter,
 			PageToken: pageToken,
 			PageSize:  100,
@@ -211,9 +209,9 @@ func (cpCl *CloudClientSet) ShadowLinkListItems(ctx context.Context, filter *con
 	return Paginate(ctx, maxPages, fetchPage)
 }
 
-func (cpCl *CloudClientSet) ShadowLinkByNameAndRPID(ctx context.Context, name, redpandaID string) (*controlplanev1beta2.ShadowLink, error) {
-	list, err := cpCl.ShadowLinkListItems(ctx, &controlplanev1beta2.ListShadowLinksRequest_Filter{
-		DestinationRedpandaId: redpandaID,
+func (cpCl *CloudClientSet) ShadowLinkByNameAndRPID(ctx context.Context, name, redpandaID string) (*controlplanev1.ShadowLink, error) {
+	list, err := cpCl.ShadowLinkListItems(ctx, &controlplanev1.ListShadowLinksRequest_Filter{
+		ShadowRedpandaId: redpandaID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to list Shadow Links for cluster with ID %q: %w", redpandaID, err)
@@ -228,7 +226,7 @@ func (cpCl *CloudClientSet) ShadowLinkByNameAndRPID(ctx context.Context, name, r
 	if foundSLID == "" {
 		return nil, fmt.Errorf("unable to find Shadow Link %q in the cluster with ID %q", name, redpandaID)
 	}
-	link, err := cpCl.ShadowLink.GetShadowLink(ctx, connect.NewRequest(&controlplanev1beta2.GetShadowLinkRequest{
+	link, err := cpCl.ShadowLink.GetShadowLink(ctx, connect.NewRequest(&controlplanev1.GetShadowLinkRequest{
 		Id: foundSLID,
 	}))
 	if err != nil {

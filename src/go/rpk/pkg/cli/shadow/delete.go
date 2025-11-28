@@ -13,7 +13,8 @@ import (
 	"fmt"
 	"strings"
 
-	controlplanev1beta2 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1beta2"
+	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
+
 	adminv2 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/admin/v2"
 	"connectrpc.com/connect"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/adminapi"
@@ -90,7 +91,7 @@ Force delete a Shadow Link with active shadow topics:
 				printCloudShadowLinkInfo(link)
 				promptConfirm()
 
-				op, err := cloudClient.ShadowLink.DeleteShadowLink(cmd.Context(), connect.NewRequest(&controlplanev1beta2.DeleteShadowLinkRequest{
+				op, err := cloudClient.ShadowLink.DeleteShadowLink(cmd.Context(), connect.NewRequest(&controlplanev1.DeleteShadowLinkRequest{
 					Id: link.GetId(),
 				}))
 				out.MaybeDie(err, "unable to delete Shadow Link: %v", err)
@@ -141,7 +142,7 @@ func printShadowLinkInfo(link *adminv2.ShadowLink) {
 	}
 }
 
-func printCloudShadowLinkInfo(link *controlplanev1beta2.ShadowLink) {
+func printCloudShadowLinkInfo(link *controlplanev1.ShadowLink) {
 	if link == nil {
 		fmt.Println("No Shadow Link information available")
 		return
@@ -152,7 +153,7 @@ func printCloudShadowLinkInfo(link *controlplanev1beta2.ShadowLink) {
 	tw.Print("ID", link.GetId())
 	tw.Print("STATE", strings.TrimPrefix(link.GetState().String(), "STATE_"))
 	tw.Print("RESOURCE GROUP ID", link.GetResourceGroupId())
-	tw.Print("DESTINATION REDPANDA ID", link.GetDestinationRedpandaId())
+	tw.Print("SHADOW REDPANDA ID", link.GetShadowRedpandaId())
 	if bss := link.GetClientOptions().GetBootstrapServers(); len(bss) > 0 {
 		tw.Print("BOOTSTRAP SERVERS:", "")
 		for _, bs := range bss {

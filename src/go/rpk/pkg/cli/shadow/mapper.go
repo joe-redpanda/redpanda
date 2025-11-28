@@ -10,7 +10,7 @@
 package shadow
 
 import (
-	controlplanev1beta2 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1beta2"
+	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
 	adminv2 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/admin/v2"
 	corecommonv1 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/common/v1"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -37,15 +37,15 @@ func shadowLinkConfigToProto(slCfg *ShadowLinkConfig) *adminv2.ShadowLink {
 	return shadowLink
 }
 
-func shadowLinkConfigToCloudCreate(slCfg *ShadowLinkConfig) *controlplanev1beta2.ShadowLinkCreate {
+func shadowLinkConfigToCloudCreate(slCfg *ShadowLinkConfig) *controlplanev1.ShadowLinkCreate {
 	if slCfg == nil {
 		return nil
 	}
-	cloudSl := &controlplanev1beta2.ShadowLinkCreate{
+	cloudSl := &controlplanev1.ShadowLinkCreate{
 		Name: slCfg.Name,
 	}
 	if slc := slCfg.CloudOptions; slc != nil {
-		cloudSl.DestinationRedpandaId = slc.DestinationRedpandaID
+		cloudSl.ShadowRedpandaId = slc.ShadowRedpandaID
 		cloudSl.ResourceGroupId = slc.ResourceGroupID
 		cloudSl.SourceRedpandaId = slc.SourceRedpandaID
 	}
@@ -87,12 +87,12 @@ func mapClientOptions(opts *ShadowLinkClientOptions) *adminv2.ShadowLinkClientOp
 	return pbOpts
 }
 
-func mapCloudClientOptions(opts *ShadowLinkClientOptions) *controlplanev1beta2.ShadowLinkClientOptions {
+func mapCloudClientOptions(opts *ShadowLinkClientOptions) *controlplanev1.ShadowLinkClientOptions {
 	if opts == nil {
 		return nil
 	}
 
-	pbOpts := &controlplanev1beta2.ShadowLinkClientOptions{
+	pbOpts := &controlplanev1.ShadowLinkClientOptions{
 		BootstrapServers:       opts.BootstrapServers,
 		SourceClusterId:        opts.SourceClusterID,
 		MetadataMaxAgeMs:       opts.MetadataMaxAgeMs,
@@ -116,12 +116,12 @@ func mapCloudClientOptions(opts *ShadowLinkClientOptions) *controlplanev1beta2.S
 	return pbOpts
 }
 
-func mapCloudTLSSettings(tls *TLSSettings) *controlplanev1beta2.TLSSettings {
+func mapCloudTLSSettings(tls *TLSSettings) *controlplanev1.TLSSettings {
 	if tls == nil {
 		return nil
 	}
 
-	cloudTLS := &controlplanev1beta2.TLSSettings{
+	cloudTLS := &controlplanev1.TLSSettings{
 		Enabled:             tls.Enabled,
 		DoNotSetSniHostname: tls.DoNotSetSniHostname,
 	}

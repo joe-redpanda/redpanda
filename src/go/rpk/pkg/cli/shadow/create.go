@@ -12,7 +12,8 @@ package shadow
 import (
 	"fmt"
 
-	controlplanev1beta2 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1beta2"
+	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
+
 	adminv2 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/admin/v2"
 	"connectrpc.com/connect"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/adminapi"
@@ -92,7 +93,7 @@ Create a Shadow Link without confirmation prompt:
 				)
 				out.MaybeDieErr(err)
 
-				op, err := cloudClient.ShadowLink.CreateShadowLink(cmd.Context(), connect.NewRequest(&controlplanev1beta2.CreateShadowLinkRequest{
+				op, err := cloudClient.ShadowLink.CreateShadowLink(cmd.Context(), connect.NewRequest(&controlplanev1.CreateShadowLinkRequest{
 					ShadowLink: shadowLinkConfigToCloudCreate(slCfg),
 				}))
 				out.MaybeDie(err, "unable to create Shadow Link: %v", err)
@@ -141,7 +142,7 @@ func printShadowLinkCfgOverview(slCfg *ShadowLinkConfig) {
 	defer tw.Flush()
 	tw.Print("Link Name:", slCfg.Name)
 	if slCfg.CloudOptions != nil {
-		tw.Print("Destination Redpanda ID:", slCfg.CloudOptions.DestinationRedpandaID)
+		tw.Print("Shadow Redpanda ID:", slCfg.CloudOptions.ShadowRedpandaID)
 		if slCfg.CloudOptions.SourceRedpandaID != "" {
 			tw.Print("Source Redpanda ID:", slCfg.CloudOptions.SourceRedpandaID)
 		}
@@ -185,11 +186,11 @@ func validateParsedShadowLinkConfig(slCfg *ShadowLinkConfig) error {
 		}
 	}
 	if slc := slCfg.CloudOptions; slc != nil {
-		if slc.DestinationRedpandaID == "" {
-			return fmt.Errorf("destination_redpanda_id is required in cloud options")
+		if slc.ShadowRedpandaID == "" {
+			return fmt.Errorf("shadow_redpanda_id is required in cloud options")
 		}
-		if slc.DestinationRedpandaID == slc.SourceRedpandaID {
-			return fmt.Errorf("destination_redpanda_id and source_redpanda_id cannot be the same")
+		if slc.ShadowRedpandaID == slc.SourceRedpandaID {
+			return fmt.Errorf("shadow_redpanda_id and source_redpanda_id cannot be the same")
 		}
 		if slCfg.ClientOptions != nil && slCfg.ClientOptions.TLSSettings != nil && slCfg.ClientOptions.TLSSettings.TLSFileSettings != nil {
 			return fmt.Errorf("TLS file settings are not supported when using cloud options; use tls_pem_settings instead")

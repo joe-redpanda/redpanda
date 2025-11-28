@@ -202,9 +202,9 @@ func generateSampleConfig(cloud bool) *ShadowLinkConfig {
 	}
 	if cloud {
 		slcfg.CloudOptions = &CloudShadowLinkOptions{
-			SourceRedpandaID:      "m7xtv2qq5njbhwruk88f",
-			DestinationRedpandaID: "p9skc1dd3fmzgvquj66h",
-			ResourceGroupID:       "3f72b1a9-5c4e-4d82-9ab7-1c5f8e9d3a6b",
+			SourceRedpandaID: "m7xtv2qq5njbhwruk88f",
+			ShadowRedpandaID: "p9skc1dd3fmzgvquj66h",
+			ResourceGroupID:  "3f72b1a9-5c4e-4d82-9ab7-1c5f8e9d3a6b",
 		}
 
 		// This is confusing on Cloud, user is already providing the Redpanda ID.
