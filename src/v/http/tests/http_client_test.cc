@@ -1115,6 +1115,31 @@ SEASTAR_THREAD_TEST_CASE(test_connection_keep_alive) {
     BOOST_REQUIRE(client->is_valid());
 }
 
+SEASTAR_THREAD_TEST_CASE(test_invalidate_improper_client_usage) {
+    auto config = transport_configuration();
+    http::client::request_header header;
+    header.method(boost::beast::http::verb::get);
+    header.target("/get");
+    header_set_host(header, config.server_addr);
+
+    // Send request
+    auto [server, client] = started_client_and_server(config);
+    auto stop_action = ss::defer([server]() { server->stop().get(); });
+
+    {
+        auto resp_stream = client->request(std::move(header), iobuf{}).get();
+        // Improper usage: prefetch headers but don't consume the response body.
+        resp_stream->prefetch_headers().get();
+
+        // Check response
+        BOOST_REQUIRE_EQUAL(
+          resp_stream->get_headers().result(), boost::beast::http::status::ok);
+    }
+
+    // Our client shouldn't be valid after improper usage.
+    BOOST_REQUIRE(!client->is_valid());
+}
+
 SEASTAR_THREAD_TEST_CASE(test_connection_close) {
     auto config = transport_configuration();
     http::client::request_header header;

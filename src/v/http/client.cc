@@ -318,7 +318,12 @@ client::response_stream::response_stream(
 }
 
 client::response_stream::~response_stream() {
-    if (!is_header_done()) {
+    if (!is_done()) {
+        vlog(
+          _ctxlog.warn,
+          "response_stream destroyed before complete read, shutting down "
+          "client");
+        _client->shutdown();
         return;
     }
 
