@@ -113,6 +113,15 @@ void set_routes(ss::httpd::routes& r) {
       "json");
 
     r.add(operation_type::GET, url("/headers"), get_headers_handler);
+
+    auto connection_close_handler = new function_handler(
+      [](const_req, ss::http::reply& rep) {
+          rep.add_header("Connection", "close");
+          return "";
+      },
+      "text/plain");
+    r.add(
+      operation_type::GET, url("/connection-close"), connection_close_handler);
 }
 
 /// Http server and client
@@ -1055,4 +1064,52 @@ SEASTAR_THREAD_TEST_CASE(test_send_abort_race) {
 
     // Clean up
     server->stop().get();
+}
+
+SEASTAR_THREAD_TEST_CASE(test_connection_keep_alive) {
+    auto config = transport_configuration();
+    http::client::request_header header;
+    header.method(boost::beast::http::verb::get);
+    header.target("/get");
+    header_set_host(header, config.server_addr);
+
+    // Send request
+    auto [server, client] = started_client_and_server(config);
+    auto stop_action = ss::defer([server]() { server->stop().get(); });
+
+    {
+        auto resp_stream = client->request(std::move(header), iobuf{}).get();
+        http::drain<void>(resp_stream).get();
+
+        // Check response
+        BOOST_REQUIRE_EQUAL(
+          resp_stream->get_headers().result(), boost::beast::http::status::ok);
+    }
+
+    // Our client should still be valid.
+    BOOST_REQUIRE(client->is_valid());
+}
+
+SEASTAR_THREAD_TEST_CASE(test_connection_close) {
+    auto config = transport_configuration();
+    http::client::request_header header;
+    header.method(boost::beast::http::verb::get);
+    header.target("/connection-close");
+    header_set_host(header, config.server_addr);
+
+    // Send request
+    auto [server, client] = started_client_and_server(config);
+    auto stop_action = ss::defer([server]() { server->stop().get(); });
+
+    {
+        auto resp_stream = client->request(std::move(header), iobuf{}).get();
+        http::drain<void>(resp_stream).get();
+
+        // Check response
+        BOOST_REQUIRE_EQUAL(
+          resp_stream->get_headers().result(), boost::beast::http::status::ok);
+    }
+
+    // Our client shouldn't be valid after server requested connection close.
+    BOOST_REQUIRE(!client->is_valid());
 }

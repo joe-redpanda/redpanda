@@ -316,6 +316,24 @@ client::response_stream::response_stream(
     _parser.eager(true);
 }
 
+client::response_stream::~response_stream() {
+    if (!is_header_done()) {
+        return;
+    }
+
+    const auto& headers = get_headers();
+    auto conn_header_it = headers.find(boost::beast::http::field::connection);
+    if (
+      conn_header_it != headers.end()
+      && boost::beast::iequals(conn_header_it->value(), "close")) {
+        vlog(
+          _ctxlog.trace,
+          "response_stream indicates connection close via header, "
+          "shutting down the client");
+        _client->shutdown();
+    }
+}
+
 bool client::response_stream::is_done() const {
     return _prefetch.empty() && _parser.is_done();
 }

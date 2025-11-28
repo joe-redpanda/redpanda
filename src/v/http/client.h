@@ -155,6 +155,7 @@ public:
         using verb = boost::beast::http::verb;
         /// C-tor can only be called by http_request
         explicit response_stream(client* client, verb v, ss::sstring target);
+        ~response_stream() override;
 
         response_stream(response_stream&&) = delete;
         response_stream(const response_stream&) = delete;
@@ -268,6 +269,9 @@ public:
       request_header&& request,
       std::optional<iobuf> payload = std::nullopt,
       ss::lowres_clock::duration timeout = default_connect_timeout) final;
+
+    /// Whether the client has a valid connection.
+    using net::base_transport::is_valid;
 
     /**
      * Dispatch a request with the provided headers and body.
