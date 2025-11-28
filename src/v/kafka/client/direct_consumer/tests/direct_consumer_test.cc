@@ -246,21 +246,36 @@ struct consumer_test_mock : public ::testing::Test {
     ss::future<> fetch_and_append_to_map(
       topic_partition_map<chunked_vector<model::record_batch>>& batches,
       direct_consumer& consumer) {
-        auto data = co_await consumer.fetch_next(std::chrono::seconds(4));
-        for (auto& topic_data : data.value()) {
-            for (auto& partition_data : topic_data.partitions) {
-                auto& b_vector
-                  = batches[topic_data.topic][partition_data.partition_id];
-                vlog(
-                  test_log.info,
-                  "Fetched {} batches for topic: {}, partition: {}, "
-                  "total_batches: {}",
-                  partition_data.data.size(),
-                  topic_data.topic,
-                  partition_data.partition_id,
-                  b_vector.size());
-                std::ranges::move(
-                  partition_data.data, std::back_inserter(b_vector));
+        vlog(test_log.info, "begin fetch and append");
+        auto deadline = ss::lowres_clock::now() + 4s;
+        while (ss::lowres_clock::now() < deadline) {
+            vlog(test_log.info, "running at all");
+            auto data = co_await consumer.fetch_next(100ms);
+            for (auto& topic_data : data.value()) {
+                if (topic_data.total_bytes == 0) {
+                    vlog(
+                      test_log.info,
+                      "Fetched empty batch set for topic: {}",
+                      topic_data.topic);
+                    continue;
+                }
+                for (auto& partition_data : topic_data.partitions) {
+                    auto& b_vector
+                      = batches[topic_data.topic][partition_data.partition_id];
+                    vlog(
+                      test_log.info,
+                      "Fetched {} batches for topic: {}, partition: {}, "
+                      "total_batches: {}",
+                      partition_data.data.size(),
+                      topic_data.topic,
+                      partition_data.partition_id,
+                      b_vector.size());
+                    if (partition_data.size_bytes == 0) {
+                        continue;
+                    }
+                    std::ranges::move(
+                      partition_data.data, std::back_inserter(b_vector));
+                }
             }
         }
     }
@@ -341,7 +356,7 @@ TEST_F(consumer_test_mock, TestAssignUnassignPartitions) {
     consumer.assign_partitions(make_assignment(test_topic, {0})).get();
 
     fetch_and_append_to_map(all_batches, consumer).get();
-    auto data = consumer.fetch_next(std::chrono::seconds(4)).get();
+    // auto data = consumer.fetch_next(std::chrono::seconds(4)).get();
     ASSERT_EQ(all_batches.size(), 1);
     ASSERT_TRUE(all_batches.contains(test_topic));
     ASSERT_EQ(all_batches[test_topic].size(), 1);

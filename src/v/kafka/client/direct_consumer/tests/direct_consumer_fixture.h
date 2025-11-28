@@ -59,10 +59,12 @@ public:
     ss::future<chunked_vector<model::record>> consume_from_partition(
       const model::topic& topic, int partition, kafka::offset offset);
 
+    // will gather consumer data for 1s
     chunked_hash_map<
       model::topic_partition,
       chunked_vector<model::record_batch>>
-    fetch_until_empty(direct_consumer& consumer);
+    gather_fetches(
+      direct_consumer& consumer, std::chrono::milliseconds gather_time = 1s);
     void assign_partitions(topic_assignment assgn);
     void unassign_partition(model::topic_partition tp);
     void unassign_topic(model::topic topic);
@@ -72,6 +74,15 @@ public:
     void wait_for_visible_leadership_shuffle(const model::ntp& ntp);
 
     application* create_node_application(model::node_id node_id);
+
+    // remove all fetches with only offset updates
+    chunked_hash_map<
+      model::topic_partition,
+      chunked_vector<model::record_batch>>
+    filter_offset_only(
+      chunked_hash_map<
+        model::topic_partition,
+        chunked_vector<model::record_batch>> fetch);
 
 protected:
     redpanda_thread_fixture* rp;

@@ -551,26 +551,16 @@ fetcher::process_fetch_response(
                 dirty_partitions[topic_data.topic].insert(
                   part_data.partition_id);
             } else {
-                source_partition_offsets offsets{
-                  .log_start_offset = model::offset_cast(
-                    part_response.log_start_offset),
-                  .high_watermark = model::offset_cast(
-                    part_response.high_watermark),
-                  .last_stable_offset = model::offset_cast(
-                    part_response.last_stable_offset),
-                  .last_offset_update_timestamp = ss::lowres_clock::now(),
-                };
-                part_data.start_offset = offsets.log_start_offset;
-                part_data.high_watermark = offsets.high_watermark;
-                part_data.last_stable_offset = offsets.last_stable_offset;
+                part_data.start_offset = model::offset_cast(
+                  part_response.log_start_offset);
+                part_data.high_watermark = model::offset_cast(
+                  part_response.high_watermark);
+                part_data.last_stable_offset = model::offset_cast(
+                  part_response.last_stable_offset);
                 part_data.leader_epoch
                   = part_response.current_leader.leader_epoch;
                 part_data.aborted_transactions = std::move(
                   part_response.aborted_transactions);
-
-                _parent->maybe_update_source_partition_offsets(
-                  {topic_data.topic, part_response.partition_index},
-                  std::move(offsets));
 
                 vlog(
                   logger().trace,
@@ -579,28 +569,59 @@ fetcher::process_fetch_response(
                   topic_data.topic,
                   part_response);
 
+                // if no records, just emplace the offset updates
+                // if records, handle size calculation and fetch offsets updates
                 if (
                   !part_response.records.has_value()
                   || part_response.records->is_end_of_stream()) {
-                    continue;
-                }
-                auto partition_response_size
-                  = part_response.records->size_bytes();
-                part_data.size_bytes = partition_response_size;
-                topic_data.total_bytes += partition_response_size;
-                part_data.data = co_await reader_to_chunked_vector(
-                  std::move(part_response.records.value()));
+                    // these still go on the queue as they probably contain
+                    // information about a prefix truncation
+                    vlog(
+                      logger().info,
+                      "[broker: {}] tp: {}/{}, received recordless response",
+                      _id,
+                      topic_data.topic,
+                      part_data.partition_id);
+                } else {
+                    // from here, there is actual data to be process, render it
+                    // accordingly
+                    auto partition_response_size
+                      = part_response.records->size_bytes();
+                    part_data.size_bytes = partition_response_size;
+                    topic_data.total_bytes += partition_response_size;
+                    part_data.data = co_await reader_to_chunked_vector(
+                      std::move(part_response.records.value()));
 
-                bool updated_offset = maybe_update_fetch_offset(
-                  topic_data.topic,
-                  part_data.partition_id,
-                  model::offset_cast(part_data.data.back().last_offset()),
-                  part_data.high_watermark);
-                if (!updated_offset) {
-                    continue;
+                    bool updated_offset = maybe_update_fetch_offset(
+                      topic_data.topic,
+                      part_data.partition_id,
+                      model::offset_cast(part_data.data.back().last_offset()),
+                      part_data.high_watermark);
+                    if (!updated_offset) {
+                        // This implies a mistake in the fetch logic. A response
+                        // that is
+                        // 1. consistent
+                        // 2. record bearing
+                        // 3. redundant
+                        // should not occur and can be considered a
+                        // non-monatomic fetch
+                        vlog(
+                          logger().error,
+                          "[broker: {}] tp: {}/{} received a record bearing "
+                          "fetch "
+                          "that did not update fetch offsets",
+                          _id,
+                          topic_data.topic,
+                          part_data.partition_id);
+                        // record will still go on the queue, but with records
+                        // emptied in case it contains a start offset update
+                        topic_data.total_bytes -= partition_response_size;
+                        part_data.size_bytes = 0u;
+                        part_data.data.clear();
+                    }
+                    dirty_partitions[topic_data.topic].insert(
+                      part_data.partition_id);
                 }
-                dirty_partitions[topic_data.topic].insert(
-                  part_data.partition_id);
             }
             topic_data.partitions.push_back(std::move(part_data));
         }

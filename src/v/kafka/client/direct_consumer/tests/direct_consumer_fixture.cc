@@ -285,14 +285,16 @@ consumer_fixture::consume_from_partition(
 }
 
 chunked_hash_map<model::topic_partition, chunked_vector<model::record_batch>>
-consumer_fixture::fetch_until_empty(direct_consumer& consumer) {
+consumer_fixture::gather_fetches(
+  direct_consumer& consumer, std::chrono::milliseconds gather_time) {
     chunked_hash_map<
       model::topic_partition,
       chunked_vector<model::record_batch>>
       ret;
 
-    while (true) {
-        auto fetched = consumer.fetch_next(1000ms).get();
+    auto deadline = ss::lowres_clock::now() + gather_time;
+    while (ss::lowres_clock::now() < deadline) {
+        auto fetched = consumer.fetch_next(100ms).get();
 
         if (fetched.value().empty()) {
             break;
@@ -308,6 +310,28 @@ consumer_fixture::fetch_until_empty(direct_consumer& consumer) {
         }
     }
     return ret;
+}
+
+chunked_hash_map<model::topic_partition, chunked_vector<model::record_batch>>
+consumer_fixture::filter_offset_only(
+  chunked_hash_map<model::topic_partition, chunked_vector<model::record_batch>>
+    fetch) {
+    chunked_hash_map<
+      model::topic_partition,
+      chunked_vector<model::record_batch>>
+      ret{};
+
+    std::vector<model::topic_partition> empty_keys{
+      std::from_range,
+      fetch | std::ranges::views::filter([](const auto& map_pair) {
+          return map_pair.second.size() == 0;
+      }) | std::ranges::views::transform([](const auto& map_pair) {
+          return map_pair.first;
+      })};
+    for (const auto& empty_key : empty_keys) {
+        fetch.erase(empty_key);
+    }
+    return fetch;
 }
 
 void consumer_fixture::assign_partitions(topic_assignment assgn) {
