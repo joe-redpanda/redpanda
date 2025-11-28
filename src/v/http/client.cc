@@ -16,7 +16,6 @@
 #include "bytes/scattered_message.h"
 #include "config/base_property.h"
 #include "http/logger.h"
-#include "http/utils.h"
 #include "ssx/sformat.h"
 
 #include <seastar/core/abort_source.hh>
