@@ -879,8 +879,6 @@ ss::future<> rm_stm::stop() {
     co_await raft::persisted_stm<>::stop();
 }
 
-ss::future<> rm_stm::start() { return raft::persisted_stm<>::start(); }
-
 std::optional<int32_t>
 rm_stm::get_seq_number(model::producer_identity pid) const {
     auto it = _producers.find(pid.get_id());

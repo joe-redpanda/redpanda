@@ -203,7 +203,7 @@ stm_snapshot simple_stm::make_snapshot() const {
 
 ss::future<> simple_stm::stop() {
     snapshot_timer_.cancel();
-    co_return co_await metastore_stm_base::stop();
+    co_await metastore_stm_base::stop();
 }
 
 ss::future<> simple_stm::maybe_write_snapshot() {
