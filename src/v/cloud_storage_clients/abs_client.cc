@@ -851,9 +851,14 @@ ss::future<abs_client::list_bucket_result> abs_client::do_list_objects(
   ss::lowres_clock::duration timeout,
   std::optional<char> delimiter,
   std::optional<item_filter> collect_item_if) {
+    // Don't use files_only (showonly=files) when a delimiter is specified.
+    // The showonly=files parameter excludes BlobPrefix entries from the
+    // response, but BlobPrefix entries are exactly what we want when using
+    // a delimiter to discover virtual directories.
+    const bool files_only = _adls_client.has_value() && !delimiter.has_value();
     auto header = _requestor.make_list_blobs_request(
       name,
-      _adls_client.has_value(),
+      files_only,
       std::move(prefix),
       max_results,
       std::move(marker),
