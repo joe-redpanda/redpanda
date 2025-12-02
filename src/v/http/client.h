@@ -360,7 +360,15 @@ redacted_fields();
 ss::future<boost::beast::http::status>
 status(client::response_stream_ref response);
 
+template<typename T = iobuf>
+requires std::same_as<T, iobuf> || std::same_as<T, void>
+ss::future<T> drain(client::response_stream_ref response);
+
+template<>
 ss::future<iobuf> drain(client::response_stream_ref response);
+
+template<>
+ss::future<> drain(client::response_stream_ref response);
 
 } // namespace http
 

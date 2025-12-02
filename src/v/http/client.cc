@@ -775,12 +775,20 @@ status(client::response_stream_ref response) {
     co_return response->get_headers().result();
 }
 
+template<>
 ss::future<iobuf> drain(client::response_stream_ref response) {
     iobuf buffer;
     while (!response->is_done()) {
         buffer.append(co_await response->recv_some());
     }
     co_return buffer;
+}
+
+template<>
+ss::future<> drain(client::response_stream_ref response) {
+    while (!response->is_done()) {
+        std::ignore = co_await response->recv_some();
+    }
 }
 
 } // namespace http
