@@ -190,11 +190,7 @@ void test_http_request(
     // Send request
     auto resp_stream = client->request(std::move(header), request_data).get();
     // Receive response
-    iobuf response_body;
-    while (!resp_stream->is_done()) {
-        iobuf res = resp_stream->recv_some().get();
-        response_body.append(std::move(res));
-    }
+    iobuf response_body = http::drain(resp_stream).get();
     // Check response
     check_reply(resp_stream->get_headers(), std::move(response_body));
     server->stop().get();
