@@ -648,7 +648,10 @@ SEASTAR_THREAD_TEST_CASE(test_http_via_impostor_chunked_encoding) {
       boost::beast::http::field::content_type, "application/json");
 
     // Generate response
-    http::chunked_encoder encoder{false};
+    constexpr size_t http_body_chunk_size = 16;
+    // Ensure we have data for more than one chunk for a more robust test.
+    BOOST_REQUIRE(std::strlen(httpd_server_reply) / http_body_chunk_size > 1);
+    http::chunked_encoder encoder{false, http_body_chunk_size};
     ss::sstring response_data = httpd_server_reply;
     http::client::response_header resp_hdr;
     resp_hdr.result(boost::beast::http::status::ok);
