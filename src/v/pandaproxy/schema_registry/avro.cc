@@ -691,11 +691,12 @@ sanitize_avro_schema_definition(schema_definition def) {
             rapidjson::GetParseError_En(doc.GetParseError()),
             doc.GetErrorOffset())};
     }
+    auto [raw, type, refs] = std::move(def).destructure();
     sanitize_context ctx{.alloc = doc.GetAllocator()};
     auto res = sanitize(doc, ctx);
     if (res.has_error()) {
         // TODO BP: Prevent this linearizaton
-        iobuf_parser p(std::move(def).raw()());
+        iobuf_parser p(std::move(raw)());
         return error_info{
           res.assume_error().code(),
           fmt::format(
@@ -714,7 +715,7 @@ sanitize_avro_schema_definition(schema_definition def) {
     return schema_definition{
       schema_definition::raw_string{std::move(buf).as_iobuf()},
       schema_type::avro,
-      std::move(def).refs()};
+      std::move(refs)};
 }
 
 ss::future<subject_schema> make_canonical_avro_schema(

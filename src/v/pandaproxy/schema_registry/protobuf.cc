@@ -441,12 +441,13 @@ ss::future<pb::FileDescriptorProto> build_file_with_refs(
             continue;
         }
         try {
-            auto dep = co_await store.get_subject_schema(
+            auto dep_ss = co_await store.get_subject_schema(
               ref.sub, ref.version, include_deleted::yes);
+            auto [_, dep] = std::move(dep_ss.schema).destructure();
             co_await build_file_with_refs(
               dp,
               store,
-              subject_schema{subject{ref.name}, std::move(dep.schema).def()},
+              subject_schema{subject{ref.name}, std::move(dep)},
               normalize::no);
         } catch (const exception& e) {
             if (failed_subject_schema_lookup(e.code())) {
@@ -675,7 +676,8 @@ ss::future<schema_definition> format_protobuf_schema_definition(
     case output_format::serialized: {
         auto serialized = co_await make_canonical_protobuf_schema(
           store, {{}, std::move(schema)}, normalize::no, format);
-        co_return std::move(serialized).def();
+        auto [_, def] = std::move(serialized).destructure();
+        co_return std::move(def);
     }
     default:
         co_return std::move(schema);

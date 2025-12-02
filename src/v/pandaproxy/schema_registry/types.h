@@ -195,15 +195,13 @@ public:
 
     schema_type type() const { return _type; }
 
-    const raw_string& raw() const& { return _def; }
-    raw_string raw() && { return std::move(_def); }
+    const raw_string& raw() const { return _def; }
     raw_string shared_raw() const {
         auto& buf = const_cast<iobuf&>(_def());
         return raw_string{buf.share(0, buf.size_bytes())};
     }
 
-    const references& refs() const& { return _refs; }
-    references refs() && { return std::move(_refs); }
+    const references& refs() const { return _refs; }
 
     schema_definition share() const {
         return {shared_raw(), type(), refs().copy()};
@@ -364,7 +362,7 @@ public:
         return visit([](const auto& def) { return def.type(); });
     }
 
-    schema_definition::raw_string raw() const& {
+    schema_definition::raw_string raw() const {
         return visit([](auto&& def) {
             return schema_definition::raw_string{def.raw()()};
         });
@@ -454,13 +452,9 @@ public:
     friend std::ostream&
     operator<<(std::ostream& os, const subject_schema& schema);
 
-    const subject& sub() const& { return _sub; }
-    subject sub() && { return std::move(_sub); }
-
+    const subject& sub() const { return _sub; }
     schema_type type() const { return _def.type(); }
-
-    const schema_definition& def() const& { return _def; }
-    schema_definition def() && { return std::move(_def); }
+    const schema_definition& def() const { return _def; }
 
     subject_schema share() const { return {sub(), def().share()}; }
     subject_schema copy() const { return {sub(), def().copy()}; }
@@ -471,7 +465,7 @@ public:
 
 private:
     subject _sub{invalid_subject};
-    schema_definition _def{"", schema_type::avro};
+    schema_definition _def{"", schema_type::avro, {}};
 };
 
 ///\brief Complete description of a subject and schema for a version, as stored

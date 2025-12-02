@@ -701,7 +701,7 @@ ss::future<ctx_server<service>::reply_t> get_subject_versions_version_schema(
     auto formatted_schema = co_await rq.service().schema_store().format_schema(
       std::move(def), format);
 
-    auto resp = std::move(formatted_schema).raw();
+    auto [resp, type, refs] = std::move(formatted_schema).destructure();
     log_response(*rq.req, resp);
     rp.rep->write_body("json", ppj::as_body_writer(std::move(resp)()));
     co_return rp;

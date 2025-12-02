@@ -226,8 +226,8 @@ ss::future<> sharded_store::process_marked_schemas() {
                     .then([id, &store](auto canonical) {
                         // Update the stored form of this schema to its
                         // canonical form
-                        store.upsert_schema(
-                          id, std::move(canonical).def(), false);
+                        auto [sub, schema] = std::move(canonical).destructure();
+                        store.upsert_schema(id, std::move(schema), false);
                     })
                     .handle_exception([](const std::exception_ptr&) {
                         // processing attempt failed on marked schema. This is

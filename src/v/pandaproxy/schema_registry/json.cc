@@ -2377,10 +2377,10 @@ result<id_to_schema_pointer> collect_bundled_schema_and_fix_refs(
 
 ss::future<json_schema_definition>
 make_json_schema_definition(schema_getter&, subject_schema schema) {
-    auto doc
-      = parse_json(schema.def().shared_raw()()).value(); // throws on error
-    std::string_view name = schema.sub()();
-    auto refs = std::move(schema).def().refs();
+    auto [sub, unparsed] = std::move(schema).destructure();
+    auto [def, type, refs] = std::move(unparsed).destructure();
+    auto doc = parse_json(std::move(def)).value(); // throws on error
+    std::string_view name = sub();
     co_return json_schema_definition{
       ss::make_shared<json_schema_definition::impl>(
         std::move(doc), name, std::move(refs))};
