@@ -78,6 +78,15 @@ void set_routes(ss::httpd::routes& r) {
     });
     r.add(operation_type::GET, url("/fail-status-500"), fail_handler);
 
+    auto head_handler = new function_handler(
+      [](const_req, ss::http::reply& rep) {
+          rep.add_header(
+            "Content-Length", std::to_string(strlen(httpd_server_reply)));
+          return "";
+      },
+      "text/plain");
+    r.add(operation_type::HEAD, url("/get"), head_handler);
+
     auto get_handler = new function_handler(
       [](const_req) -> ss::sstring { return httpd_server_reply; });
     r.add(operation_type::GET, url("/get"), get_handler);
@@ -113,6 +122,15 @@ void set_routes(ss::httpd::routes& r) {
       "json");
 
     r.add(operation_type::GET, url("/headers"), get_headers_handler);
+
+    auto connection_close_handler = new function_handler(
+      [](const_req, ss::http::reply& rep) {
+          rep.add_header("Connection", "close");
+          return "";
+      },
+      "text/plain");
+    r.add(
+      operation_type::GET, url("/connection-close"), connection_close_handler);
 }
 
 /// Http server and client
@@ -190,11 +208,7 @@ void test_http_request(
     // Send request
     auto resp_stream = client->request(std::move(header), request_data).get();
     // Receive response
-    iobuf response_body;
-    while (!resp_stream->is_done()) {
-        iobuf res = resp_stream->recv_some().get();
-        response_body.append(std::move(res));
-    }
+    iobuf response_body = http::drain(resp_stream).get();
     // Check response
     check_reply(resp_stream->get_headers(), std::move(response_body));
     server->stop().get();
@@ -333,6 +347,22 @@ SEASTAR_THREAD_TEST_CASE(test_error_500) {
             header.result(), boost::beast::http::status::internal_server_error);
           std::string actual = body.linearize_to_string();
           BOOST_REQUIRE(actual.find("/fail-status-500") != std::string::npos);
+      });
+}
+
+SEASTAR_THREAD_TEST_CASE(test_http_HEAD_roundtrip) {
+    // No request data
+    auto config = transport_configuration();
+    http::client::request_header header;
+    header.method(boost::beast::http::verb::head);
+    header.target("/get");
+    header_set_host(header, config.server_addr);
+    test_http_request(
+      config,
+      std::move(header),
+      std::nullopt,
+      [](const http::client::response_header& header, const iobuf&) {
+          BOOST_REQUIRE_EQUAL(header.result(), boost::beast::http::status::ok);
       });
 }
 
@@ -652,7 +682,10 @@ SEASTAR_THREAD_TEST_CASE(test_http_via_impostor_chunked_encoding) {
       boost::beast::http::field::content_type, "application/json");
 
     // Generate response
-    http::chunked_encoder encoder{false};
+    constexpr size_t http_body_chunk_size = 16;
+    // Ensure we have data for more than one chunk for a more robust test.
+    BOOST_REQUIRE(std::strlen(httpd_server_reply) / http_body_chunk_size > 1);
+    http::chunked_encoder encoder{false, http_body_chunk_size};
     ss::sstring response_data = httpd_server_reply;
     http::client::response_header resp_hdr;
     resp_hdr.result(boost::beast::http::status::ok);
@@ -1056,4 +1089,77 @@ SEASTAR_THREAD_TEST_CASE(test_send_abort_race) {
 
     // Clean up
     server->stop().get();
+}
+
+SEASTAR_THREAD_TEST_CASE(test_connection_keep_alive) {
+    auto config = transport_configuration();
+    http::client::request_header header;
+    header.method(boost::beast::http::verb::get);
+    header.target("/get");
+    header_set_host(header, config.server_addr);
+
+    // Send request
+    auto [server, client] = started_client_and_server(config);
+    auto stop_action = ss::defer([server]() { server->stop().get(); });
+
+    {
+        auto resp_stream = client->request(std::move(header), iobuf{}).get();
+        http::drain<void>(resp_stream).get();
+
+        // Check response
+        BOOST_REQUIRE_EQUAL(
+          resp_stream->get_headers().result(), boost::beast::http::status::ok);
+    }
+
+    // Our client should still be valid.
+    BOOST_REQUIRE(client->is_valid());
+}
+
+SEASTAR_THREAD_TEST_CASE(test_invalidate_improper_client_usage) {
+    auto config = transport_configuration();
+    http::client::request_header header;
+    header.method(boost::beast::http::verb::get);
+    header.target("/get");
+    header_set_host(header, config.server_addr);
+
+    // Send request
+    auto [server, client] = started_client_and_server(config);
+    auto stop_action = ss::defer([server]() { server->stop().get(); });
+
+    {
+        auto resp_stream = client->request(std::move(header), iobuf{}).get();
+        // Improper usage: prefetch headers but don't consume the response body.
+        resp_stream->prefetch_headers().get();
+
+        // Check response
+        BOOST_REQUIRE_EQUAL(
+          resp_stream->get_headers().result(), boost::beast::http::status::ok);
+    }
+
+    // Our client shouldn't be valid after improper usage.
+    BOOST_REQUIRE(!client->is_valid());
+}
+
+SEASTAR_THREAD_TEST_CASE(test_connection_close) {
+    auto config = transport_configuration();
+    http::client::request_header header;
+    header.method(boost::beast::http::verb::get);
+    header.target("/connection-close");
+    header_set_host(header, config.server_addr);
+
+    // Send request
+    auto [server, client] = started_client_and_server(config);
+    auto stop_action = ss::defer([server]() { server->stop().get(); });
+
+    {
+        auto resp_stream = client->request(std::move(header), iobuf{}).get();
+        http::drain<void>(resp_stream).get();
+
+        // Check response
+        BOOST_REQUIRE_EQUAL(
+          resp_stream->get_headers().result(), boost::beast::http::status::ok);
+    }
+
+    // Our client shouldn't be valid after server requested connection close.
+    BOOST_REQUIRE(!client->is_valid());
 }

@@ -16,7 +16,6 @@
 #include "bytes/scattered_message.h"
 #include "config/base_property.h"
 #include "http/logger.h"
-#include "http/utils.h"
 #include "ssx/sformat.h"
 
 #include <seastar/core/abort_source.hh>
@@ -309,12 +308,36 @@ static client_probe::verb convert_to_pverb(client::response_stream::verb v) {
 client::response_stream::response_stream(
   client* client, client::response_stream::verb v, ss::sstring target)
   : _client(client)
-  , _ctxlog(http_log, ssx::sformat("{}", std::move(target)))
+  , _ctxlog(http_log, ssx::sformat("{} {}", v, std::move(target)))
   , _parser()
   , _buffer()
   , _sprobe(client->_probe->create_request_subprobe(convert_to_pverb(v))) {
     _parser.body_limit(std::numeric_limits<uint64_t>::max());
     _parser.eager(true);
+    _parser.skip(v == client::response_stream::verb::head);
+}
+
+client::response_stream::~response_stream() {
+    if (!is_done()) {
+        vlog(
+          _ctxlog.warn,
+          "response_stream destroyed before complete read, shutting down "
+          "client");
+        _client->shutdown();
+        return;
+    }
+
+    const auto& headers = get_headers();
+    auto conn_header_it = headers.find(boost::beast::http::field::connection);
+    if (
+      conn_header_it != headers.end()
+      && boost::beast::iequals(conn_header_it->value(), "close")) {
+        vlog(
+          _ctxlog.trace,
+          "response_stream indicates connection close via header, "
+          "shutting down the client");
+        _client->shutdown();
+    }
 }
 
 bool client::response_stream::is_done() const {
@@ -328,6 +351,11 @@ bool client::response_stream::is_header_done() const {
 
 /// Access response headers (should only be called if is_header_done() == true)
 const client::response_header& client::response_stream::get_headers() const {
+    if (!is_header_done()) {
+        throw std::runtime_error(
+          "invariant violation: response headers are not available yet");
+    }
+
     return _parser.get();
 }
 
@@ -771,12 +799,20 @@ status(client::response_stream_ref response) {
     co_return response->get_headers().result();
 }
 
+template<>
 ss::future<iobuf> drain(client::response_stream_ref response) {
     iobuf buffer;
     while (!response->is_done()) {
         buffer.append(co_await response->recv_some());
     }
     co_return buffer;
+}
+
+template<>
+ss::future<> drain(client::response_stream_ref response) {
+    while (!response->is_done()) {
+        std::ignore = co_await response->recv_some();
+    }
 }
 
 } // namespace http
