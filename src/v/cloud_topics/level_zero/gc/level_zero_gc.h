@@ -212,7 +212,7 @@ public:
          */
         virtual seastar::future<
           std::expected<std::optional<cluster_epoch>, std::string>>
-        max_gc_eligible_epoch(seastar::abort_source*) = 0;
+        max_gc_eligible_epoch(seastar::abort_source*);
 
         /*
          * Snapshot of existing cloud topic partition identifiers along with the

@@ -69,6 +69,68 @@ private:
     const cloud_storage_clients::bucket_name bucket_;
 };
 
+seastar::future<std::expected<std::optional<cluster_epoch>, std::string>>
+level_zero_gc::cluster_support::max_gc_eligible_epoch(
+  seastar::abort_source* as) {
+    /*
+     * First retrieve a consistent snapshot of cloud topic partitions. This
+     * establishes a set of partitions from which we must obtain an epoch
+     * bound on garbage collection.
+     */
+    auto partitions = co_await get_partitions(as);
+    if (!partitions.has_value()) {
+        co_return std::unexpected(partitions.error());
+    }
+    if (partitions.value().partitions.empty()) {
+        co_return std::nullopt;
+    }
+
+    /*
+     * Next we retrieve the latest reported epoch bounds from all cloud
+     * topic partitions. The source for this information is distributed,
+     * while the source for the `partitions` set above is centralized, and
+     * this is why we have these two different collection steps.
+     */
+    auto gc_epochs = co_await get_partitions_max_gc_epoch(as);
+    if (!gc_epochs.has_value()) {
+        co_return std::unexpected(gc_epochs.error());
+    }
+
+    /*
+     * The final result begins as the maximum epoch for the given snapshot.
+     * Below we merge the two result sets and walk the final result back to
+     * account for the partition with the smallest eligible gc epoch.
+     */
+    auto result = cluster_epoch(partitions.value().last_applied());
+
+    for (const auto& partition : partitions.value().partitions) {
+        const auto& tp_ns = partition.first;
+        auto nit = gc_epochs.value().find(tp_ns);
+        if (nit == gc_epochs.value().end()) {
+            co_return std::unexpected(
+              fmt::format(
+                "Topic '{}' in snapshot has no reported max GC epoch", tp_ns));
+        }
+
+        for (const auto p_id : partition.second) {
+            auto pit = nit->second.find(p_id);
+            if (pit == nit->second.end()) {
+                co_return std::unexpected(
+                  fmt::format(
+                    "Partition '{}/{}' in snapshot has no reported max GC "
+                    "epoch",
+                    tp_ns,
+                    p_id));
+            }
+
+            // this partition may hold back the max GC eligible epoch
+            result = std::min(result, pit->second);
+        }
+    }
+
+    co_return result;
+}
+
 class cluster_support_impl : public level_zero_gc::cluster_support {
 public:
     explicit cluster_support_impl(
@@ -183,68 +245,6 @@ public:
 
             if (as && as->abort_requested()) {
                 co_return std::unexpected("Abort requested");
-            }
-        }
-
-        co_return result;
-    }
-
-    seastar::future<std::expected<std::optional<cluster_epoch>, std::string>>
-    max_gc_eligible_epoch(seastar::abort_source* as) override {
-        /*
-         * First retrieve a consistent snapshot of cloud topic partitions. This
-         * establishes a set of partitions from which we must obtain an epoch
-         * bound on garbage collection.
-         */
-        auto partitions = co_await get_partitions(as);
-        if (!partitions.has_value()) {
-            co_return std::unexpected(partitions.error());
-        }
-        if (partitions.value().partitions.empty()) {
-            co_return std::nullopt;
-        }
-
-        /*
-         * Next we retrieve the latest reported epoch bounds from all cloud
-         * topic partitions. The source for this information is distributed,
-         * while the source for the `partitions` set above is centralized, and
-         * this is why we have these two different collection steps.
-         */
-        auto gc_epochs = co_await get_partitions_max_gc_epoch(as);
-        if (!gc_epochs.has_value()) {
-            co_return std::unexpected(gc_epochs.error());
-        }
-
-        /*
-         * The final result begins as the maximum epoch for the given snapshot.
-         * Below we merge the two result sets and walk the final result back to
-         * account for the partition with the smallest eligible gc epoch.
-         */
-        auto result = cluster_epoch(partitions.value().last_applied());
-
-        for (const auto& partition : partitions.value().partitions) {
-            const auto& tp_ns = partition.first;
-            auto nit = gc_epochs.value().find(tp_ns);
-            if (nit == gc_epochs.value().end()) {
-                co_return std::unexpected(
-                  fmt::format(
-                    "Topic '{}' in snapshot has no reported max GC epoch",
-                    tp_ns));
-            }
-
-            for (const auto p_id : partition.second) {
-                auto pit = nit->second.find(p_id);
-                if (pit == nit->second.end()) {
-                    co_return std::unexpected(
-                      fmt::format(
-                        "Partition '{}/{}' in snapshot has no reported max GC "
-                        "epoch",
-                        tp_ns,
-                        p_id));
-                }
-
-                // this partition may hold back the max GC eligible epoch
-                result = std::min(result, pit->second);
             }
         }
 
