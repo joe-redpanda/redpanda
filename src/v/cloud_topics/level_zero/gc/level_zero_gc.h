@@ -57,9 +57,9 @@ namespace cloud_topics {
  *
  * The `level_zero_gc` class implements L0 garbage collection as described
  * above. It uses two service provider interfaces defined in the class. The
- * `epoch_source` interface provides access to the safe-to-delete epoch, and the
- * `object_storage` interface provides access to listing and deleting objects
- * from the configured storage service.
+ * `cluster_support` interface provides access to the safe-to-delete epoch, and
+ * the `object_storage` interface provides access to listing and deleting
+ * objects from the configured storage service.
  *
  * Incremental collection
  * ======================
@@ -179,7 +179,7 @@ public:
     /*
      * Interface for computing the maximum epoch eligible for GC.
      */
-    class epoch_source {
+    class cluster_support {
     public:
         struct partitions_snapshot {
             using partition_map = chunked_hash_map<
@@ -198,12 +198,12 @@ public:
           model::topic_namespace_hash,
           model::topic_namespace_eq>;
 
-        epoch_source() = default;
-        epoch_source(const epoch_source&) = default;
-        epoch_source(epoch_source&&) = delete;
-        epoch_source& operator=(const epoch_source&) = default;
-        epoch_source& operator=(epoch_source&&) = delete;
-        virtual ~epoch_source() = default;
+        cluster_support() = default;
+        cluster_support(const cluster_support&) = default;
+        cluster_support(cluster_support&&) = delete;
+        cluster_support& operator=(const cluster_support&) = default;
+        cluster_support& operator=(cluster_support&&) = delete;
+        virtual ~cluster_support() = default;
 
         /*
          * L0 objects with epochs <= the return value may be deleted. An
@@ -237,7 +237,7 @@ public:
     level_zero_gc(
       level_zero_gc_config,
       std::unique_ptr<object_storage>,
-      std::unique_ptr<epoch_source>);
+      std::unique_ptr<cluster_support>);
 
     /*
      * Construct with default implementations of storage and epoch providers.
@@ -265,7 +265,7 @@ public:
 private:
     level_zero_gc_config config_;
     std::unique_ptr<object_storage> storage_;
-    std::unique_ptr<epoch_source> epoch_source_;
+    std::unique_ptr<cluster_support> cluster_support_;
 
     bool should_run_;
     bool should_shutdown_;

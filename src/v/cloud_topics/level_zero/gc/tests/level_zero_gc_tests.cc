@@ -67,10 +67,10 @@ public:
     std::vector<cloud_storage_clients::client::list_bucket_item>* deleted_;
 };
 
-class epoch_source_test_impl
-  : public cloud_topics::level_zero_gc::epoch_source {
+class cluster_support_test_impl
+  : public cloud_topics::level_zero_gc::cluster_support {
 public:
-    explicit epoch_source_test_impl(std::optional<int64_t>* epoch)
+    explicit cluster_support_test_impl(std::optional<int64_t>* epoch)
       : epoch_(epoch) {}
 
     /*
@@ -115,7 +115,7 @@ public:
             .throttle_no_progress = 10ms,
           },
           std::make_unique<object_storage_test_impl>(&listed, &deleted),
-          std::make_unique<epoch_source_test_impl>(&max_epoch)) {}
+          std::make_unique<cluster_support_test_impl>(&max_epoch)) {}
 
     void TearDown() override { gc.stop().get(); }
 

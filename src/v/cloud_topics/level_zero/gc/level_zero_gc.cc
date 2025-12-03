@@ -69,9 +69,9 @@ private:
     const cloud_storage_clients::bucket_name bucket_;
 };
 
-class epoch_source_cluster_impl : public level_zero_gc::epoch_source {
+class cluster_support_impl : public level_zero_gc::cluster_support {
 public:
-    explicit epoch_source_cluster_impl(
+    explicit cluster_support_impl(
       seastar::sharded<cluster::health_monitor_frontend>* health_monitor,
       seastar::sharded<cluster::topic_table>* topic_table)
       : health_monitor_(health_monitor)
@@ -259,10 +259,10 @@ private:
 level_zero_gc::level_zero_gc(
   level_zero_gc_config config,
   std::unique_ptr<object_storage> storage,
-  std::unique_ptr<epoch_source> epoch_source)
+  std::unique_ptr<cluster_support> cluster_support)
   : config_(config)
   , storage_(std::move(storage))
-  , epoch_source_(std::move(epoch_source))
+  , cluster_support_(std::move(cluster_support))
   , should_run_(false) // begin in a stopped state
   , should_shutdown_(false)
   , worker_(worker()) {}
@@ -276,8 +276,7 @@ level_zero_gc::level_zero_gc(
   : level_zero_gc(
       config,
       std::make_unique<object_storage_remote_impl>(remote, std::move(bucket)),
-      std::make_unique<epoch_source_cluster_impl>(
-        health_monitor, topic_table)) {}
+      std::make_unique<cluster_support_impl>(health_monitor, topic_table)) {}
 
 void level_zero_gc::start() {
     vlog(cd_log.info, "Starting cloud topics L0 GC worker");
@@ -373,7 +372,7 @@ level_zero_gc::try_to_collect() {
     }
 
     const auto maybe_max_gc_epoch
-      = co_await epoch_source_->max_gc_eligible_epoch(&asrc_);
+      = co_await cluster_support_->max_gc_eligible_epoch(&asrc_);
     if (!maybe_max_gc_epoch.has_value()) {
         vlog(
           cd_log.debug,
