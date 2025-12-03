@@ -45,12 +45,8 @@ read_block(io::random_access_file_reader* file, block::handle handle) {
       handle.offset, handle.size + block_footer_size);
     auto compression = compression_type_from_raw(
       data[data.size() - block_footer_size]);
-    auto last_word_slice = ss::sstring(data.read_string(
-      data.size() - block_footer_size + sizeof(compression_type),
-      sizeof(crc::crc32c::value_type)));
-    uint32_t expected_crc = 0;
-    std::memcpy(&expected_crc, last_word_slice.data(), last_word_slice.size());
-    expected_crc = crc::unmask(ss::le_to_cpu(expected_crc));
+    uint32_t expected_crc = data.read_fixed32(
+      data.size() - block_footer_size + sizeof(compression_type));
     crc::crc32c actual_crc;
     data.trim_back(sizeof(crc::crc32c::value_type));
     for (auto& chunk : data.as_iovec()) {

@@ -87,8 +87,7 @@ builder::write_raw_block(iobuf buf, compression_type comp_type) {
     crc::crc32c crc;
     crc_extend_iobuf(crc, buf);
     buf.append(
-      std::bit_cast<std::array<uint8_t, sizeof(crc.value())>>(
-        crc::mask(crc.value())));
+      std::bit_cast<std::array<uint8_t, sizeof(crc.value())>>(crc.value()));
     _written_bytes += buf.size_bytes();
     co_await _writer->append(std::move(buf));
     co_return h;

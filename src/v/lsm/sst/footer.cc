@@ -31,8 +31,7 @@ iobuf footer::as_iobuf() const {
     crc::crc32c crc;
     crc_extend_iobuf(crc, buf);
     buf.append(
-      std::bit_cast<std::array<uint8_t, sizeof(crc.value())>>(
-        crc::mask(crc.value())));
+      std::bit_cast<std::array<uint8_t, sizeof(crc.value())>>(crc.value()));
     buf.append(
       std::bit_cast<std::array<uint8_t, sizeof(table_magic_number)>>(
         table_magic_number));
@@ -59,8 +58,7 @@ footer footer::from_iobuf(iobuf buf) {
       parser.share(sizeof(decltype(footer::metaindex_handle))));
     auto index_handle = block::handle::from_iobuf(
       parser.share(sizeof(decltype(footer::index_handle))));
-    auto expected_crc = crc::unmask(
-      parser.consume_type<crc::crc32c::value_type>());
+    auto expected_crc = parser.consume_type<crc::crc32c::value_type>();
     if (expected_crc != actual_crc.value()) {
         throw corruption_exception(
           "unexpected crc, got: {}, want: {} for SST footer",
