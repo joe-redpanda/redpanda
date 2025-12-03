@@ -192,3 +192,128 @@ TEST_F(LevelZeroGCTest, NoDeletesForYoungObjects) {
     gc.start();
     EXPECT_TRUE(Eventually([this] { return deleted.size() == 88; }));
 }
+
+/*
+ * Returns copies of the configured output for the two pure virtual methods.
+ * This fixture is intended to test the default implementation of the max gc
+ * eligible epoch calculation, so that is not overriden.
+ */
+class cluster_support_test_default_impl
+  : public cloud_topics::level_zero_gc::cluster_support {
+public:
+    explicit cluster_support_test_default_impl(
+      partitions_snapshot* get_partitions_value,
+      partitions_max_gc_epoch* get_partitions_max_gc_epoch_value)
+      : get_partitions_value_(get_partitions_value)
+      , get_partitions_max_gc_epoch_value_(get_partitions_max_gc_epoch_value) {}
+
+    seastar::future<std::expected<partitions_snapshot, std::string>>
+    get_partitions(seastar::abort_source*) override {
+        // manually copy out from the fragmented map structure
+        const auto& src = *get_partitions_value_;
+        partitions_snapshot::partition_map partitions;
+        for (const auto& entry : src.partitions) {
+            partitions[entry.first] = entry.second.copy();
+        }
+        co_return partitions_snapshot{
+          .partitions = std::move(partitions),
+          .last_applied = src.last_applied,
+        };
+    }
+
+    seastar::future<std::expected<partitions_max_gc_epoch, std::string>>
+    get_partitions_max_gc_epoch(seastar::abort_source*) override {
+        // manually copy the two-level fragmented map structure
+        const auto& src = *get_partitions_max_gc_epoch_value_;
+        partitions_max_gc_epoch ret;
+        for (const auto& entry : src) {
+            chunked_hash_map<model::partition_id, cloud_topics::cluster_epoch>
+              copy;
+            for (const auto& partition : entry.second) {
+                copy[partition.first] = partition.second;
+            }
+            ret[entry.first] = std::move(copy);
+        }
+        co_return ret;
+    }
+
+private:
+    partitions_snapshot* get_partitions_value_;
+    partitions_max_gc_epoch* get_partitions_max_gc_epoch_value_;
+};
+
+class LevelZeroGCMaxEpochTest : public testing::Test {
+public:
+    using cluster_support_type = cloud_topics::level_zero_gc::cluster_support;
+    using partitions_snapshot = cluster_support_type::partitions_snapshot;
+    using partitions_max_gc_epoch
+      = cluster_support_type::partitions_max_gc_epoch;
+
+    LevelZeroGCMaxEpochTest()
+      : cluster_support(
+          std::make_unique<cluster_support_test_default_impl>(
+            &get_partitions_value, &get_partitions_max_gc_epoch_value)) {}
+
+    partitions_snapshot get_partitions_value;
+    partitions_max_gc_epoch get_partitions_max_gc_epoch_value;
+    std::unique_ptr<cluster_support_type> cluster_support;
+
+    // shortcut accessors
+    auto max_gc() {
+        return cluster_support->max_gc_eligible_epoch(nullptr).get();
+    }
+    auto& snapshot() { return get_partitions_value; }
+    auto& partition_epochs() { return get_partitions_max_gc_epoch_value; }
+};
+
+TEST_F(LevelZeroGCMaxEpochTest, EmptySnapshot) {
+    // no error
+    ASSERT_TRUE(max_gc().has_value());
+    // no result
+    ASSERT_FALSE(max_gc().value().has_value());
+}
+
+namespace {
+model::topic_namespace tpns0(model::ns("ns0"), model::topic("t0"));
+}
+
+TEST_F(LevelZeroGCMaxEpochTest, EmptyGcEpochReport) {
+    // here we have a non-empty snapshot, but no reported epochs from individual
+    // partitions. in this case there should be no result after the join
+    get_partitions_value.partitions[tpns0].push_back(model::partition_id(0));
+    ASSERT_FALSE(max_gc().has_value());
+    ASSERT_EQ(
+      max_gc().error(),
+      "Topic '{ns0/t0}' in snapshot has no reported max GC epoch");
+
+    // now we add the topic/ns to the report, but report on a different
+    // partition so there is still no output in the join
+    get_partitions_max_gc_epoch_value[tpns0][model::partition_id(1)]
+      = cloud_topics::cluster_epoch(0);
+    ASSERT_FALSE(max_gc().has_value());
+    ASSERT_EQ(
+      max_gc().error(),
+      "Partition '{ns0/t0}/0' in snapshot has no reported max GC epoch");
+}
+
+TEST_F(LevelZeroGCMaxEpochTest, MinReduce) {
+    get_partitions_value.last_applied = model::revision_id(100);
+    get_partitions_value.partitions[tpns0].push_back(model::partition_id(0));
+
+    // the minimum is the last applied
+    get_partitions_max_gc_epoch_value[tpns0][model::partition_id(0)]
+      = cloud_topics::cluster_epoch(200);
+    ASSERT_EQ(max_gc().value().value(), cloud_topics::cluster_epoch(100));
+
+    // now its the epoch from the report
+    get_partitions_max_gc_epoch_value[tpns0][model::partition_id(0)]
+      = cloud_topics::cluster_epoch(50);
+    ASSERT_EQ(max_gc().value().value(), cloud_topics::cluster_epoch(50));
+}
+
+TEST_F(LevelZeroGCMaxEpochTest, EmptySnapshotNonEmptyReport) {
+    get_partitions_max_gc_epoch_value[tpns0][model::partition_id(0)]
+      = cloud_topics::cluster_epoch(200);
+    ASSERT_TRUE(max_gc().has_value());
+    ASSERT_FALSE(max_gc().value().has_value());
+}
