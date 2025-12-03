@@ -162,6 +162,7 @@ def wait_until_with_progress_check(
     """
     val = check()
     elapsed_sec = 0
+    last_exception: TimeoutError | None = None
     while elapsed_sec < timeout_sec:
         try:
             wait_until(
@@ -170,7 +171,9 @@ def wait_until_with_progress_check(
                 backoff_sec=backoff_sec,
                 err_msg=err_msg,
             )
+            break
         except TimeoutError as e:
+            last_exception = e
             elapsed_sec += progress_sec
             next_v = check()
             if next_v == val:
@@ -182,8 +185,17 @@ def wait_until_with_progress_check(
                     f"Progress after {elapsed_sec=}: prev: {val} curr: {next_v}..."
                 )
             val = next_v
-        else:
-            break
+
+    if condition():
+        return
+
+    assert last_exception is not None, (
+        "If the condition doesn't hold an exception should have fired"
+    )
+
+    raise TimeoutError(
+        f"{err_msg if err_msg is not None else ''} after {timeout_sec=}"
+    ) from last_exception
 
 
 def segments_count(redpanda, topic, partition_idx):
