@@ -85,6 +85,22 @@ public:
         co_return std::nullopt;
     }
 
+    seastar::future<std::expected<partitions_snapshot, std::string>>
+    get_partitions(seastar::abort_source*) override {
+        /*
+         * this impl only cares about the final derived value
+         */
+        co_return std::unexpected("unimplemented");
+    }
+
+    seastar::future<std::expected<partitions_max_gc_epoch, std::string>>
+    get_partitions_max_gc_epoch(seastar::abort_source*) override {
+        /*
+         * this impl only cares about the final derived value
+         */
+        co_return std::unexpected("unimplemented");
+    }
+
 private:
     std::optional<int64_t>* epoch_;
 };

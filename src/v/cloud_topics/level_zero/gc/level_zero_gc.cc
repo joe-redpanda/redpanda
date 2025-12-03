@@ -77,19 +77,183 @@ public:
       : health_monitor_(health_monitor)
       , topic_table_(topic_table) {}
 
-    seastar::future<std::expected<std::optional<cluster_epoch>, std::string>>
-    max_gc_eligible_epoch(seastar::abort_source*) override {
+    seastar::future<std::expected<partitions_snapshot, std::string>>
+    get_partitions(seastar::abort_source* as) override {
+        const auto& topic_table = topic_table_->local();
+
+        // this revision is for detecting concurrent modifications
+        const auto iter_start_rev = topic_table.topics_map_revision();
+
+        partitions_snapshot snap;
+        snap.last_applied = topic_table.last_applied_revision();
+
+        for (const auto& topic : topic_table.topics_map()) {
+            // we only care about cloud topics
+            if (!topic.second.get_metadata()
+                   .get_configuration()
+                   .is_cloud_topic()) {
+                continue;
+            }
+
+            auto& partitions = snap.partitions[topic.first];
+            for (const auto& partition : topic.second.partitions) {
+                partitions.push_back(model::partition_id(partition.first));
+            }
+
+            co_await seastar::maybe_yield();
+
+            if (as && as->abort_requested()) {
+                co_return std::unexpected("Abort requested");
+            }
+
+            // Detect concurrent changes to the topic table.
+            topic_table.check_topics_map_stable(iter_start_rev);
+        }
+
+        co_return snap;
+    }
+
+    seastar::future<std::expected<partitions_max_gc_epoch, std::string>>
+    get_partitions_max_gc_epoch(seastar::abort_source* as) override {
         /*
-         * TODO(noah): missing an integration of epochs with the partition
-         * table. for now we report no eligible epoch.
+         * Get a recent health report. Partitions use the health reporting
+         * mechanism to self-report their max GC eligible epoch.
          */
-        co_return std::nullopt;
+        constexpr auto health_report_query_timeout = 10s;
+
+        auto health_report
+          = co_await health_monitor_->local().get_cluster_health(
+            cluster::cluster_report_filter{},
+            cluster::force_refresh::no,
+            model::timeout_clock::now() + health_report_query_timeout);
+
+        if (!health_report.has_value()) {
+            co_return std::unexpected(
+              fmt::format(
+                "Error retrieving cluster health report: {}",
+                health_report.error()));
+        }
+
+        partitions_max_gc_epoch result;
+        for (const auto& node_health : health_report.value().node_reports) {
+            for (const auto& topic_status : node_health->topics) {
+                const auto& tp_ns = topic_status.first;
+                for (const auto& partition_status : topic_status.second) {
+                    /*
+                     * partition_status is the partition health reported by a
+                     * replica. a reported epoch is valid when it is collected,
+                     * independent of the replica's current leadership status.
+                     * we reduce across replicas using `max` because that is the
+                     * most optimistic value we can take.
+                     *
+                     * if a replica reports no epoch then it is considered to be
+                     * in an indeterminite state and it has no affect on the
+                     * computed result. this has the side effect / benefit of
+                     * skipping any non-cloud topic partitions.
+                     */
+                    const auto maybe_max_gc_epoch
+                      = partition_status.second
+                          .cloud_topic_max_gc_eligible_epoch;
+                    if (!maybe_max_gc_epoch.has_value()) {
+                        continue;
+                    }
+                    const auto max_gc_epoch = cluster_epoch(
+                      maybe_max_gc_epoch.value());
+
+                    const auto p_id = partition_status.first;
+                    auto& partition_epochs = result[tp_ns];
+                    const auto it = partition_epochs.find(p_id);
+                    if (it == partition_epochs.end()) {
+                        partition_epochs.try_emplace(p_id, max_gc_epoch);
+                    } else {
+                        it->second = std::max(it->second, max_gc_epoch);
+                    }
+                }
+            }
+
+            /*
+             * A scheduling point is injected after looking at each node's
+             * report. We own the list of node reports which is a set of shared
+             * pointers, so iteration is safe, and the scheduling point is
+             * intended to help avoid reactor stalls. If we need to inject
+             * scheduling points at a finer granularity we'll need to take a
+             * closer look at concurrency rules of the reports themselves.
+             */
+            co_await seastar::maybe_yield();
+
+            if (as && as->abort_requested()) {
+                co_return std::unexpected("Abort requested");
+            }
+        }
+
+        co_return result;
+    }
+
+    seastar::future<std::expected<std::optional<cluster_epoch>, std::string>>
+    max_gc_eligible_epoch(seastar::abort_source* as) override {
+        /*
+         * First retrieve a consistent snapshot of cloud topic partitions. This
+         * establishes a set of partitions from which we must obtain an epoch
+         * bound on garbage collection.
+         */
+        auto partitions = co_await get_partitions(as);
+        if (!partitions.has_value()) {
+            co_return std::unexpected(partitions.error());
+        }
+        if (partitions.value().partitions.empty()) {
+            co_return std::nullopt;
+        }
+
+        /*
+         * Next we retrieve the latest reported epoch bounds from all cloud
+         * topic partitions. The source for this information is distributed,
+         * while the source for the `partitions` set above is centralized, and
+         * this is why we have these two different collection steps.
+         */
+        auto gc_epochs = co_await get_partitions_max_gc_epoch(as);
+        if (!gc_epochs.has_value()) {
+            co_return std::unexpected(gc_epochs.error());
+        }
+
+        /*
+         * The final result begins as the maximum epoch for the given snapshot.
+         * Below we merge the two result sets and walk the final result back to
+         * account for the partition with the smallest eligible gc epoch.
+         */
+        auto result = cluster_epoch(partitions.value().last_applied());
+
+        for (const auto& partition : partitions.value().partitions) {
+            const auto& tp_ns = partition.first;
+            auto nit = gc_epochs.value().find(tp_ns);
+            if (nit == gc_epochs.value().end()) {
+                co_return std::unexpected(
+                  fmt::format(
+                    "Topic '{}' in snapshot has no reported max GC epoch",
+                    tp_ns));
+            }
+
+            for (const auto p_id : partition.second) {
+                auto pit = nit->second.find(p_id);
+                if (pit == nit->second.end()) {
+                    co_return std::unexpected(
+                      fmt::format(
+                        "Partition '{}/{}' in snapshot has no reported max GC "
+                        "epoch",
+                        tp_ns,
+                        p_id));
+                }
+
+                // this partition may hold back the max GC eligible epoch
+                result = std::min(result, pit->second);
+            }
+        }
+
+        co_return result;
     }
 
 private:
-    [[maybe_unused]] seastar::sharded<cluster::health_monitor_frontend>*
-      health_monitor_;
-    [[maybe_unused]] seastar::sharded<cluster::topic_table>* topic_table_;
+    seastar::sharded<cluster::health_monitor_frontend>* health_monitor_;
+    seastar::sharded<cluster::topic_table>* topic_table_;
 };
 
 level_zero_gc::level_zero_gc(

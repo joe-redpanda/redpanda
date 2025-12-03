@@ -20,6 +20,7 @@ redpanda_cc_library(
         "//src/v/cloud_io:io_result",
         "//src/v/cloud_storage_clients",
         "//src/v/cloud_topics:types",
+        "//src/v/container:chunked_hash_map",
         "//src/v/model",
         "@seastar",
     ],
