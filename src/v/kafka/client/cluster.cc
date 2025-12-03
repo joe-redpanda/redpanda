@@ -337,8 +337,10 @@ ss::future<metadata_response> cluster::dispatch_metadata_request(
       metadata_request{.data{
         .topics = std::move(topics_to_request),
         .allow_auto_topic_creation = false,
-        .include_cluster_authorized_operations = true,
-        .include_topic_authorized_operations = true}},
+        .include_cluster_authorized_operations = bool(
+          _config.include_authorized_operations),
+        .include_topic_authorized_operations = bool(
+          _config.include_authorized_operations)}},
       metadata_version);
     vassert(
       std::holds_alternative<kafka::metadata_response>(reply),
@@ -356,8 +358,9 @@ cluster::dispatch_describe_cluster_request(shared_broker_t broker) {
     auto request_version = co_await get_describe_cluster_request_version(
       broker, _as);
     auto reply = co_await broker->dispatch(
-      describe_cluster_request{
-        .data{.include_cluster_authorized_operations = true}},
+      describe_cluster_request{.data{
+        .include_cluster_authorized_operations = bool(
+          _config.include_authorized_operations)}},
       request_version);
     vassert(
       std::holds_alternative<kafka::describe_cluster_response>(reply),
