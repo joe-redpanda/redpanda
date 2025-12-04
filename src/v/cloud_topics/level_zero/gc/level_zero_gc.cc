@@ -103,6 +103,11 @@ level_zero_gc::cluster_support::max_gc_eligible_epoch(
      */
     auto result = cluster_epoch(partitions.value().last_applied());
 
+    vlog(
+      cd_log.debug,
+      "Calculating max GC eligible epoch with snapshot epoch {}",
+      result);
+
     for (const auto& partition : partitions.value().partitions) {
         const auto& tp_ns = partition.first;
         auto nit = gc_epochs.value().find(tp_ns);
@@ -124,7 +129,17 @@ level_zero_gc::cluster_support::max_gc_eligible_epoch(
             }
 
             // this partition may hold back the max GC eligible epoch
+            const auto prev_result = result;
             result = std::min(result, pit->second);
+
+            vlog(
+              cd_log.debug,
+              "Reducing result {} from min(result={}, p={}) for {}/{}",
+              result,
+              prev_result,
+              pit->second,
+              tp_ns,
+              p_id);
         }
     }
 
@@ -390,6 +405,12 @@ level_zero_gc::try_to_collect() {
     const auto max_gc_birthday = std::chrono::system_clock::now()
                                  - config_.deletion_grace_period;
 
+    vlog(
+      cd_log.debug,
+      "Attempting L0 GC at epoch {} and last modified limit {}",
+      max_gc_epoch.value(),
+      max_gc_birthday);
+
     // objects that can be safely deleted
     std::vector<cloud_storage_clients::client::list_bucket_item>
       eligible_objects;
@@ -471,7 +492,7 @@ level_zero_gc::try_to_collect() {
     }
 
     vlog(
-      cd_log.info, "Deleted {} L0 data objects eligible for GC", num_eligible);
+      cd_log.debug, "Deleted {} L0 data objects eligible for GC", num_eligible);
 
     co_return num_eligible;
 }
