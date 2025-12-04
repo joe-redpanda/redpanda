@@ -1151,6 +1151,7 @@ void update_timestamps(
                   *from.connection.authn_config);
               // If the passwords do not match, then update the timestamp of
               // when the password was set
+              c.password_last_updated = from_creds.password_last_updated;
               if (from_creds.password != c.password) {
                   c.password_last_updated = model::timestamp::now();
                   return;
