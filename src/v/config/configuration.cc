@@ -4553,6 +4553,12 @@ configuration::configuration()
       "term storage.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       5min)
+  , epoch_service_max_epoch_age(
+      *this,
+      "epoch_service_max_epoch_age",
+      "The maximum age of an epoch that the epoch service will publish",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      10min)
   , development_feature_property_testing_only(
       *this,
       "development_feature_property_testing_only",

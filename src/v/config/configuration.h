@@ -817,6 +817,7 @@ public:
     property<std::chrono::milliseconds> cloud_topics_reconciliation_interval;
     property<std::chrono::milliseconds>
       cloud_topics_long_term_garbage_collection_interval;
+    property<std::chrono::milliseconds> epoch_service_max_epoch_age;
 
     development_feature_property<int> development_feature_property_testing_only;
 
