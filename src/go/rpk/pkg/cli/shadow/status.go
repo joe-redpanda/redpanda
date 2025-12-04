@@ -114,15 +114,13 @@ Display specific sections:
 				}))
 				out.MaybeDie(err, "unable to get shadow link: %v", err)
 
-				topicList, err := cl.ShadowLink.ListShadowLinkTopics(cmd.Context(), connect.NewRequest(&dataplanev1alpha3.ListShadowLinkTopicsRequest{
-					ShadowLinkName: linkName,
-				}))
+				topicList, err := cl.ListAllShadowLinkTopics(cmd.Context(), linkName)
 				out.MaybeDie(err, "unable to list shadow link topics: %v", err)
 
 				// Fetch details for each topic as the partition information is
 				// not included in the list response.
 				topicDetails := make(map[string]*dataplanev1alpha3.GetShadowTopicResponse)
-				for _, listedTopic := range topicList.Msg.GetShadowTopics() {
+				for _, listedTopic := range topicList {
 					topicResp, err := cl.ShadowLink.GetShadowTopic(cmd.Context(), connect.NewRequest(&dataplanev1alpha3.GetShadowTopicRequest{
 						ShadowLinkName: linkName,
 						TopicName:      listedTopic.GetTopicName(),

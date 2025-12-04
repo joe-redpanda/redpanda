@@ -10,6 +10,7 @@
 package publicapi
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 
 	"buf.build/gen/go/redpandadata/dataplane/connectrpc/go/redpanda/api/dataplane/v1/dataplanev1connect"
 	"buf.build/gen/go/redpandadata/dataplane/connectrpc/go/redpanda/api/dataplane/v1alpha3/dataplanev1alpha3connect"
+	dataplanev1alpha3 "buf.build/gen/go/redpandadata/dataplane/protocolbuffers/go/redpanda/api/dataplane/v1alpha3"
 	"connectrpc.com/connect"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/config"
 )
@@ -135,4 +137,23 @@ func DataplaneClientFromRpkProfile(p *config.RpkProfile, opts ...connect.ClientO
 		return nil, fmt.Errorf("unable to get cluster information from your profile: %v", err)
 	}
 	return NewDataPlaneClientSet(url, p.CurrentAuth().AuthToken, opts...)
+}
+
+// ListAllShadowLinkTopics returns all the ShadowTopics for a given shadow link
+// using the pagination feature to traverse all pages of the list.
+func (dpCl *DataPlaneClientSet) ListAllShadowLinkTopics(ctx context.Context, shadowLinkName string) ([]*dataplanev1alpha3.ShadowTopic, error) {
+	maxPages := 500
+	fetchPage := func(ctx context.Context, pageToken string) ([]*dataplanev1alpha3.ShadowTopic, string, error) {
+		req := connect.NewRequest(&dataplanev1alpha3.ListShadowLinkTopicsRequest{
+			ShadowLinkName: shadowLinkName,
+			PageToken:      pageToken,
+			PageSize:       100,
+		})
+		resp, err := dpCl.ShadowLink.ListShadowLinkTopics(ctx, req)
+		if err != nil {
+			return nil, "", err
+		}
+		return resp.Msg.GetShadowTopics(), resp.Msg.GetNextPageToken(), nil
+	}
+	return Paginate(ctx, maxPages, fetchPage)
 }
