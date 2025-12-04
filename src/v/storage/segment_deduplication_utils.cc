@@ -208,8 +208,10 @@ ss::future<index_state> deduplicate_segment(
     auto segment_last_offset = seg->offsets().get_committed_offset();
     auto compaction_placeholder_enabled = feature_table.local().is_active(
       features::feature::compaction_placeholder_batch);
-    auto unset_transactional_bit_enabled = feature_table.local().is_active(
-      features::feature::coordinated_compaction);
+    auto unset_transactional_bit_enabled
+      = feature_table.local().is_active(
+          features::feature::coordinated_compaction)
+        && !config::shard_local_cfg().log_compaction_disable_tx_batch_removal();
     const bool past_tombstone_delete_horizon
       = internal::is_past_tombstone_delete_horizon(seg, cfg);
     bool may_have_tombstone_records = false;
