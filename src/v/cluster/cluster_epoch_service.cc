@@ -524,7 +524,8 @@ void cluster_epoch_service<Clock>::set_raft0(
 
 template<typename Clock>
 bool cluster_epoch_service<Clock>::cache_entry_expired() const noexcept {
-    return Clock::now() > (_cached_epoch_time + epoch_cache_timeout);
+    return Clock::now()
+           > (_cached_epoch_time + config::shard_local_cfg().epoch_service_cached_epoch_age_soft_limit());
 }
 template<typename Clock>
 bool cluster_epoch_service<Clock>::cache_entry_needs_updated() const noexcept {

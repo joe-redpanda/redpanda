@@ -818,6 +818,8 @@ public:
     property<std::chrono::milliseconds>
       cloud_topics_long_term_garbage_collection_interval;
     property<std::chrono::milliseconds> epoch_service_max_epoch_age;
+    property<std::chrono::milliseconds>
+      epoch_service_cached_epoch_age_soft_limit;
 
     development_feature_property<int> development_feature_property_testing_only;
 

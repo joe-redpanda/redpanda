@@ -55,9 +55,6 @@ class cluster_epoch_service
 
 public:
     // TODO(cloud-topics): make these configuration knobs.
-    // The amount of time to cache the current epoch before we attempt an
-    // update.
-    constexpr static ss::lowres_clock::duration epoch_cache_timeout = 1min;
     // Maximum amount of time to cache the same epoch before we block on the
     // update.
     constexpr static ss::lowres_clock::duration max_same_epoch_cache_duration
