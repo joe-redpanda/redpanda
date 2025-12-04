@@ -280,7 +280,8 @@ level_zero_gc::level_zero_gc(
   , cluster_support_(std::move(cluster_support))
   , should_run_(false) // begin in a stopped state
   , should_shutdown_(false)
-  , worker_(worker()) {}
+  , worker_(worker())
+  , probe_(config::shard_local_cfg().disable_metrics()) {}
 
 level_zero_gc::level_zero_gc(
   cloud_io::remote* remote,
@@ -490,6 +491,8 @@ level_zero_gc::try_to_collect() {
           res.error());
         co_return std::unexpected(collection_error::service_error);
     }
+
+    probe_.objects_deleted(num_eligible);
 
     vlog(
       cd_log.debug, "Deleted {} L0 data objects eligible for GC", num_eligible);

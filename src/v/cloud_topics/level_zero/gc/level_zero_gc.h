@@ -11,6 +11,7 @@
 
 #include "cloud_io/io_result.h"
 #include "cloud_storage_clients/client.h"
+#include "cloud_topics/level_zero/gc/level_zero_gc_probe.h"
 #include "cloud_topics/types.h"
 #include "container/chunked_hash_map.h"
 
@@ -276,6 +277,8 @@ private:
     seastar::future<> worker();
     enum class collection_error : int8_t;
     seastar::future<std::expected<size_t, collection_error>> try_to_collect();
+
+    level_zero_gc_probe probe_;
 };
 
 } // namespace cloud_topics
