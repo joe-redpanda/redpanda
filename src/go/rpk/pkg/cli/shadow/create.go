@@ -10,7 +10,9 @@
 package shadow
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
 
@@ -46,8 +48,10 @@ prompts you to confirm the creation. Use the --no-confirm flag to skip the
 confirmation prompt.
 
 When creating a Shadow Link for Redpanda Cloud, make sure to login and select
-the cluster where you want to create the Shadow Link before running this 
-command. See 'rpk cloud login' and 'rpk cloud select'.
+the cluster where you want to create the Shadow Link before running this
+command. See 'rpk cloud login' and 'rpk cloud select'. For SCRAM authentication,
+store your password in the secrets store. See 'rpk security secret --help' for
+more details.
 
 After you create the Shadow Link, use 'rpk shadow status' to monitor the
 replication progress.
@@ -158,17 +162,17 @@ func printShadowLinkCfgOverview(slCfg *ShadowLinkConfig) {
 
 func validateParsedShadowLinkConfig(slCfg *ShadowLinkConfig) error {
 	if slCfg == nil {
-		return fmt.Errorf("provided configuration file generated an empty configuration")
+		return errors.New("provided configuration file generated an empty configuration")
 	}
 	if slCfg.Name == "" {
-		return fmt.Errorf("the Shadow Link name is required")
+		return errors.New("the Shadow Link name is required")
 	}
 	// Cloud configuration does not require bootstrap servers.
 	if slCfg.CloudOptions == nil && len(slCfg.ClientOptions.BootstrapServers) == 0 {
-		return fmt.Errorf("at least one bootstrap server is required")
+		return errors.New("at least one bootstrap server is required")
 	}
 	if tls := slCfg.ClientOptions.TLSSettings; tls != nil && tls.TLSFileSettings != nil && tls.TLSPEMSettings != nil {
-		return fmt.Errorf("only one of TLS file settings or PEM settings can be provided")
+		return errors.New("only one of TLS file settings or PEM settings can be provided")
 	}
 	if ts := slCfg.TopicMetadataSyncOptions; ts != nil {
 		var count int
@@ -182,19 +186,32 @@ func validateParsedShadowLinkConfig(slCfg *ShadowLinkConfig) error {
 			count++
 		}
 		if count > 1 {
-			return fmt.Errorf("only one of start_at_latest, start_at_earliest, or start_at_timestamp can be provided")
+			return errors.New("only one of start_at_latest, start_at_earliest, or start_at_timestamp can be provided")
 		}
 	}
 	if slc := slCfg.CloudOptions; slc != nil {
 		if slc.ShadowRedpandaID == "" {
-			return fmt.Errorf("shadow_redpanda_id is required in cloud options")
+			return errors.New("shadow_redpanda_id is required in cloud options")
 		}
 		if slc.ShadowRedpandaID == slc.SourceRedpandaID {
-			return fmt.Errorf("shadow_redpanda_id and source_redpanda_id cannot be the same")
+			return errors.New("shadow_redpanda_id and source_redpanda_id cannot be the same")
 		}
-		if slCfg.ClientOptions != nil && slCfg.ClientOptions.TLSSettings != nil && slCfg.ClientOptions.TLSSettings.TLSFileSettings != nil {
-			return fmt.Errorf("TLS file settings are not supported when using cloud options; use tls_pem_settings instead")
+		if co := slCfg.ClientOptions; co != nil {
+			if co.TLSSettings != nil && co.TLSSettings.TLSFileSettings != nil {
+				return errors.New("TLS file settings are not supported when using cloud options; use tls_pem_settings instead")
+			}
+			if pw := scramPassword(co); pw != "" && !strings.HasPrefix(pw, "${secrets.") {
+				return errors.New("cloud shadow links don't support plain passwords, you must use secrets from the secrets store. See 'rpk security secret --help' for more details")
+			}
 		}
 	}
 	return nil
+}
+
+// scramPassword extracts the SCRAM password from the client options, if set.
+func scramPassword(co *ShadowLinkClientOptions) string {
+	if co == nil || co.AuthenticationConfiguration == nil || co.AuthenticationConfiguration.ScramConfiguration == nil {
+		return ""
+	}
+	return co.AuthenticationConfiguration.ScramConfiguration.Password
 }

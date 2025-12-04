@@ -208,7 +208,9 @@ func generateSampleConfig(cloud bool) *ShadowLinkConfig {
 		}
 
 		// This is confusing on Cloud, user is already providing the Redpanda ID.
-		slcfg.ClientOptions.SourceClusterID = ""
+		slCfg.ClientOptions.SourceClusterID = ""
+		// Cloud only accepts passwords from the secret store.
+		slCfg.ClientOptions.AuthenticationConfiguration.ScramConfiguration.Password = "${secrets.PASSWORD_FROM_SHADOW_CLUSTER_SECRET_STORE}"
 
 		// Replace TLS settings as file settings are not valid in Cloud.
 		slcfg.ClientOptions.TLSSettings = &TLSSettings{
