@@ -50,7 +50,7 @@ static auto with(
   ss::shared_ptr<tm_stm> stm,
   const kafka::transactional_id& tx_id,
   const std::string_view name,
-  Func&& func) noexcept {
+  Func&& func) {
     return stm->lock_tx(tx_id, name)
       .then([stm, func = std::forward<Func>(func)](auto units) mutable {
           return ss::futurize_invoke(std::forward<Func>(func))
@@ -63,7 +63,7 @@ static auto with_free(
   ss::shared_ptr<tm_stm> stm,
   const kafka::transactional_id& tx_id,
   const std::string_view name,
-  Func&& func) noexcept {
+  Func&& func) {
     auto units = stm->try_lock_tx(tx_id, name);
     auto f = ss::now();
 
