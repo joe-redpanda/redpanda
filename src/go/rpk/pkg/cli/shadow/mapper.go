@@ -803,3 +803,90 @@ func adminPermissionTypeToCfg(permType corecommonv1.ACLPermissionType) ACLPermis
 		return ""
 	}
 }
+
+func cloudShadowLinkToConfig(sl *controlplanev1.ShadowLink) *ShadowLinkConfig {
+	if sl == nil {
+		return nil
+	}
+
+	cfg := &ShadowLinkConfig{
+		Name: sl.GetName(),
+		CloudOptions: &CloudShadowLinkOptions{
+			ResourceGroupID:  sl.GetResourceGroupId(),
+			ShadowRedpandaID: sl.GetShadowRedpandaId(),
+		},
+	}
+
+	cfg.ClientOptions = cloudClientOptsToCfg(sl.GetClientOptions())
+	// Sync options use the same adminv2 types, so we can reuse the existing functions
+	cfg.TopicMetadataSyncOptions = adminTopicMetadataSyncToCfg(sl.GetTopicMetadataSyncOptions())
+	cfg.ConsumerOffsetSyncOptions = adminConsumerOffsetSyncToCfg(sl.GetConsumerOffsetSyncOptions())
+	cfg.SecuritySyncOptions = adminSecuritySyncToCfg(sl.GetSecuritySyncOptions())
+	cfg.SchemaRegistrySyncOptions = adminSchemaRegistrySyncToCfg(sl.GetSchemaRegistrySyncOptions())
+
+	return cfg
+}
+
+func cloudClientOptsToCfg(opts *controlplanev1.ShadowLinkClientOptions) *ShadowLinkClientOptions {
+	if opts == nil {
+		return nil
+	}
+
+	cfg := &ShadowLinkClientOptions{
+		BootstrapServers:       opts.GetBootstrapServers(),
+		SourceClusterID:        opts.GetSourceClusterId(),
+		MetadataMaxAgeMs:       opts.GetMetadataMaxAgeMs(),
+		ConnectionTimeoutMs:    opts.GetConnectionTimeoutMs(),
+		RetryBackoffMs:         opts.GetRetryBackoffMs(),
+		FetchWaitMaxMs:         opts.GetFetchWaitMaxMs(),
+		FetchMinBytes:          opts.GetFetchMinBytes(),
+		FetchMaxBytes:          opts.GetFetchMaxBytes(),
+		FetchPartitionMaxBytes: opts.GetFetchPartitionMaxBytes(),
+	}
+
+	if tls := opts.GetTlsSettings(); tls != nil {
+		cfg.TLSSettings = cloudTLSToCfg(tls)
+	}
+
+	if opts.GetAuthenticationConfiguration() != nil {
+		cfg.AuthenticationConfiguration = adminAuthToCfg(opts.GetAuthenticationConfiguration())
+	}
+
+	return cfg
+}
+
+func cloudTLSToCfg(tls *controlplanev1.TLSSettings) *TLSSettings {
+	if tls == nil {
+		return nil
+	}
+	tlsSettings := &TLSSettings{
+		Enabled:             tls.GetEnabled(),
+		DoNotSetSniHostname: tls.GetDoNotSetSniHostname(),
+	}
+
+	// Cloud only supports PEM content, not file paths
+	if tls.GetCa() != "" || tls.GetKey() != "" || tls.GetCert() != "" {
+		tlsSettings.TLSPEMSettings = &TLSPEMSettings{
+			CA:   tls.GetCa(),
+			Key:  tls.GetKey(),
+			Cert: tls.GetCert(),
+		}
+	}
+
+	return tlsSettings
+}
+
+func shadowLinkConfigToCloudUpdate(slCfg *ShadowLinkConfig, id string) *controlplanev1.ShadowLinkUpdate {
+	if slCfg == nil {
+		return nil
+	}
+
+	return &controlplanev1.ShadowLinkUpdate{
+		Id:                        id,
+		ClientOptions:             mapCloudClientOptions(slCfg.ClientOptions),
+		TopicMetadataSyncOptions:  mapTopicMetadataSyncOptions(slCfg.TopicMetadataSyncOptions),
+		ConsumerOffsetSyncOptions: mapConsumerOffsetSyncOptions(slCfg.ConsumerOffsetSyncOptions),
+		SecuritySyncOptions:       mapSecuritySyncOptions(slCfg.SecuritySyncOptions),
+		SchemaRegistrySyncOptions: mapSchemaRegistrySyncOptions(slCfg.SchemaRegistrySyncOptions),
+	}
+}
