@@ -1702,7 +1702,7 @@ class SchemaRegistryTestMethods(SchemaRegistryEndpoints):
             assert result_raw.json()["id"] == 1
 
     @cluster(num_nodes=3)
-    def test_post_subjects_subject_versions_metadata_ruleset(self):
+    def test_post_subjects_subject_versions_null_metadata_ruleset(self):
         """
         Verify posting a schema with metatada and ruleSet
         These are not supported, but if they're null, we let it pass.
@@ -1728,6 +1728,86 @@ class SchemaRegistryTestMethods(SchemaRegistryEndpoints):
         )
         self.logger.debug(result_raw)
         assert result_raw.status_code == requests.codes.ok
+
+    @cluster(num_nodes=1)
+    @matrix(schema_type=[SchemaType.AVRO, SchemaType.PROTOBUF, SchemaType.JSON])
+    def test_post_subjects_subject_versions_metadata_properties(self, schema_type):
+        """
+        Verify posting a schema with metatada.properties.
+        """
+
+        def as_java_str(v: str | bool | int | float) -> str:
+            if isinstance(v, bool):
+                return str(v).lower()
+            return str(v)
+
+        topic = create_topic_names(1)[0]
+
+        self.logger.debug("Dump the schema with metadata properties")
+        metadata_properties = {
+            "string": "string",
+            "zero": 0,
+            "one": 1,
+            "neg": -1,
+            "float": 3.14,
+            "bool": False,
+        }
+        expected_properties = {
+            k: as_java_str(v) for k, v in metadata_properties.items()
+        }
+
+        schema = {
+            SchemaType.AVRO: schema1_def,
+            SchemaType.PROTOBUF: simple_proto_def,
+            SchemaType.JSON: r'{"type": "number"}',
+        }[schema_type]
+
+        schema_data = json.dumps(
+            {
+                "schema": schema,
+                "schemaType": schema_type.name,
+                "metadata": {"properties": metadata_properties},
+            }
+        )
+
+        self.logger.debug("Posting schema as a subject key")
+        result_raw = self.sr_client.post_subjects_subject_versions(
+            subject=f"{topic}-key", data=schema_data
+        )
+        self.logger.debug(result_raw.content)
+        assert result_raw.status_code == requests.codes.ok
+        schema_id = result_raw.json()["id"]
+
+        self.logger.debug("Retrieving schema")
+        result_raw = self.sr_client.post_subjects_subject(
+            subject=f"{topic}-key", data=schema_data
+        )
+        self.logger.debug(result_raw.content)
+        assert result_raw.status_code == requests.codes.ok
+        version = result_raw.json()["version"]
+        assert result_raw.json()["id"] == schema_id, (
+            f"Expected id: {schema_id}, got: {result_raw.json()['id']}"
+        )
+        assert result_raw.json()["metadata"]["properties"] == expected_properties, (
+            f"Expected: {expected_properties}, got: {result_raw.json()['metadata']['properties']}"
+        )
+
+        self.logger.debug("Retrieving schema by subject,version")
+        result_raw = self.sr_client.get_subjects_subject_versions_version(
+            subject=f"{topic}-key", version=version
+        )
+        self.logger.debug(result_raw.content)
+        assert result_raw.status_code == requests.codes.ok
+        assert result_raw.json()["id"] == schema_id, (
+            f"Expected id: {schema_id}, got: {result_raw.json()['id']}"
+        )
+        assert result_raw.json()["version"] == version, (
+            f"Expected version: {version}, got: {result_raw.json()['version']}"
+        )
+
+        assert result_raw.json()["metadata"]["properties"] == expected_properties, (
+            f"Expected: {expected_properties}, got: {result_raw.json()['metadata']['properties']}"
+        )
 
     @cluster(num_nodes=3)
     def test_post_subjects_subject(self):

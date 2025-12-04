@@ -462,7 +462,7 @@
           "200": {
             "description": "OK",
             "schema": {
-              "$ref": "#/definitions/schema_def"
+              "$ref": "#/definitions/schema_def_response"
             }
           },
           "404": {
@@ -665,7 +665,7 @@
             "name": "schema_def",
             "in": "body",
             "schema": {
-              "$ref": "#/definitions/schema_def"
+              "$ref": "#/definitions/schema_def_request"
             }
           }
         ],
@@ -678,7 +678,7 @@
           "200": {
             "description": "OK",
             "schema": {
-              "$ref": "#/definitions/stored_schema"
+              "$ref": "#/definitions/stored_schema_response"
             }
           },
           "404": {
@@ -826,10 +826,10 @@
             "type": "boolean"
           },
           {
-            "name": "schema_def",
+            "name": "request",
             "in": "body",
             "schema": {
-              "$ref": "#/definitions/stored_schema"
+              "$ref": "#/definitions/stored_schema_request"
             }
           }
         ],
@@ -1203,7 +1203,7 @@
             "name": "schema_def",
             "in": "body",
             "schema": {
-              "$ref": "#/definitions/schema_def"
+              "$ref": "#/definitions/schema_def_request"
             }
           },
           {

@@ -38,6 +38,7 @@ void rjson_serialize(
         w.Key("references");
         ::json::rjson_serialize(w, res.stored_schema.schema.def().refs());
     }
+    ::json::rjson_serialize(w, res.stored_schema.schema.def().meta());
     w.Key("schema");
     ::json::rjson_serialize(w, res.stored_schema.schema.def().raw());
     w.Key("deleted");

@@ -79,3 +79,87 @@ SEASTAR_THREAD_TEST_CASE(test_post_subject_versions_parser) {
         BOOST_REQUIRE_EQUAL(*expected.version, *result.version);
     }
 }
+
+BOOST_AUTO_TEST_CASE(test_post_subject_versions_serde_metadata) {
+    const pps::subject sub{"test_subject"};
+    {
+        constexpr std::string_view no_metadata{
+          R"({
+  "schema": "{\"type\":\"string\"}"
+})"};
+        auto val = ppj::impl::rjson_parse(
+          no_metadata.data(), pps::post_subject_versions_request_handler{sub});
+        BOOST_CHECK(!val.def.def().meta().has_value());
+    }
+    {
+        constexpr std::string_view null_metadata{
+          R"({
+  "metadata": null,
+  "schema": "{\"type\":\"string\"}"
+})"};
+        auto val = ppj::impl::rjson_parse(
+          null_metadata.data(),
+          pps::post_subject_versions_request_handler{sub});
+        BOOST_CHECK(!val.def.def().meta().has_value());
+    }
+    {
+        constexpr std::string_view empty_metadata{
+          R"({
+  "metadata": {},
+  "schema": "{\"type\":\"string\"}"
+})"};
+        auto val = ppj::impl::rjson_parse(
+          empty_metadata.data(),
+          pps::post_subject_versions_request_handler{sub});
+        BOOST_CHECK(val.def.def().meta().has_value());
+        BOOST_CHECK(!val.def.def().meta()->properties.has_value());
+    }
+    {
+        constexpr std::string_view null_metadata_properties{
+          R"({
+  "metadata": {
+    "properties": null
+  },
+  "schema": "{\"type\":\"string\"}"
+})"};
+        auto val = ppj::impl::rjson_parse(
+          null_metadata_properties.data(),
+          pps::post_subject_versions_request_handler{sub});
+        BOOST_CHECK(val.def.def().meta().has_value());
+        BOOST_CHECK(!val.def.def().meta()->properties.has_value());
+    }
+    {
+        constexpr std::string_view empty_metadata_properties{
+          R"({
+  "metadata": {
+    "properties": {}
+  },
+  "schema": "{\"type\":\"string\"}"
+})"};
+        auto val = ppj::impl::rjson_parse(
+          empty_metadata_properties.data(),
+          pps::post_subject_versions_request_handler{sub});
+        BOOST_CHECK(val.def.def().meta().has_value());
+        BOOST_CHECK(val.def.def().meta()->properties.has_value());
+    }
+    {
+        constexpr std::string_view metadata_properties{
+          R"({
+  "metadata": {
+    "properties": {
+      "string": "value1",
+      "int": -42,
+      "uint": 42,
+      "double": 3.14,
+      "bool": true
+    }
+  },
+  "schema": "{\"type\":\"string\"}"
+})"};
+        auto val = ppj::impl::rjson_parse(
+          metadata_properties.data(),
+          pps::post_subject_versions_request_handler{sub});
+        BOOST_CHECK(val.def.def().meta().has_value());
+        BOOST_CHECK(val.def.def().meta()->properties.has_value());
+    }
+}

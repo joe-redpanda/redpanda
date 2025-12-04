@@ -24,7 +24,31 @@
         }
       }
     },
-    "schema_def": {
+    "schema_metadata_request": {
+      "type": "object",
+      "description": "A map of user-defined properties associated with this schema",
+      "properties": {
+        "properties": {
+          "type": "object",
+          "description": "Accepted values may be string, number, or boolean, they are converted to strings.",
+          "additionalProperties": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "schema_metadata_response": {
+      "type": "object",
+      "properties": {
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "schema_def_request": {
       "type": "object",
       "properties": {
         "schema": {
@@ -38,10 +62,33 @@
           "items": {
             "$ref": "#/definitions/schema_reference"
           }
+        },
+        "metadata": {
+          "$ref": "#/definitions/schema_metadata_request"
         }
       }
     },
-    "stored_schema": {
+    "schema_def_response": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "schemaType": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/schema_reference"
+          }
+        },
+        "metadata": {
+          "$ref": "#/definitions/schema_metadata_response"
+        }
+      }
+    },
+    "stored_schema_request": {
       "type": "object",
       "properties": {
         "subject": {
@@ -61,6 +108,38 @@
           "items": {
             "$ref": "#/definitions/schema_reference"
           }
+        },
+        "metadata": {
+          "$ref": "#/definitions/schema_metadata_request"
+        },
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "stored_schema_response": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "schemaType": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/schema_reference"
+          }
+        },
+        "metadata": {
+          "$ref": "#/definitions/schema_metadata_response"
         },
         "schema": {
           "type": "string"
@@ -88,6 +167,9 @@
             "$ref": "#/definitions/schema_reference"
           }
         },
+        "metadata": {
+          "$ref": "#/definitions/schema_metadata_response"
+        },
         "schema": {
           "type": "string"
         },
@@ -113,6 +195,9 @@
           "items": {
             "$ref": "#/definitions/schema_reference"
           }
+        },
+        "metadata": {
+          "$ref": "#/definitions/schema_metadata_response"
         },
         "schema": {
           "type": "string"
