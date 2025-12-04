@@ -3203,7 +3203,7 @@ void application::start_runtime_services(
             feature_table);
           pm.register_factory<cluster::partition_properties_stm_factory>(
             storage.local().kvs(),
-            config::shard_local_cfg().rm_sync_timeout_ms.bind());
+            config::shard_local_cfg().internal_rpc_request_timeout_ms.bind());
           pm.register_factory<datalake::coordinator::stm_factory>();
           pm.register_factory<datalake::translation::stm_factory>(
             config::shard_local_cfg().iceberg_enabled());

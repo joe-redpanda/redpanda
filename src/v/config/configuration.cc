@@ -701,23 +701,10 @@ configuration::configuration()
       "controls the number retries.",
       {.visibility = visibility::tunable},
       30)
-  , tm_sync_timeout_ms(
-      *this,
-      "tm_sync_timeout_ms",
-      "Transaction manager's synchronization timeout. Maximum time to wait for "
-      "internal state machine to catch up before rejecting a request.",
-      {.visibility = visibility::user},
-      10s)
+  , tm_sync_timeout_ms(*this, "tm_sync_timeout_ms")
   , tx_registry_sync_timeout_ms(*this, "tx_registry_sync_timeout_ms")
   , tm_violation_recovery_policy(*this, "tm_violation_recovery_policy")
-  , rm_sync_timeout_ms(
-      *this,
-      "rm_sync_timeout_ms",
-      "Resource manager's synchronization timeout. Specifies the maximum time "
-      "for this node to wait for the internal state machine to catch up with "
-      "all events written by previous leaders before rejecting a request.",
-      {.needs_restart = needs_restart::no, .visibility = visibility::user},
-      10s)
+  , rm_sync_timeout_ms(*this, "rm_sync_timeout_ms")
   , find_coordinator_timeout_ms(*this, "find_coordinator_timeout_ms")
   , seq_table_min_size(*this, "seq_table_min_size")
   , tx_timeout_delay_ms(
@@ -799,16 +786,7 @@ configuration::configuration()
       "milliseconds.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       100ms)
-  , alter_topic_cfg_timeout_ms(
-      *this,
-      "alter_topic_cfg_timeout_ms",
-      "The duration, in milliseconds, that Redpanda waits for the replication "
-      "of entries in the controller log when executing a request to alter "
-      "topic configurations. This timeout ensures that configuration changes "
-      "are replicated across the cluster before the alteration request is "
-      "considered complete.",
-      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
-      5s)
+  , alter_topic_cfg_timeout_ms(*this, "alter_topic_cfg_timeout_ms")
   , log_cleanup_policy(
       *this,
       "log_cleanup_policy",
@@ -916,13 +894,7 @@ configuration::configuration()
       "Use separate scheduler group to handle parsing Kafka protocol requests",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       true)
-  , metadata_status_wait_timeout_ms(
-      *this,
-      "metadata_status_wait_timeout_ms",
-      "Maximum time to wait in metadata request for cluster health to be "
-      "refreshed.",
-      {.visibility = visibility::tunable},
-      2s)
+  , metadata_status_wait_timeout_ms(*this, "metadata_status_wait_timeout_ms")
   , kafka_tcp_keepalive_idle_timeout_seconds(
       *this,
       "kafka_tcp_keepalive_timeout",
@@ -1249,18 +1221,8 @@ configuration::configuration()
       {.needs_restart = needs_restart::no,
        .visibility = visibility::deprecated},
       10s)
-  , create_topic_timeout_ms(
-      *this,
-      "create_topic_timeout_ms",
-      "Timeout, in milliseconds, to wait for new topic creation.",
-      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
-      2'000ms)
-  , wait_for_leader_timeout_ms(
-      *this,
-      "wait_for_leader_timeout_ms",
-      "Timeout to wait for leadership in metadata cache.",
-      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
-      5'000ms)
+  , create_topic_timeout_ms(*this, "create_topic_timeout_ms")
+  , wait_for_leader_timeout_ms(*this, "wait_for_leader_timeout_ms")
   , default_topic_partitions(
       *this,
       "default_topic_partitions",
@@ -1291,13 +1253,7 @@ configuration::configuration()
       "Timeout for append entry requests issued while replicating entries.",
       {.visibility = visibility::tunable},
       3s)
-  , recovery_append_timeout_ms(
-      *this,
-      "recovery_append_timeout_ms",
-      "Timeout for append entry requests issued while updating a stale "
-      "follower.",
-      {.visibility = visibility::tunable},
-      5s)
+  , recovery_append_timeout_ms(*this, "recovery_append_timeout_ms")
   , raft_replicate_batch_window_size(
       *this,
       "raft_replicate_batch_window_size",
@@ -1771,11 +1727,7 @@ configuration::configuration()
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       1s)
   , node_management_operation_timeout_ms(
-      *this,
-      "node_management_operation_timeout_ms",
-      "Timeout for executing node management operations.",
-      {.visibility = visibility::tunable},
-      5s)
+      *this, "node_management_operation_timeout_ms")
   , kafka_request_max_bytes(
       *this,
       "kafka_request_max_bytes",
@@ -4504,6 +4456,12 @@ configuration::configuration()
       "cluster for data replication.",
       meta{.needs_restart = needs_restart::no, .visibility = visibility::user},
       false)
+  , internal_rpc_request_timeout_ms(
+      *this,
+      "internal_rpc_request_timeout_ms",
+      "Default timeout for RPC requests between Redpanda nodes.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      10s)
   , cloud_topics_enabled(
       *this,
       true,

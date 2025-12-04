@@ -143,7 +143,7 @@ consensus::consensus(
   , _replicate_append_timeout(
       config::shard_local_cfg().replicate_append_timeout_ms())
   , _recovery_append_timeout(
-      config::shard_local_cfg().recovery_append_timeout_ms())
+      config::shard_local_cfg().internal_rpc_request_timeout_ms())
   , _heartbeat_disconnect_failures(
       config::shard_local_cfg().raft_heartbeat_disconnect_failures())
   , _storage(storage)

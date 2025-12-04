@@ -987,7 +987,8 @@ ss::future<response_ptr> end_txn_handler::handle(
           .committed = request.data.committed};
         return ctx.tx_gateway_frontend()
           .end_txn(
-            tx_request, config::shard_local_cfg().create_topic_timeout_ms())
+            tx_request,
+            config::shard_local_cfg().internal_rpc_request_timeout_ms())
           .then([&ctx](cluster::end_tx_reply tx_response) {
               end_txn_response_data data;
               data.error_code = map_tx_errc(tx_response.error_code);
@@ -1044,7 +1045,8 @@ add_offsets_to_txn_handler::handle(request_context ctx, ss::smp_service_group) {
           .group_id = request.data.group_id};
 
         auto f = ctx.tx_gateway_frontend().add_offsets_to_tx(
-          tx_request, config::shard_local_cfg().create_topic_timeout_ms());
+          tx_request,
+          config::shard_local_cfg().internal_rpc_request_timeout_ms());
 
         return f.then([&ctx](cluster::add_offsets_tx_reply tx_response) {
             add_offsets_to_txn_response_data data;
@@ -1120,7 +1122,8 @@ ss::future<response_ptr> add_partitions_to_txn_handler::handle(
 
         return ctx.tx_gateway_frontend()
           .add_partition_to_tx(
-            tx_request, config::shard_local_cfg().create_topic_timeout_ms())
+            tx_request,
+            config::shard_local_cfg().internal_rpc_request_timeout_ms())
           .then([&ctx](cluster::add_partitions_tx_reply tx_response) {
               add_partitions_to_txn_response_data data;
               for (auto& tx_topic : tx_response.results) {
@@ -1855,7 +1858,7 @@ ss::future<response_ptr> init_producer_id_handler::handle(
               .init_tm_tx(
                 request.data.transactional_id.value(),
                 request.data.transaction_timeout_ms,
-                config::shard_local_cfg().create_topic_timeout_ms(),
+                config::shard_local_cfg().internal_rpc_request_timeout_ms(),
                 expected_pid == model::no_pid
                   ? std::optional<model::producer_identity>()
                   : expected_pid)
@@ -1902,7 +1905,8 @@ ss::future<response_ptr> init_producer_id_handler::handle(
         }
 
         return ctx.id_allocator_frontend()
-          .allocate_id(config::shard_local_cfg().create_topic_timeout_ms())
+          .allocate_id(
+            config::shard_local_cfg().internal_rpc_request_timeout_ms())
           .then([&ctx](cluster::allocate_id_reply r) {
               init_producer_id_response reply;
 

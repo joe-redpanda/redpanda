@@ -211,10 +211,10 @@ struct configuration final : public config_store {
     property<std::chrono::milliseconds> metadata_dissemination_interval_ms;
     property<std::chrono::milliseconds> metadata_dissemination_retry_delay_ms;
     property<int16_t> metadata_dissemination_retries;
-    property<std::chrono::milliseconds> tm_sync_timeout_ms;
+    deprecated_property tm_sync_timeout_ms;
     deprecated_property tx_registry_sync_timeout_ms;
     deprecated_property tm_violation_recovery_policy;
-    property<std::chrono::milliseconds> rm_sync_timeout_ms;
+    deprecated_property rm_sync_timeout_ms;
     deprecated_property find_coordinator_timeout_ms;
     deprecated_property seq_table_min_size;
     property<std::chrono::milliseconds> tx_timeout_delay_ms;
@@ -227,7 +227,7 @@ struct configuration final : public config_store {
     bounded_property<double, numeric_bounds>
       fetch_pid_target_utilization_fraction;
     property<std::chrono::milliseconds> fetch_pid_max_debounce_ms;
-    property<std::chrono::milliseconds> alter_topic_cfg_timeout_ms;
+    deprecated_property alter_topic_cfg_timeout_ms;
     property<model::cleanup_policy_bitflags> log_cleanup_policy;
     enum_property<model::timestamp_type> log_message_timestamp_type;
     deprecated_property log_message_timestamp_alert_before_ms;
@@ -243,7 +243,7 @@ struct configuration final : public config_store {
     property<bool> use_fetch_scheduler_group;
     property<bool> use_produce_scheduler_group;
     property<bool> use_kafka_handler_scheduler_group;
-    property<std::chrono::milliseconds> metadata_status_wait_timeout_ms;
+    deprecated_property metadata_status_wait_timeout_ms;
     property<std::chrono::seconds> kafka_tcp_keepalive_idle_timeout_seconds;
     property<std::chrono::seconds> kafka_tcp_keepalive_probe_interval_seconds;
     property<uint32_t> kafka_tcp_keepalive_probes;
@@ -291,14 +291,14 @@ struct configuration final : public config_store {
     // same as transaction.max.timeout.ms in Apache Kafka.
     property<std::chrono::milliseconds> transaction_max_timeout_ms;
     property<std::chrono::seconds> tx_log_stats_interval_s;
-    property<std::chrono::milliseconds> create_topic_timeout_ms;
-    property<std::chrono::milliseconds> wait_for_leader_timeout_ms;
+    deprecated_property create_topic_timeout_ms;
+    deprecated_property wait_for_leader_timeout_ms;
     property<int32_t> default_topic_partitions;
     property<bool> disable_batch_cache;
     property<std::chrono::milliseconds> raft_election_timeout_ms;
     property<std::chrono::milliseconds> kafka_group_recovery_timeout_ms;
     property<std::chrono::milliseconds> replicate_append_timeout_ms;
-    property<std::chrono::milliseconds> recovery_append_timeout_ms;
+    deprecated_property recovery_append_timeout_ms;
     property<size_t> raft_replicate_batch_window_size;
     property<size_t> raft_learner_recovery_rate;
     property<bool> raft_recovery_throttle_disable_dynamic_mode;
@@ -362,7 +362,7 @@ struct configuration final : public config_store {
     property<bool> kafka_enable_partition_reassignment;
     property<std::chrono::milliseconds>
       controller_backend_housekeeping_interval_ms;
-    property<std::chrono::milliseconds> node_management_operation_timeout_ms;
+    deprecated_property node_management_operation_timeout_ms;
     property<uint32_t> kafka_request_max_bytes;
     property<uint32_t> kafka_batch_max_bytes;
     property<std::vector<ss::sstring>> kafka_nodelete_topics;
@@ -803,6 +803,7 @@ struct configuration final : public config_store {
     bounded_property<size_t> datalake_scheduler_disk_reservation_block_size;
     property<bool> consumer_offsets_topic_batch_cache_enabled;
     enterprise<property<bool>> enable_shadow_linking;
+    property<std::chrono::milliseconds> internal_rpc_request_timeout_ms;
 
     configuration();
 

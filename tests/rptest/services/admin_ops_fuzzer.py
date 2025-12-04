@@ -422,7 +422,7 @@ class UpdateConfigOperation(Operation):
         "log_message_timestamp_type": lambda: random.choice(
             ["CreateTime", "LogAppendTime"]
         ),
-        "alter_topic_cfg_timeout_ms": lambda: random.randint(2000, 10000),
+        "internal_rpc_request_timeout_ms": lambda: random.randint(8000, 12000),
     }
 
     def __init__(self):

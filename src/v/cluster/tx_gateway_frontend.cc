@@ -877,7 +877,8 @@ ss::future<cluster::init_tm_tx_reply> tx_gateway_frontend::limit_init_tm_tx(
               old_tx.id);
             auto tx_units = co_await stm->lock_tx(old_tx.id, "init_tm_tx");
 
-            auto timeout = config::shard_local_cfg().create_topic_timeout_ms();
+            auto timeout
+              = config::shard_local_cfg().internal_rpc_request_timeout_ms();
             auto tx_maybe = co_await find_and_try_progressing_transaction(
               term, stm, old_tx.id, timeout);
             if (tx_maybe.has_value()) {
@@ -2621,7 +2622,7 @@ ss::future<> tx_gateway_frontend::expire_old_tx(
     }
 
     auto term = sync_result.value();
-    auto timeout = config::shard_local_cfg().create_topic_timeout_ms();
+    auto timeout = config::shard_local_cfg().internal_rpc_request_timeout_ms();
 
     auto tx_maybe = co_await find_and_try_progressing_transaction(
       term, stm, tx_id, timeout);
@@ -2864,14 +2865,8 @@ ss::future<result<tx_metadata, tx::errc>> tx_gateway_frontend::describe_tx(
         co_return sync_result.error();
     }
     auto term = sync_result.value();
-
-    // create_topic_timeout_ms isn't the right timeout here but this change
-    // is intendent to be a backport so we're not at will to introduce new
-    // configuration; what we need there is a timeout which acts as an upper
-    // boundary for happy case replication and create_topic_timeout_ms is a
-    // good approximation, we already use it for that purpose in other api:
-    // init_producer_id, add_offsets_to_txn etc
-    auto timeout = config::shard_local_cfg().create_topic_timeout_ms();
+    const auto timeout
+      = config::shard_local_cfg().internal_rpc_request_timeout_ms();
     co_return co_await find_and_try_progressing_transaction(
       term, stm, tid, timeout);
 }

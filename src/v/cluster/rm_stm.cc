@@ -85,7 +85,8 @@ rm_stm::rm_stm(
   ss::sharded<tx::producer_state_manager>& producer_state_manager,
   std::optional<model::vcluster_id> vcluster_id)
   : raft::persisted_stm<>(rm_stm_snapshot, logger, c)
-  , _sync_timeout(config::shard_local_cfg().rm_sync_timeout_ms.bind())
+  , _sync_timeout(
+      config::shard_local_cfg().internal_rpc_request_timeout_ms.bind())
   , _tx_timeout_delay(config::shard_local_cfg().tx_timeout_delay_ms.value())
   , _abort_interval_ms(
       config::shard_local_cfg()
