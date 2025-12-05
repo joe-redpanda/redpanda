@@ -64,18 +64,7 @@ void rjson_serialize(::json::iobuf_writer<Buffer>& w, const request& r) {
     }
     if (!r.schema.def().refs().empty()) {
         w.Key("references");
-        w.StartArray();
-        for (const auto& ref : r.schema.def().refs()) {
-            w.StartObject();
-            w.Key("name");
-            ::json::rjson_serialize(w, ref.name);
-            w.Key("subject");
-            ::json::rjson_serialize(w, ref.sub);
-            w.Key("version");
-            ::json::rjson_serialize(w, ref.version);
-            w.EndObject();
-        }
-        w.EndArray();
+        ::json::rjson_serialize(w, r.schema.def().refs());
     }
     w.EndObject();
 }

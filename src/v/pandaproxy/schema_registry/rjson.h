@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "json/iobuf_writer.h"
+#include "container/json.h"
 #include "pandaproxy/json/rjson_util.h"
 #include "pandaproxy/schema_registry/types.h"
 
@@ -22,6 +22,19 @@ void rjson_serialize(
   json::iobuf_writer<Buffer>& w,
   const pandaproxy::schema_registry::schema_definition::raw_string& def) {
     w.String(def());
+}
+
+template<typename Writer>
+void rjson_serialize(
+  Writer& w, const pandaproxy::schema_registry::schema_reference& ref) {
+    w.StartObject();
+    w.Key("name");
+    ::json::rjson_serialize(w, ref.name);
+    w.Key("subject");
+    ::json::rjson_serialize(w, ref.sub);
+    w.Key("version");
+    ::json::rjson_serialize(w, ref.version);
+    w.EndObject();
 }
 
 } // namespace json
