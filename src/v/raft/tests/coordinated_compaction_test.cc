@@ -88,6 +88,8 @@ struct coco_fixture : raft_fixture {
       model::offset max_collect_offset = model::offset::max()) {
         model::offset max_tombstone_remove_offset
           = n.raft()->log()->stm_manager()->max_tombstone_remove_offset();
+        model::offset max_tx_end_remove_offset
+          = n.raft()->log()->stm_manager()->max_tx_end_remove_offset();
         ss::abort_source as;
         co_await n.raft()->log()->force_roll();
         for (const auto& seg : n.raft()->log()->segments()) {
@@ -104,6 +106,7 @@ struct coco_fixture : raft_fixture {
             std::nullopt,
             max_collect_offset,
             max_tombstone_remove_offset,
+            max_tx_end_remove_offset,
             0ms,
             0ms,
             0ms,
