@@ -334,7 +334,7 @@ class DucktapeRunner:
             "scale": "local",
             "enable_cov": "OFF",
             "use_xfs_partitions": False,
-            "trim_logs": True,
+            "trim_logs": self.args.trim_logs,
             "random_seed": None,
         }
 
@@ -821,6 +821,13 @@ def main():
         default=False,
         help="Run redpanda in fips permissive mode",
     )
+    run_parser.add_argument(
+        "--trim-logs",
+        action="store_true",
+        default=False,
+        help="Enable redpanda log trimming",
+    )
+
 
     # 'start' subcommand
     start_parser = subparsers.add_parser(
@@ -889,6 +896,12 @@ def main():
         default=False,
         help="Run redpanda in fips permissive mode",
     )
+    test_parser.add_argument(
+        "--trim-logs",
+        action="store_true",
+        default=False,
+        help="Enable redpanda log trimming",
+    )
 
     # 'stop' subcommand
     _ = subparsers.add_parser(
@@ -951,6 +964,12 @@ def main():
         action="store_true",
         default=False,
         help="Run redpanda in fips permissive mode",
+    )
+    repl_parser.add_argument(
+        "--trim-logs",
+        action="store_true",
+        default=False,
+        help="Enable redpanda log trimming",
     )
 
     args = parser.parse_args()
