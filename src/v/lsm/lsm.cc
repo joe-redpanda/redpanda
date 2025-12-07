@@ -97,15 +97,6 @@ ss::lw_shared_ptr<internal::options> translate_options(options opts) {
     case options::compression_type::zstd:
         internal_opts->compression = compression_type::zstd;
         break;
-    case options::compression_type::java_snappy:
-        internal_opts->compression = compression_type::java_snappy;
-        break;
-    case options::compression_type::lz4:
-        internal_opts->compression = compression_type::lz4;
-        break;
-    case options::compression_type::gzip:
-        internal_opts->compression = compression_type::gzip;
-        break;
     }
 
     return internal_opts;

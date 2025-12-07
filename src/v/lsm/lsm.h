@@ -110,9 +110,6 @@ struct options {
     enum class compression_type : uint8_t {
         none = 0,
         zstd = 1,
-        java_snappy = 2,
-        lz4 = 3,
-        gzip = 4,
     };
     // The compression to use for SST blocks.
     //
