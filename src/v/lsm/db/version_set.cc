@@ -52,10 +52,8 @@ public:
         internal::file_handle handle;
         std::memcpy(&handle.id, it, sizeof(handle.id));
         std::advance(it, sizeof(handle.id));
-        std::memcpy(&handle.epoch.inter, it, sizeof(handle.epoch.inter));
-        std::advance(it, sizeof(handle.epoch.inter));
-        std::memcpy(&handle.epoch.intra, it, sizeof(handle.epoch.intra));
-        std::advance(it, sizeof(handle.epoch.intra));
+        std::memcpy(&handle.epoch, it, sizeof(handle.epoch));
+        std::advance(it, sizeof(handle.epoch));
         uint64_t file_size = 0;
         std::memcpy(&file_size, it, sizeof(file_size));
         return std::make_pair(handle, file_size);
@@ -94,17 +92,14 @@ public:
     internal::key_view key() override { return (*_files)[_index]->largest; }
     iobuf value() override {
         iobuf v;
-        auto placeholder = v.reserve(sizeof(uint64_t) * 4);
+        auto placeholder = v.reserve(sizeof(uint64_t) * 3);
         const auto& f = (*_files)[_index];
         auto id = std::bit_cast<std::array<char, sizeof(uint64_t)>>(
           f->handle.id);
         placeholder.write(id.data(), id.size());
-        auto epoch_hi = std::bit_cast<std::array<char, sizeof(uint64_t)>>(
-          f->handle.epoch.inter);
-        placeholder.write(epoch_hi.data(), epoch_hi.size());
-        auto epoch_lo = std::bit_cast<std::array<char, sizeof(uint64_t)>>(
-          f->handle.epoch.intra);
-        placeholder.write(epoch_lo.data(), epoch_lo.size());
+        auto epoch = std::bit_cast<std::array<char, sizeof(uint64_t)>>(
+          f->handle.epoch);
+        placeholder.write(epoch.data(), epoch.size());
         auto size = std::bit_cast<std::array<char, sizeof(uint64_t)>>(
           f->file_size);
         placeholder.write(size.data(), size.size());
@@ -582,8 +577,7 @@ ss::future<> version_set::write_manifest(manifest m) {
         for (const auto& file : files) {
             proto::file_meta_data file_proto;
             file_proto.set_id(file->handle.id());
-            file_proto.get_epoch().set_inter(file->handle.epoch.inter);
-            file_proto.get_epoch().set_intra(file->handle.epoch.intra);
+            file_proto.set_database_epoch(file->handle.epoch());
             file_proto.set_file_size(file->file_size);
             file_proto.set_encoded_smallest_key(iobuf(file->smallest));
             file_proto.set_encoded_largest_key(iobuf(file->largest));
@@ -623,9 +617,7 @@ ss::future<std::optional<version_set::manifest>> version_set::read_manifest() {
             auto meta = ss::make_lw_shared<file_meta_data>();
             meta->handle.id = internal::file_id{file_proto.get_id()};
             meta->handle.epoch = internal::database_epoch{
-              .inter = file_proto.get_epoch().get_inter(),
-              .intra = file_proto.get_epoch().get_intra(),
-            };
+              file_proto.get_database_epoch()};
             meta->file_size = file_proto.get_file_size();
             meta->smallest = internal::key(
               file_proto.get_encoded_smallest_key());
