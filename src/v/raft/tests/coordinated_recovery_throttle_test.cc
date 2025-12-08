@@ -351,7 +351,7 @@ FIXTURE_TEST(overusing, test_fixture) {
     // Check that available capacity is back to normal.
     // and balance is non-negative on all shards
     auto available = all_available().get();
-    BOOST_REQUIRE(std::ranges::all_of(available, [](size_t current) {
+    BOOST_REQUIRE(std::ranges::all_of(available, [](auto current) {
         return current >= 0;
     }));
     auto sum = std::ranges::fold_left(available, ssize_t{0}, std::plus{});
@@ -391,7 +391,7 @@ FIXTURE_TEST(overusing_a_lot, test_fixture) {
     all_available()
       .then([](auto available) {
           return std::ranges::all_of(
-            available, [](size_t current) { return current >= 0; });
+            available, [](auto current) { return current >= 0; });
       })
       .get();
 }
