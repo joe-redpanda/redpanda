@@ -411,3 +411,28 @@ FIXTURE_TEST(overusing_on_zero_rate, test_fixture) {
     coordinator_tick().get();
     f.get();
 }
+
+FIXTURE_TEST(allowance_staying_negative, test_fixture) {
+    ssize_t original_rate = 100 * ss::smp::count;
+    ssize_t reduced_rate = 10 * ss::smp::count;
+    ssize_t oversized_request = 10000 * ss::smp::count;
+
+    update_rate(original_rate);
+    coordinator_tick().get();
+
+    throttle_on_shard(0, oversized_request).get();
+    update_rate(reduced_rate);
+    coordinator_tick().get();
+
+    auto available = all_available().get();
+    BOOST_REQUIRE(std::ranges::all_of(available, [this](auto current) {
+        vlog(logger.info, "current: {}", current);
+        return current < 0;
+    }));
+    auto sum = std::ranges::fold_left(available, ssize_t{0}, std::plus{});
+    auto expected_sum = original_rate + reduced_rate - oversized_request;
+
+    auto deviation = abs(sum - expected_sum);
+    // allow for rounding errors
+    BOOST_REQUIRE(deviation <= ss::smp::count);
+}
