@@ -196,7 +196,16 @@ public:
 
             // Detect concurrent changes to the topic table to avoid accessing
             // an invalid iterator.
-            topic_table.check_topics_map_stable(iter_start_rev);
+            try {
+                topic_table.check_topics_map_stable(iter_start_rev);
+            } catch (...) {
+                // TODO: its rare, so should we retry immediately or abort this
+                // round and wait for the next GC loop? i think it's a balance
+                // of more code/complexity and behavior. For now I think it is
+                // fine.
+                co_return std::unexpected(
+                  "Concurrent container iteration invalidation. Will retry");
+            }
         }
 
         co_return snap;
