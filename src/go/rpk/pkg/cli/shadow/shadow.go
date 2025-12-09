@@ -25,7 +25,8 @@ import (
 
 const (
 	maxOpRetries = 5
-	retryDelay   = 2500 // milliseconds
+	retryDelay   = 2500  // milliseconds
+	maxDelay     = 30000 // milliseconds
 )
 
 func NewCommand(fs afero.Fs, p *config.Params) *cobra.Command {
@@ -63,6 +64,9 @@ func waitForOperation(ctx context.Context, cloudClient *publicapi.CloudClientSet
 	backoff := func(i int) {
 		sleepTime := retryDelay * (1 << i) // Exponential backoff.
 		zap.L().Sugar().Debugf("Shadow Link operation not completed yet, retrying in %d ms", sleepTime)
+		if sleepTime > maxDelay { // We cap at 30s, the operation takes usually less than that.
+			sleepTime = maxDelay
+		}
 		time.Sleep(time.Duration(sleepTime) * time.Millisecond)
 	}
 	for i := range maxOpRetries {
