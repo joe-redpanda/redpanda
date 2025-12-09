@@ -142,7 +142,6 @@ func DataplaneClientFromRpkProfile(p *config.RpkProfile, opts ...connect.ClientO
 // ListAllShadowLinkTopics returns all the ShadowTopics for a given shadow link
 // using the pagination feature to traverse all pages of the list.
 func (dpCl *DataPlaneClientSet) ListAllShadowLinkTopics(ctx context.Context, shadowLinkName string) ([]*dataplanev1.ShadowTopic, error) {
-	maxPages := 500
 	fetchPage := func(ctx context.Context, pageToken string) ([]*dataplanev1.ShadowTopic, string, error) {
 		req := connect.NewRequest(&dataplanev1.ListShadowLinkTopicsRequest{
 			ShadowLinkName: shadowLinkName,

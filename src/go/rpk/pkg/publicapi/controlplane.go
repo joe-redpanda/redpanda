@@ -120,7 +120,6 @@ func (cpCl *CloudClientSet) ResourceGroupForID(ctx context.Context, ID string) (
 // ResourceGroups returns all the ResourceGroups using the pagination feature
 // to traverse all pages of the list.
 func (cpCl *CloudClientSet) ResourceGroups(ctx context.Context) ([]*controlplanev1.ResourceGroup, error) {
-	maxPages := 200
 	fetchPage := func(ctx context.Context, pageToken string) ([]*controlplanev1.ResourceGroup, string, error) {
 		req := connect.NewRequest(&controlplanev1.ListResourceGroupsRequest{PageToken: pageToken, PageSize: 100})
 		resp, err := cpCl.ResourceGroup.ListResourceGroups(ctx, req)
@@ -135,7 +134,6 @@ func (cpCl *CloudClientSet) ResourceGroups(ctx context.Context) ([]*controlplane
 // ServerlessClusters returns all the ServerlessClusters using the pagination
 // feature to traverse all pages of the list.
 func (cpCl *CloudClientSet) ServerlessClusters(ctx context.Context) ([]*controlplanev1.ServerlessCluster, error) {
-	maxPages := 500
 	fetchPage := func(ctx context.Context, pageToken string) ([]*controlplanev1.ServerlessCluster, string, error) {
 		req := connect.NewRequest(&controlplanev1.ListServerlessClustersRequest{PageToken: pageToken, PageSize: 100})
 		resp, err := cpCl.Serverless.ListServerlessClusters(ctx, req)
@@ -163,7 +161,6 @@ func (cpCl *CloudClientSet) ServerlessClusterForID(ctx context.Context, ID strin
 // Clusters returns all the Clusters using the pagination feature to traverse
 // all pages of the list.
 func (cpCl *CloudClientSet) Clusters(ctx context.Context) ([]*controlplanev1.Cluster, error) {
-	maxPages := 500
 	fetchPage := func(ctx context.Context, pageToken string) ([]*controlplanev1.Cluster, string, error) {
 		req := connect.NewRequest(&controlplanev1.ListClustersRequest{PageToken: pageToken, PageSize: 100})
 		resp, err := cpCl.Cluster.ListClusters(ctx, req)
@@ -193,7 +190,6 @@ func (cpCl *CloudClientSet) ClusterForID(ctx context.Context, ID string) (*contr
 // ShadowLinkListItems returns all the ShadowLinkListItems using the pagination
 // feature to traverse all pages of the list.
 func (cpCl *CloudClientSet) ShadowLinkListItems(ctx context.Context, filter *controlplanev1.ListShadowLinksRequest_Filter) ([]*controlplanev1.ShadowLinkListItem, error) {
-	maxPages := 500
 	fetchPage := func(ctx context.Context, pageToken string) ([]*controlplanev1.ShadowLinkListItem, string, error) {
 		req := connect.NewRequest(&controlplanev1.ListShadowLinksRequest{
 			Filter:    filter,

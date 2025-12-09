@@ -134,7 +134,9 @@ func mapCloudTLSSettings(tls *TLSSettings) *controlplanev1.TLSSettings {
 	}
 	// Note: TLSFileSettings cannot be mapped directly to cloud proto
 	// since the cloud API requires inline PEM content, not file paths.
-
+	// If only TLSFileSettings is present (and TLSPEMSettings is nil),
+	// certificate information will be omitted from the returned proto.
+	// The caller is responsible for providing inline PEM content.
 	return cloudTLS
 }
 
