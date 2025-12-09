@@ -28,10 +28,11 @@ SEASTAR_THREAD_TEST_CASE(test_post_subject_versions_version_response) {
         pps::schema_version{1}}}};
     const pps::subject sub{"imported-ref"};
 
-    pps::post_subject_versions_version_response response{
+    pps::get_subject_versions_version_response response{.stored_schema{
       .schema{pps::subject{"imported-ref"}, schema_def.copy()},
+      .version{2},
       .id{12},
-      .version{2}};
+      .deleted{false}}};
 
     const ss::sstring expected{
       R"(
@@ -39,6 +40,7 @@ SEASTAR_THREAD_TEST_CASE(test_post_subject_versions_version_response) {
   "subject": "imported-ref",
   "version": 2,
   "id": 12,
+  "schemaType": "AVRO",
   "references": [
     {
        "name": "com.acme.Referenced",
@@ -47,7 +49,8 @@ SEASTAR_THREAD_TEST_CASE(test_post_subject_versions_version_response) {
     }
   ],
   "schema": ")"
-      + escaped_schema_def + R"("})"};
+      + escaped_schema_def + R"(",
+  "deleted": false})"};
 
     auto result = ppj::rjson_serialize_str(response);
 

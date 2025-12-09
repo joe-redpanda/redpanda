@@ -67,6 +67,35 @@
         }
       }
     },
+    "get_subject_versions_version_response": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "schemaType": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/schema_reference"
+          }
+        },
+        "schema": {
+          "type": "string"
+        },
+        "deleted": {
+          "type": "boolean"
+        }
+      }
+    },
     "post_subject_versions_response": {
       "type": "object",
       "properties": {

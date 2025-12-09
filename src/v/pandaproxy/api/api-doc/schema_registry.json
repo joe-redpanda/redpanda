@@ -907,7 +907,7 @@
           "200": {
             "description": "OK",
             "schema": {
-              "$ref": "#/definitions/stored_schema"
+              "$ref": "#/definitions/get_subject_versions_version_response"
             }
           },
           "404": {

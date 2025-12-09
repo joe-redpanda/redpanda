@@ -2851,10 +2851,8 @@ class SchemaRegistryTestMethods(SchemaRegistryEndpoints):
             f"{topic}-value", "latest"
         )
         self.logger.info(schema.json())
-        if protocol == SchemaType.AVRO:
-            assert schema.json().get("schemaType") is None
-        else:
-            assert schema.json()["schemaType"] == protocol.name
+        assert schema.json()["schemaType"] == protocol.name
+        assert schema.json()["deleted"] is False
 
     @cluster(num_nodes=4)
     @matrix(

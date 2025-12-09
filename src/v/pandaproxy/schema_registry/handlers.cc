@@ -682,10 +682,12 @@ ss::future<ctx_server<service>::reply_t> get_subject_versions_version(
       std::move(def), format);
 
     auto resp = ppj::rjson_serialize_iobuf(
-      post_subject_versions_version_response{
+      get_subject_versions_version_response{.stored_schema{
         .schema = {std::move(subject), std::move(formatted_schema)},
+        .version = get_res.version,
         .id = get_res.id,
-        .version = get_res.version});
+        .deleted = get_res.deleted,
+      }});
     log_response(*rq.req, resp);
     rp.rep->write_body("json", ppj::as_body_writer(std::move(resp)));
     co_return rp;
