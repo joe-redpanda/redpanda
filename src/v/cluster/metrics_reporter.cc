@@ -14,6 +14,7 @@
 #include "absl/container/node_hash_map.h"
 #include "bytes/iobuf.h"
 #include "bytes/iostream.h"
+#include "cluster/cluster_link/frontend.h"
 #include "cluster/config_frontend.h"
 #include "cluster/controller_stm.h"
 #include "cluster/feature_manager.h"
@@ -354,6 +355,26 @@ metrics_reporter::build_metrics_snapshot() {
     snapshot.host_name = get_hostname();
     snapshot.domain_name = get_domainname();
     snapshot.fqdns = co_await get_fqdns(snapshot.host_name);
+
+    auto link_ids = _clfe->local().get_all_link_ids();
+
+    snapshot.number_of_active_shadow_links = link_ids.size();
+
+    uint32_t total_shadow_topics = 0;
+    std::ranges::for_each(
+      link_ids, [this, &total_shadow_topics](const auto& link_id) {
+          auto mirror_topics = _clfe->local().get_mirror_topics_for_link(
+            link_id);
+          total_shadow_topics += mirror_topics.has_value()
+                                   ? mirror_topics->size()
+                                   : 0;
+      });
+
+    snapshot.number_of_shadow_topics = total_shadow_topics;
+
+    // Check if schema registry is shadowed
+    snapshot.schema_registry_shadowed
+      = _clfe->local().schema_registry_shadowing_active();
 
     co_return snapshot;
 }
