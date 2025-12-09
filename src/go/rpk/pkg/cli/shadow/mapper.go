@@ -46,7 +46,6 @@ func shadowLinkConfigToCloudCreate(slCfg *ShadowLinkConfig) *controlplanev1.Shad
 	}
 	if slc := slCfg.CloudOptions; slc != nil {
 		cloudSl.ShadowRedpandaId = slc.ShadowRedpandaID
-		cloudSl.ResourceGroupId = slc.ResourceGroupID
 		cloudSl.SourceRedpandaId = slc.SourceRedpandaID
 	}
 
@@ -836,7 +835,6 @@ func cloudShadowLinkToConfig(sl *controlplanev1.ShadowLink) *ShadowLinkConfig {
 	cfg := &ShadowLinkConfig{
 		Name: sl.GetName(),
 		CloudOptions: &CloudShadowLinkOptions{
-			ResourceGroupID:  sl.GetResourceGroupId(),
 			ShadowRedpandaID: sl.GetShadowRedpandaId(),
 		},
 	}

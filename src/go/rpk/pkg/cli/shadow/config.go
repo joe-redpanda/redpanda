@@ -55,8 +55,8 @@ func newGenerateCommand(fs afero.Fs, _ *config.Params) *cobra.Command {
 		Long: `Generate a configuration file for creating a Shadow Link.
 
 By default, this command creates a sample configuration file with placeholder
-values that you customize for your environment. If you are generating a Shadow
-Link for Redpanda Cloud, use the --for-cloud flag.
+values that you can customize for your environment. If you are generating a 
+Shadow Link for Redpanda Cloud, use the --for-cloud flag.
 
 Use the --print-template flag to generate a configuration template with detailed
 field documentations.
@@ -120,7 +120,7 @@ Save the template with documentation to a file:
 }
 
 func generateSampleConfig(cloud bool) *ShadowLinkConfig {
-	slcfg := &ShadowLinkConfig{
+	slCfg := &ShadowLinkConfig{
 		Name: "sample-shadow-link",
 		ClientOptions: &ShadowLinkClientOptions{
 			BootstrapServers: []string{"localhost:9092", "localhost:19092"},
@@ -201,10 +201,9 @@ func generateSampleConfig(cloud bool) *ShadowLinkConfig {
 		},
 	}
 	if cloud {
-		slcfg.CloudOptions = &CloudShadowLinkOptions{
+		slCfg.CloudOptions = &CloudShadowLinkOptions{
 			SourceRedpandaID: "m7xtv2qq5njbhwruk88f",
 			ShadowRedpandaID: "p9skc1dd3fmzgvquj66h",
-			ResourceGroupID:  "3f72b1a9-5c4e-4d82-9ab7-1c5f8e9d3a6b",
 		}
 
 		slCfg.ClientOptions.BootstrapServers = nil
@@ -214,16 +213,16 @@ func generateSampleConfig(cloud bool) *ShadowLinkConfig {
 		slCfg.ClientOptions.AuthenticationConfiguration.ScramConfiguration.Password = "${secrets.PASSWORD_FROM_SHADOW_CLUSTER_SECRET_STORE}"
 
 		// Replace TLS settings as file settings are not valid in Cloud.
-		slcfg.ClientOptions.TLSSettings = &TLSSettings{
+		slCfg.ClientOptions.TLSSettings = &TLSSettings{
 			Enabled: true,
 			TLSPEMSettings: &TLSPEMSettings{
 				CA:   "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
-				Key:  "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
+				Key:  "${secrets.KEY_FROM_SHADOW_CLUSTER_SECRET_STORE}",
 				Cert: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
 			},
 		}
 	}
-	return slcfg
+	return slCfg
 }
 
 func generateConfigTemplate() string {

@@ -53,9 +53,9 @@ By default, the command displays the overview and client configuration sections.
 Use the flags to display additional sections such as topic synchronization,
 consumer offset synchronization, and security synchronization settings.
 
-For Redpanda Cloud, rpk will use the Redpanda ID of the cluster you are already
-logged on. If you wish to use a different one either login and create a profile
-for it, or use the --redpanda-id flag to specify it directly.
+For Redpanda Cloud, rpk will use the Redpanda ID of the cluster you are 
+currently logged into. If you wish to use a different one either login and 
+create a profile for it, or use the --redpanda-id flag to specify it directly.
 `,
 		Example: `
 Describe a Shadow Link with default sections (overview and client):
@@ -216,7 +216,6 @@ func printCloudOverview(link *controlplanev1.ShadowLink) {
 	tw.Print("NAME", link.GetName())
 	tw.Print("ID", link.GetId())
 	tw.Print("STATE", strings.TrimPrefix(link.GetState().String(), "STATE_"))
-	tw.Print("RESOURCE GROUP ID", link.GetResourceGroupId())
 	tw.Print("SHADOW REDPANDA ID", link.GetShadowRedpandaId())
 	if createdAt := link.GetCreatedAt(); createdAt != nil {
 		tw.Print("CREATED AT", createdAt.AsTime().Format(time.RFC3339))

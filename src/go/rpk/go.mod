@@ -6,12 +6,12 @@ go 1.24.3
 replace github.com/hamba/avro/v2 => github.com/redpanda-data/go-avro/v2 v2.0.0-20240405204525-77b1144dc525
 
 require (
-	buf.build/gen/go/redpandadata/cloud/connectrpc/go v1.19.1-20251205181033-daacf98e05d5.2
-	buf.build/gen/go/redpandadata/cloud/protocolbuffers/go v1.36.10-20251208213618-d95eb1f5bf36.1
+	buf.build/gen/go/redpandadata/cloud/connectrpc/go v1.19.1-20251208213618-d95eb1f5bf36.2
+	buf.build/gen/go/redpandadata/cloud/protocolbuffers/go v1.36.10-20251209175915-c155e3b17438.1
 	buf.build/gen/go/redpandadata/common/protocolbuffers/go v1.36.10-20251106193941-bb850a944663.1
 	buf.build/gen/go/redpandadata/core/protocolbuffers/go v1.36.10-20251204205609-c0c7c0a68f89.1
-	buf.build/gen/go/redpandadata/dataplane/connectrpc/go v1.19.1-20251205180444-60b61c600782.2
-	buf.build/gen/go/redpandadata/dataplane/protocolbuffers/go v1.36.10-20251205180444-60b61c600782.1
+	buf.build/gen/go/redpandadata/dataplane/connectrpc/go v1.19.1-20251209134521-106822fddcf0.2
+	buf.build/gen/go/redpandadata/dataplane/protocolbuffers/go v1.36.10-20251209134521-106822fddcf0.1
 	buf.build/gen/go/redpandadata/gatekeeper/connectrpc/go v1.19.1-20251022210437-a5dd600d04b6.2
 	buf.build/gen/go/redpandadata/gatekeeper/protocolbuffers/go v1.36.10-20251022210437-a5dd600d04b6.1
 	cloud.google.com/go/compute/metadata v0.9.0

@@ -55,7 +55,7 @@ type topicStatus struct {
 }
 
 type partitionInfo struct {
-	PartitionID int32 `json:"partition_id" yaml:"partition_id"`
+	PartitionID int64 `json:"partition_id" yaml:"partition_id"`
 	SrcLSO      int64 `json:"src_lso" yaml:"src_lso"`
 	SrcHWM      int64 `json:"src_hwm" yaml:"src_hwm"`
 	DstHWM      int64 `json:"dst_hwm" yaml:"dst_hwm"`
@@ -277,7 +277,7 @@ func fromAdminV2ShadowLink(link *adminv2.ShadowLink) shadowLinkStatus {
 		})
 		for _, p := range pi {
 			ts.Partitions = append(ts.Partitions, partitionInfo{
-				PartitionID: int32(p.GetPartitionId()),
+				PartitionID: p.GetPartitionId(),
 				SrcLSO:      p.GetSourceLastStableOffset(),
 				SrcHWM:      p.GetSourceHighWatermark(),
 				DstHWM:      p.GetHighWatermark(),
@@ -332,7 +332,7 @@ func fromDataplaneShadowLink(link *dataplanev1.ShadowLink, topicDetails []*datap
 				SrcLSO:      p.GetSourceLastStableOffset(),
 				SrcHWM:      p.GetSourceHighWatermark(),
 				DstHWM:      p.GetHighWatermark(),
-				Lag:         p.GetLag(),
+				Lag:         p.GetSourceHighWatermark() - p.GetHighWatermark(),
 			})
 		}
 		result.Topics = append(result.Topics, ts)

@@ -1290,13 +1290,11 @@ func TestCloudShadowLinkToConfig(t *testing.T) {
 			name: "minimal shadow link",
 			sl: &controlplanev1.ShadowLink{
 				Name:             "test-link",
-				ResourceGroupId:  "rg-123",
 				ShadowRedpandaId: "rp-456",
 			},
 			want: &ShadowLinkConfig{
 				Name: "test-link",
 				CloudOptions: &CloudShadowLinkOptions{
-					ResourceGroupID:  "rg-123",
 					ShadowRedpandaID: "rp-456",
 				},
 			},
@@ -1463,7 +1461,6 @@ func TestCloudRoundTrip(t *testing.T) {
 	originalConfig := &ShadowLinkConfig{
 		Name: "cloud-round-trip-link",
 		CloudOptions: &CloudShadowLinkOptions{
-			ResourceGroupID:  "rg-abc123",
 			ShadowRedpandaID: "shadow-rp-xyz",
 			SourceRedpandaID: "source-rp-123",
 		},
@@ -1556,7 +1553,6 @@ func TestCloudRoundTrip(t *testing.T) {
 	// and the API returns ShadowLink (which has additional fields like Id).
 	cloudSL := &controlplanev1.ShadowLink{
 		Id:                        "sl-generated-id",
-		ResourceGroupId:           originalConfig.CloudOptions.ResourceGroupID,
 		ShadowRedpandaId:          originalConfig.CloudOptions.ShadowRedpandaID,
 		Name:                      originalConfig.Name,
 		ClientOptions:             mapCloudClientOptions(originalConfig.ClientOptions),
@@ -1576,7 +1572,6 @@ func TestCloudRoundTrip(t *testing.T) {
 	// so we need to adjust our expectation
 	expectedConfig := *originalConfig
 	expectedConfig.CloudOptions = &CloudShadowLinkOptions{
-		ResourceGroupID:  originalConfig.CloudOptions.ResourceGroupID,
 		ShadowRedpandaID: originalConfig.CloudOptions.ShadowRedpandaID,
 		// SourceRedpandaID is not returned by the API
 	}

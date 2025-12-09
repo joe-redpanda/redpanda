@@ -221,11 +221,8 @@ func TestValidateParsedShadowLinkConfig(t *testing.T) {
 		{
 			name: "cloud config - missing shadow_redpanda_id",
 			config: &ShadowLinkConfig{
-				Name: "test-link",
-				CloudOptions: &CloudShadowLinkOptions{
-					ResourceGroupID: "rg-123",
-					// Missing ShadowRedpandaID
-				},
+				Name:         "test-link",
+				CloudOptions: &CloudShadowLinkOptions{}, // Missing ShadowRedpandaID
 				ClientOptions: &ShadowLinkClientOptions{
 					BootstrapServers: []string{"broker1:9092"},
 				},
@@ -237,7 +234,6 @@ func TestValidateParsedShadowLinkConfig(t *testing.T) {
 			config: &ShadowLinkConfig{
 				Name: "test-link",
 				CloudOptions: &CloudShadowLinkOptions{
-					ResourceGroupID:  "rg-123",
 					ShadowRedpandaID: "same-cluster-id",
 					SourceRedpandaID: "same-cluster-id",
 				},
@@ -252,7 +248,6 @@ func TestValidateParsedShadowLinkConfig(t *testing.T) {
 			config: &ShadowLinkConfig{
 				Name: "test-link",
 				CloudOptions: &CloudShadowLinkOptions{
-					ResourceGroupID:  "rg-123",
 					ShadowRedpandaID: "shadow-cluster",
 				},
 				ClientOptions: &ShadowLinkClientOptions{
@@ -272,7 +267,6 @@ func TestValidateParsedShadowLinkConfig(t *testing.T) {
 			config: &ShadowLinkConfig{
 				Name: "test-link",
 				CloudOptions: &CloudShadowLinkOptions{
-					ResourceGroupID:  "rg-123",
 					ShadowRedpandaID: "shadow-cluster",
 				},
 				ClientOptions: &ShadowLinkClientOptions{
@@ -293,7 +287,6 @@ func TestValidateParsedShadowLinkConfig(t *testing.T) {
 			config: &ShadowLinkConfig{
 				Name: "test-link",
 				CloudOptions: &CloudShadowLinkOptions{
-					ResourceGroupID:  "rg-123",
 					ShadowRedpandaID: "shadow-cluster",
 					SourceRedpandaID: "source-cluster",
 				},
@@ -314,7 +307,6 @@ func TestValidateParsedShadowLinkConfig(t *testing.T) {
 			config: &ShadowLinkConfig{
 				Name: "test-link",
 				CloudOptions: &CloudShadowLinkOptions{
-					ResourceGroupID:  "rg-123",
 					ShadowRedpandaID: "shadow-cluster",
 				},
 				ClientOptions: &ShadowLinkClientOptions{
@@ -335,7 +327,6 @@ func TestValidateParsedShadowLinkConfig(t *testing.T) {
 			config: &ShadowLinkConfig{
 				Name: "test-link",
 				CloudOptions: &CloudShadowLinkOptions{
-					ResourceGroupID:  "rg-123",
 					ShadowRedpandaID: "shadow-cluster",
 					SourceRedpandaID: "source-cluster",
 				},
@@ -349,7 +340,6 @@ func TestValidateParsedShadowLinkConfig(t *testing.T) {
 			config: &ShadowLinkConfig{
 				Name: "test-link",
 				CloudOptions: &CloudShadowLinkOptions{
-					ResourceGroupID:  "rg-123",
 					ShadowRedpandaID: "shadow-cluster",
 				},
 				ClientOptions: &ShadowLinkClientOptions{},
