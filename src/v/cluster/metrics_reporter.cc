@@ -663,6 +663,15 @@ void rjson_serialize(
     w.Key("fqdns");
     rjson_serialize(w, snapshot.fqdns);
 
+    w.Key("number_of_active_shadow_links");
+    w.Uint64(snapshot.number_of_active_shadow_links);
+
+    w.Key("number_of_shadow_topics");
+    w.Uint64(snapshot.number_of_shadow_topics);
+
+    w.Key("schema_registry_shadowed");
+    w.Bool(snapshot.schema_registry_shadowed);
+
     w.EndObject();
 }
 
