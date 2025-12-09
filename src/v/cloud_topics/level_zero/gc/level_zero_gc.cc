@@ -256,8 +256,25 @@ public:
                      *
                      * if a replica reports no epoch then it is considered to be
                      * in an indeterminite state and it has no affect on the
-                     * computed result. this has the side effect / benefit of
-                     * skipping any non-cloud topic partitions.
+                     * computed result (effectively it is treated as having
+                     * epoch 0 in the max reduction across replicas).
+                     *
+                     * if all replicas report no epoch then the partition is not
+                     * included in the result set returned to the caller. this
+                     * covers two cases.
+                     *
+                     * the first case is that the partition is part of a
+                     * standard topic. in this case the partition will also not
+                     * be in the set returned by `get_partitions` and thus the
+                     * join in `max_gc_eligible_epoch` will ignore the topic.
+                     *
+                     * in the second case the join would fail, and later succeed
+                     * in the once at least one replica is returning max gc
+                     * epoch. this shouldn't be a problem in practice: there is
+                     * a narrow window at start-up time where a partition is
+                     * bootstrapping the L0 CT STM state where the state is
+                     * unknown. for brand new partitions this should be the
+                     * partition's creation revision ID.
                      */
                     const auto maybe_max_gc_epoch
                       = partition_status.second

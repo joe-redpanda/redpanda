@@ -4553,10 +4553,10 @@ configuration::configuration()
       "term storage.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       5min)
-  , epoch_service_max_epoch_age(
+  , cloud_topics_epoch_service_epoch_increment_interval(
       *this,
-      "epoch_service_max_epoch_age",
-      "The maximum age of an epoch that the epoch service will publish",
+      "cloud_topics_epoch_service_epoch_increment_interval",
+      "The interval at which the cluster epoch is incremented",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       10min)
   , epoch_service_cached_epoch_age_soft_limit(

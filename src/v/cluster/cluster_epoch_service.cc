@@ -154,7 +154,8 @@ ss::future<> cluster_epoch_service<Clock>::raft0_state::service_loop() {
     while (!_abort_source.abort_requested()) {
         try {
             co_await ss::sleep_abortable<Clock>(
-              config::shard_local_cfg().epoch_service_max_epoch_age(),
+              config::shard_local_cfg()
+                .cloud_topics_epoch_service_epoch_increment_interval(),
               _abort_source);
         } catch (const ss::sleep_aborted& e) {
             std::ignore = e;
