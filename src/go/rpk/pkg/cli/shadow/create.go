@@ -149,7 +149,9 @@ func printShadowLinkCfgOverview(slCfg *ShadowLinkConfig) {
 		if slCfg.CloudOptions.SourceRedpandaID != "" {
 			tw.Print("Source Redpanda ID:", slCfg.CloudOptions.SourceRedpandaID)
 		}
-		tw.Print("Resource Group ID:", slCfg.CloudOptions.ResourceGroupID)
+		if slCfg.CloudOptions.ResourceGroupID != "" {
+			tw.Print("Resource Group ID:", slCfg.CloudOptions.ResourceGroupID)
+		}
 	}
 	if len(slCfg.ClientOptions.BootstrapServers) > 0 {
 		tw.Print("Bootstrap Servers:", "")
