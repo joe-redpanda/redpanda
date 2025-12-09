@@ -191,7 +191,7 @@ public:
               model::topic_namespace_eq>;
 
             partition_map partitions;
-            model::revision_id last_applied;
+            cluster_epoch snap_revision;
         };
 
         using partitions_max_gc_epoch = chunked_hash_map<

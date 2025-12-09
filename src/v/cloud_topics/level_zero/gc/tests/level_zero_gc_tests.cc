@@ -217,7 +217,7 @@ public:
         }
         co_return partitions_snapshot{
           .partitions = std::move(partitions),
-          .last_applied = src.last_applied,
+          .snap_revision = src.snap_revision,
         };
     }
 
@@ -297,7 +297,7 @@ TEST_F(LevelZeroGCMaxEpochTest, EmptyGcEpochReport) {
 }
 
 TEST_F(LevelZeroGCMaxEpochTest, MinReduce) {
-    get_partitions_value.last_applied = model::revision_id(100);
+    get_partitions_value.snap_revision = cloud_topics::cluster_epoch(100);
     get_partitions_value.partitions[tpns0].push_back(model::partition_id(0));
 
     // the minimum is the last applied

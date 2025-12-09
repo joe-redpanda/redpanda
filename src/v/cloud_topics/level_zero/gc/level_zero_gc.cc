@@ -101,7 +101,7 @@ level_zero_gc::cluster_support::max_gc_eligible_epoch(
      * Below we merge the two result sets and walk the final result back to
      * account for the partition with the smallest eligible gc epoch.
      */
-    auto result = cluster_epoch(partitions.value().last_applied());
+    auto result = partitions.value().snap_revision;
 
     vlog(
       cd_log.debug,
@@ -170,10 +170,11 @@ public:
          * hierarchy and is consistent with the topic table last applied offset.
          */
         partitions_snapshot snap;
-        snap.last_applied = co_await controller_stm_->invoke_on(
-          cluster::controller_stm_shard, [](auto& stm) {
-              return model::revision_id(stm.get_last_applied_offset());
-          });
+        snap.snap_revision = cluster_epoch(
+          co_await controller_stm_->invoke_on(
+            cluster::controller_stm_shard, [](auto& stm) {
+                return model::revision_id(stm.get_last_applied_offset());
+            }));
 
         for (const auto& topic : topic_table.topics_map()) {
             // we only care about cloud topics
