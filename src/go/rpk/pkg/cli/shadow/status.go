@@ -11,6 +11,7 @@ package shadow
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	adminv2 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/admin/v2"
@@ -117,18 +118,7 @@ Display specific sections:
 				topicList, err := cl.ListAllShadowLinkTopics(cmd.Context(), linkName)
 				out.MaybeDie(err, "unable to list shadow link topics: %v", err)
 
-				// Fetch details for each topic as the partition information is
-				// not included in the list response.
-				topicDetails := make(map[string]*dataplanev1.GetShadowTopicResponse)
-				for _, listedTopic := range topicList {
-					topicResp, err := cl.ShadowLink.GetShadowTopic(cmd.Context(), connect.NewRequest(&dataplanev1.GetShadowTopicRequest{
-						ShadowLinkName: linkName,
-						TopicName:      listedTopic.GetTopicName(),
-					}))
-					out.MaybeDie(err, "unable to get shadow topic %q information: %v", listedTopic.GetTopicName(), err)
-					topicDetails[listedTopic.GetTopicName()] = topicResp.Msg
-				}
-				statusResponse = fromDataplaneShadowLink(link.Msg.GetShadowLink(), topicDetails)
+				statusResponse = fromDataplaneShadowLink(link.Msg.GetShadowLink(), topicList)
 			} else {
 				cl, err := adminapi.NewClient(cmd.Context(), fs, prof)
 				out.MaybeDie(err, "unable to initialize admin client: %v", err)
@@ -270,14 +260,22 @@ func fromAdminV2ShadowLink(link *adminv2.ShadowLink) shadowLinkStatus {
 		})
 	}
 
+	shadowTopics := status.GetShadowTopics()
+	sort.Slice(shadowTopics, func(i, j int) bool {
+		return shadowTopics[i].GetName() < shadowTopics[j].GetName()
+	})
 	// Convert topics
-	for _, topic := range status.GetShadowTopics() {
+	for _, topic := range shadowTopics {
 		ts := topicStatus{
 			Name:  topic.GetName(),
 			ID:    topic.GetTopicId(),
 			State: strings.TrimPrefix(topic.GetStatus().GetState().String(), "SHADOW_TOPIC_STATE_"),
 		}
-		for _, p := range topic.GetStatus().GetPartitionInformation() {
+		pi := topic.GetStatus().GetPartitionInformation()
+		sort.SliceStable(pi, func(i, j int) bool {
+			return pi[i].GetPartitionId() < pi[j].GetPartitionId()
+		})
+		for _, p := range pi {
 			ts.Partitions = append(ts.Partitions, partitionInfo{
 				PartitionID: int32(p.GetPartitionId()),
 				SrcLSO:      p.GetSourceLastStableOffset(),
@@ -293,10 +291,7 @@ func fromAdminV2ShadowLink(link *adminv2.ShadowLink) shadowLinkStatus {
 }
 
 // fromDataplaneShadowLink converts dataplane API responses to the unified shadowLinkStatus.
-func fromDataplaneShadowLink(
-	link *dataplanev1.ShadowLink,
-	topicDetails map[string]*dataplanev1.GetShadowTopicResponse,
-) shadowLinkStatus {
+func fromDataplaneShadowLink(link *dataplanev1.ShadowLink, topicDetails []*dataplanev1.ShadowTopic) shadowLinkStatus {
 	result := shadowLinkStatus{
 		Overview: linkOverview{
 			Name:  link.GetName(),
@@ -317,14 +312,21 @@ func fromDataplaneShadowLink(
 		})
 	}
 
+	sort.Slice(topicDetails, func(i, j int) bool {
+		return topicDetails[i].GetTopicName() < topicDetails[j].GetTopicName()
+	})
 	// Convert topics from the detailed topic responses
 	for _, topicResp := range topicDetails {
 		ts := topicStatus{
 			Name:  topicResp.GetTopicName(),
-			ID:    "", // TODO: Dataplane API doesn't provide TopicId
+			ID:    topicResp.GetTopicId(),
 			State: strings.TrimPrefix(topicResp.GetState().String(), "SHADOW_TOPIC_STATE_"),
 		}
-		for _, p := range topicResp.GetPartitions() {
+		pi := topicResp.GetPartitions()
+		sort.SliceStable(pi, func(i, j int) bool {
+			return pi[i].GetPartitionId() < pi[j].GetPartitionId()
+		})
+		for _, p := range pi {
 			ts.Partitions = append(ts.Partitions, partitionInfo{
 				PartitionID: p.GetPartitionId(),
 				SrcLSO:      p.GetSourceLastStableOffset(),
