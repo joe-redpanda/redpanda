@@ -67,10 +67,10 @@ public:
     std::vector<cloud_storage_clients::client::list_bucket_item>* deleted_;
 };
 
-class cluster_support_test_impl
-  : public cloud_topics::level_zero_gc::cluster_support {
+class epoch_source_test_impl
+  : public cloud_topics::level_zero_gc::epoch_source {
 public:
-    explicit cluster_support_test_impl(std::optional<int64_t>* epoch)
+    explicit epoch_source_test_impl(std::optional<int64_t>* epoch)
       : epoch_(epoch) {}
 
     /*
@@ -115,7 +115,7 @@ public:
             .throttle_no_progress = 10ms,
           },
           std::make_unique<object_storage_test_impl>(&listed, &deleted),
-          std::make_unique<cluster_support_test_impl>(&max_epoch)) {}
+          std::make_unique<epoch_source_test_impl>(&max_epoch)) {}
 
     void TearDown() override { gc.stop().get(); }
 
@@ -198,10 +198,10 @@ TEST_F(LevelZeroGCTest, NoDeletesForYoungObjects) {
  * This fixture is intended to test the default implementation of the max gc
  * eligible epoch calculation, so that is not overriden.
  */
-class cluster_support_test_default_impl
-  : public cloud_topics::level_zero_gc::cluster_support {
+class epoch_source_test_default_impl
+  : public cloud_topics::level_zero_gc::epoch_source {
 public:
-    explicit cluster_support_test_default_impl(
+    explicit epoch_source_test_default_impl(
       partitions_snapshot* get_partitions_value,
       partitions_max_gc_epoch* get_partitions_max_gc_epoch_value)
       : get_partitions_value_(get_partitions_value)
@@ -244,24 +244,21 @@ private:
 
 class LevelZeroGCMaxEpochTest : public testing::Test {
 public:
-    using cluster_support_type = cloud_topics::level_zero_gc::cluster_support;
-    using partitions_snapshot = cluster_support_type::partitions_snapshot;
-    using partitions_max_gc_epoch
-      = cluster_support_type::partitions_max_gc_epoch;
+    using epoch_source_type = cloud_topics::level_zero_gc::epoch_source;
+    using partitions_snapshot = epoch_source_type::partitions_snapshot;
+    using partitions_max_gc_epoch = epoch_source_type::partitions_max_gc_epoch;
 
     LevelZeroGCMaxEpochTest()
-      : cluster_support(
-          std::make_unique<cluster_support_test_default_impl>(
+      : epoch_source(
+          std::make_unique<epoch_source_test_default_impl>(
             &get_partitions_value, &get_partitions_max_gc_epoch_value)) {}
 
     partitions_snapshot get_partitions_value;
     partitions_max_gc_epoch get_partitions_max_gc_epoch_value;
-    std::unique_ptr<cluster_support_type> cluster_support;
+    std::unique_ptr<epoch_source_type> epoch_source;
 
     // shortcut accessors
-    auto max_gc() {
-        return cluster_support->max_gc_eligible_epoch(nullptr).get();
-    }
+    auto max_gc() { return epoch_source->max_gc_eligible_epoch(nullptr).get(); }
     auto& snapshot() { return get_partitions_value; }
     auto& partition_epochs() { return get_partitions_max_gc_epoch_value; }
 };
