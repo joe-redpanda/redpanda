@@ -118,6 +118,10 @@ public:
         ss::sstring host_name;
         ss::sstring domain_name;
         std::vector<ss::sstring> fqdns;
+
+        uint32_t number_of_active_shadow_links{0};
+        uint32_t number_of_shadow_topics{0};
+        bool schema_registry_shadowed{false};
     };
     static constexpr ss::shard_id shard = 0;
 
