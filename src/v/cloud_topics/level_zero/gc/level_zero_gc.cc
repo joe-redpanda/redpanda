@@ -194,7 +194,8 @@ public:
                 co_return std::unexpected("Abort requested");
             }
 
-            // Detect concurrent changes to the topic table.
+            // Detect concurrent changes to the topic table to avoid accessing
+            // an invalid iterator.
             topic_table.check_topics_map_stable(iter_start_rev);
         }
 
