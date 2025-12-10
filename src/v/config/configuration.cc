@@ -4556,13 +4556,13 @@ configuration::configuration()
   , cloud_topics_epoch_service_epoch_increment_interval(
       *this,
       "cloud_topics_epoch_service_epoch_increment_interval",
-      "The interval at which the cluster epoch is incremented",
+      "The interval at which the cluster epoch is incremented.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       10min)
   , cloud_topics_epoch_service_local_epoch_cache_duration(
       *this,
       "cloud_topics_epoch_service_local_epoch_cache_duration",
-      "The local cache duration of a cluster wide epoch",
+      "The local cache duration of a cluster wide epoch.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       1min)
   , development_feature_property_testing_only(
@@ -4579,7 +4579,7 @@ configuration::configuration()
       "are a concern. To enable experimental features, set the value of this "
       "configuration option to the current unix epoch expressed in seconds. "
       "The value must be within one hour of the current time on the broker."
-      "Once experimental features are enabled they cannot be disabled",
+      "Once experimental features are enabled they cannot be disabled.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       "",
       [this](const ss::sstring& v) -> std::optional<ss::sstring> {
