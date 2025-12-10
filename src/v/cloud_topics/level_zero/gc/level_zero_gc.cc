@@ -324,7 +324,7 @@ level_zero_gc::level_zero_gc(
   level_zero_gc_config config,
   std::unique_ptr<object_storage> storage,
   std::unique_ptr<epoch_source> epoch_source)
-  : config_(config)
+  : config_(std::move(config))
   , storage_(std::move(storage))
   , epoch_source_(std::move(epoch_source))
   , should_run_(false) // begin in a stopped state
@@ -337,10 +337,17 @@ level_zero_gc::level_zero_gc(
   cloud_storage_clients::bucket_name bucket,
   seastar::sharded<cluster::health_monitor_frontend>* health_monitor,
   seastar::sharded<cluster::controller_stm>* controller_stm,
-  seastar::sharded<cluster::topic_table>* topic_table,
-  level_zero_gc_config config)
+  seastar::sharded<cluster::topic_table>* topic_table)
   : level_zero_gc(
-      config,
+      level_zero_gc_config{
+        .deletion_grace_period
+        = config::shard_local_cfg()
+            .cloud_topics_l0_gc_minimum_object_age.bind(),
+        .throttle_progress
+        = config::shard_local_cfg().cloud_topics_l0_gc_interval.bind(),
+        .throttle_no_progress
+        = config::shard_local_cfg().cloud_topics_l0_gc_backoff_interval.bind(),
+      },
       std::make_unique<object_storage_remote_impl>(remote, std::move(bucket)),
       std::make_unique<epoch_source_impl>(
         health_monitor, controller_stm, topic_table)) {}
@@ -402,16 +409,16 @@ seastar::future<> level_zero_gc::worker() {
             auto res = co_await try_to_collect();
             if (res.has_value()) {
                 if (res.value() > 0) {
-                    backoff = config_.throttle_progress;
+                    backoff = config_.throttle_progress();
                 } else {
-                    backoff = config_.throttle_no_progress;
+                    backoff = config_.throttle_no_progress();
                 }
             } else {
                 switch (res.error()) {
                 case collection_error::service_error:
                 case collection_error::invalid_object_name:
                 case collection_error::no_collectible_epoch:
-                    backoff = config_.throttle_no_progress;
+                    backoff = config_.throttle_no_progress();
                 }
             }
 
@@ -420,7 +427,7 @@ seastar::future<> level_zero_gc::worker() {
               cd_log.info,
               "Level zero GC restarting after error: {}",
               std::current_exception());
-            backoff = config_.throttle_no_progress;
+            backoff = config_.throttle_no_progress();
         }
     }
 
@@ -455,7 +462,7 @@ level_zero_gc::try_to_collect() {
     }
 
     const auto max_gc_birthday = std::chrono::system_clock::now()
-                                 - config_.deletion_grace_period;
+                                 - config_.deletion_grace_period();
 
     vlog(
       cd_log.debug,
