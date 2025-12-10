@@ -26,14 +26,10 @@ namespace {
 namespace io = lsm::io;
 using lsm::internal::file_handle;
 
-class proxy_persistence
-  : public io::data_persistence
-  , public io::metadata_persistence {
+class proxy_data_persistence : public io::data_persistence {
 public:
-    explicit proxy_persistence(
-      io::data_persistence* p, io::metadata_persistence* mdp)
-      : _p(p)
-      , _mdp(mdp) {}
+    explicit proxy_data_persistence(io::data_persistence* p)
+      : _p(p) {}
 
     ss::future<io::optional_pointer<io::random_access_file_reader>>
     open_random_access_reader(file_handle h) override {
@@ -53,12 +49,22 @@ public:
         return _p->list_files();
     }
 
+    ss::future<> close() override { co_return; };
+
+private:
+    io::data_persistence* _p;
+};
+
+class proxy_metadata_persistence : public io::metadata_persistence {
+public:
+    explicit proxy_metadata_persistence(io::metadata_persistence* mdp)
+      : _mdp(mdp) {}
+
     ss::future<std::optional<iobuf>>
     read_manifest(lsm::internal::database_epoch e) override {
         return _mdp->read_manifest(e);
     }
 
-    // Write the manifest atomically to durable storage.
     ss::future<>
     write_manifest(lsm::internal::database_epoch e, iobuf b) override {
         return _mdp->write_manifest(e, std::move(b));
@@ -67,7 +73,6 @@ public:
     ss::future<> close() override { co_return; };
 
 private:
-    io::data_persistence* _p;
     io::metadata_persistence* _mdp;
 };
 
@@ -124,10 +129,9 @@ public:
         _db = lsm::db::impl::open(
                 _options,
                 {
-                  .data = std::make_unique<proxy_persistence>(
-                    _tracking_data.get(), _meta_persistence.get()),
-                  .metadata = std::make_unique<proxy_persistence>(
-                    _underlying_data_persistence.get(),
+                  .data = std::make_unique<proxy_data_persistence>(
+                    _tracking_data.get()),
+                  .metadata = std::make_unique<proxy_metadata_persistence>(
                     _meta_persistence.get()),
                 })
                 .get();
@@ -193,10 +197,9 @@ public:
         _db = lsm::db::impl::open(
                 _options,
                 {
-                  .data = std::make_unique<proxy_persistence>(
-                    _tracking_data.get(), _meta_persistence.get()),
-                  .metadata = std::make_unique<proxy_persistence>(
-                    _underlying_data_persistence.get(),
+                  .data = std::make_unique<proxy_data_persistence>(
+                    _tracking_data.get()),
+                  .metadata = std::make_unique<proxy_metadata_persistence>(
                     _meta_persistence.get()),
                 })
                 .get();
