@@ -3881,7 +3881,20 @@ configuration::configuration()
       "oidc_group_claim_path",
       "JSON path to extract groups from the JWT payload.",
       {.needs_restart = needs_restart::no, .visibility = visibility::user},
-      "$.groups")
+      "$.groups",
+      security::oidc::validate_group_claim_path)
+  , nested_group_behavior(
+      *this,
+      "nested_group_behavior",
+      "Behavior for handling nested groups when extracting groups from "
+      "authentication tokens.  Two options are available - none and suffix.  "
+      "With none, the group is left alone (e.g. '/group/child/grandchild').  "
+      "Suffix will extract the final component from the nested group (e.g. "
+      "'/group' -> 'group' and '/group/child/grandchild' -> 'grandchild').",
+      {.needs_restart = needs_restart::no, .visibility = visibility::user},
+      security::oidc::nested_group_behavior::none,
+      {security::oidc::nested_group_behavior::none,
+       security::oidc::nested_group_behavior::suffix})
   , http_authentication(
       *this,
       "OIDC",

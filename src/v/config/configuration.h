@@ -724,6 +724,8 @@ struct configuration final : public config_store {
     property<std::chrono::seconds> oidc_keys_refresh_interval;
     property<ss::sstring> oidc_group_claim_path;
 
+    enum_property<security::oidc::nested_group_behavior> nested_group_behavior;
+
     // HTTP Authentication
     enterprise<property<std::vector<ss::sstring>>> http_authentication;
 
