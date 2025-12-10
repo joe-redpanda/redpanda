@@ -19,6 +19,7 @@
 #include "raft/logger.h"
 #include "raft/raftgen_service.h"
 #include "ssx/sformat.h"
+#include "ssx/watchdog.h"
 #include "storage/snapshot.h"
 #include "utils/human.h"
 
@@ -298,6 +299,20 @@ recovery_stm::read_range_for_recovery(
               "Requesting throttle for {} bytes, available in throttle: {}",
               size,
               _ptr->_recovery_throttle->get().available());
+            // It is unusual for a recovery to get throttled for a long time.
+            // This is meant to diagnose situations where recovery is stuck
+            // forever thus potentially blocking partition moves.
+            ssx::watchdog wd(1min, [this, size] {
+                vlog(
+                  _ctxlog.warn,
+                  "Recovery request to node: {} of size {} bytes throttled for "
+                  "more than 1min, throttler: {{ available tokens: {}, waiting "
+                  "bytes: {}}}",
+                  _node_id,
+                  size,
+                  _ptr->_recovery_throttle->get().available(),
+                  _ptr->_recovery_throttle->get().waiting_bytes());
+            });
             co_await _ptr->_recovery_throttle->get()
               .throttle(size, _ptr->_as)
               .handle_exception_type([this](const ss::broken_semaphore&) {
