@@ -86,6 +86,7 @@ private:
     bool is_recovery_finished();
     flush_after_append should_flush(model::offset) const;
     bool is_snapshot_at_offset_supported() const;
+    bool term_or_leadership_changed() const;
     consensus* _ptr;
     vnode _node_id;
     model::offset _base_batch_offset;
