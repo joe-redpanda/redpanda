@@ -24,7 +24,7 @@ import pathlib
 import shutil
 import signal
 import time
-from typing import Optional
+from typing import Optional, Any
 
 import aioboto3
 import psutil
@@ -101,19 +101,45 @@ class NodeMetadata:
     config_dict: dict
 
 
+async def stream_until_eof(
+    process: asyncio.subprocess.Process, name: str, stdout: bool, log_path: pathlib.Path
+):
+    assert process.stdout
+    with open(log_path, "w") as log_file:
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                break
+            line = line.decode("utf8").rstrip()
+            if stdout:
+                print(f"{name}: {line}")
+            log_file.write(f"{line}\n")
+            log_file.flush()
+
+
+def send_signal(proc: asyncio.subprocess.Process, sig: signal.Signals):
+    try:
+        proc.send_signal(sig)
+    except ProcessLookupError:
+        # Process already exited
+        pass
+
+
 class Minio:
-    def __init__(self, binary, directory, rp_config):
+    def __init__(
+        self, binary: pathlib.Path, directory: pathlib.Path, rp_config: dict[str, Any]
+    ) -> None:
         self.binary = binary
         self.directory = directory
         self.stopped = False
         self.rp_cfg = rp_config
 
-    def stop(self):
+    def stop(self) -> None:
         if not self.stopped:
             self.stopped = True
-            self.process.send_signal(signal.SIGINT)
+            send_signal(self.process, signal.SIGINT)
 
-    async def run(self):
+    async def run(self) -> int:
         log_path = self.directory / "minio.log"
 
         data_dir = self.directory / "data"
@@ -138,7 +164,7 @@ class Minio:
             str(data_dir),
         ]
         args = " ".join(args)
-        cmd = f"{args} 2>&1 | tee -i {log_path}"
+        cmd = f"{args}"
         print(f"Running: {cmd}")
         self.process = await asyncio.create_subprocess_shell(
             cmd,
@@ -147,25 +173,20 @@ class Minio:
             stderr=asyncio.subprocess.STDOUT,
         )
 
-        while True:
-            line = await self.process.stdout.readline()
-            if not line:
-                break
-            line = line.decode("utf8").rstrip()
-            print(f"minio: {line}")
+        await stream_until_eof(self.process, "minio", True, log_path)
 
-        await self.process.wait()
+        return await self.process.wait()
 
 
 class Prometheus:
     def __init__(
         self,
-        binary,
-        directory,
-        listen_address="127.0.0.1",
-        port=3001,
-        redpanda_admin_ports=[],
-    ):
+        binary: pathlib.Path,
+        directory: pathlib.Path,
+        listen_address: str = "127.0.0.1",
+        port: int = 3001,
+        redpanda_admin_ports: list[int] = [],
+    ) -> None:
         self.binary = binary
         self.directory = directory
         self.stopped = False
@@ -176,7 +197,7 @@ class Prometheus:
     def stop(self):
         if not self.stopped:
             self.stopped = True
-            self.process.send_signal(signal.SIGINT)
+            send_signal(self.process, signal.SIGINT)
 
     async def run(self):
         log_path = self.directory / "prometheus.log"
@@ -234,24 +255,26 @@ class Prometheus:
             f"--web.listen-address={self.listen_address}:{self.port}",
         ]
         args = " ".join(args)
-        cmd = f"{args} 2>&1 | tee -i {log_path}"
+        cmd = f"{args}"
         print(f"Running: {cmd}")
         print(f"Prometheus UI available at: http://{self.listen_address}:{self.port}")
 
         self.process = await asyncio.create_subprocess_shell(
             cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
         )
 
-        await self.process.wait()
+        await stream_until_eof(self.process, "prometheus", False, log_path)
+
+        return await self.process.wait()
 
 
 class Grafana:
     def __init__(
         self,
         binary,
-        directory,
+        directory: pathlib.Path,
         port=3000,
         prometheus_url=None,
     ):
@@ -264,7 +287,7 @@ class Grafana:
     def stop(self):
         if not self.stopped:
             self.stopped = True
-            self.process.send_signal(signal.SIGINT)
+            send_signal(self.process, signal.SIGINT)
 
     async def run(self):
         log_path = self.directory / "grafana.log"
@@ -320,19 +343,21 @@ class Grafana:
 
         args = [str(grafana_binary), "server"]
         args = " ".join(args)
-        cmd = f"{args} 2>&1 | tee -i {log_path}"
+        cmd = f"{args}"
         print(f"Running: {cmd}")
         print(f"Grafana UI available on port {self.port}")
 
         self.process = await asyncio.create_subprocess_shell(
             cmd,
             env=env,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
             cwd=grafana_home,
         )
 
-        await self.process.wait()
+        await stream_until_eof(self.process, "grafana", False, log_path)
+
+        return await self.process.wait()
 
 
 class Redpanda:
@@ -346,7 +371,8 @@ class Redpanda:
 
     def stop(self):
         print(f"node-{self.node_meta.index}: dev_cluster stop requested")
-        self.process.send_signal(signal.SIGINT)
+        assert self.process
+        send_signal(self.process, signal.SIGINT)
 
     async def run(self):
         log_path = (
@@ -374,20 +400,17 @@ class Redpanda:
         extra_args = " ".join(f'"{a}"' for a in self.extra_args)
 
         self.process = await asyncio.create_subprocess_shell(
-            f"{self.binary} --redpanda-cfg {self.node_meta.config_path} {cores_args} {memory_args} {extra_args} 2>&1 | tee -i {log_path}",
+            f"{self.binary} --redpanda-cfg {self.node_meta.config_path} {cores_args} {memory_args} {extra_args}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             env=self.env,
         )
 
-        while True:
-            line = await self.process.stdout.readline()
-            if not line:
-                break
-            line = line.decode("utf8").rstrip()
-            print(f"node-{self.node_meta.index}: {line}")
+        await stream_until_eof(
+            self.process, f"node-{self.node_meta.index}", True, log_path
+        )
 
-        await self.process.wait()
+        return await self.process.wait()
 
 
 async def run_command(cmd):
@@ -701,19 +724,35 @@ async def main():
 
     asyncio.get_event_loop().add_signal_handler(signal.SIGINT, stop)
 
-    await asyncio.gather(*all_coros)
+    failed = False
+    return_codes = await asyncio.gather(*all_coros)
+    if any(rc != 0 for rc in return_codes):
+        print(f"Redpanda nodes exited with non-zero return codes: {return_codes}")
+        failed = True
 
     # Cleanup: if redpanda shuts down but we didn't request the shutdown
     # then let's go ahead and tear down other services too so we exit
     if minio_task and minio:
         minio.stop()
-        await minio_task
+        minio_ret_code = await minio_task
+        if minio_ret_code != 0:
+            print(f"Minio exited with non-zero return code: {minio_ret_code}")
+            failed = True
     if prometheus_task and prometheus:
         prometheus.stop()
-        await prometheus_task
+        prom_ret_code = await prometheus_task
+        if prom_ret_code != 0:
+            print(f"Prometheus exited with non-zero return code: {prom_ret_code}")
+            failed = True
     if grafana_task and grafana:
         grafana.stop()
-        await grafana_task
+        grafana_ret_code = await grafana_task
+        if grafana_ret_code != 0:
+            print(f"Grafana exited with non-zero return code: {grafana_ret_code}")
+            failed = True
+
+    if failed:
+        exit(1)
 
 
 asyncio.run(main())
