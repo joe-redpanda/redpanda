@@ -249,7 +249,7 @@ recovery_stm::read_range_for_recovery(
       read_size,
       std::nullopt,
       std::nullopt,
-      _ptr->_as);
+      _as);
 
     if (is_learner || _ptr->estimate_recovering_followers() == 1) {
         // skip cache insertion on miss for learners which are throttled and
@@ -314,7 +314,7 @@ recovery_stm::read_range_for_recovery(
                   _ptr->_recovery_throttle->get().waiting_bytes());
             });
             co_await _ptr->_recovery_throttle->get()
-              .throttle(size, _ptr->_as)
+              .throttle(size, _as)
               .handle_exception_type([this](const ss::broken_semaphore&) {
                   vlog(_ctxlog.info, "Recovery throttling has stopped");
               });
@@ -690,7 +690,7 @@ bool recovery_stm::is_recovery_finished() {
      *
      */
     if (
-      _ptr->_as.abort_requested() || _ptr->_bg.is_closed() || _stop_requested
+      _as.abort_requested() || _ptr->_bg.is_closed() || _stop_requested
       || _term != _ptr->term() || !_ptr->is_elected_leader()) {
         return true;
     }
@@ -705,6 +705,8 @@ bool recovery_stm::is_recovery_finished() {
 }
 
 ss::future<> recovery_stm::apply() {
+    _raft_abort_sub = ssx::subscribe_or_trigger(
+      _ptr->_as, [this] mutable noexcept { _as.request_abort(); });
     return ss::with_gate(
              _ptr->_bg,
              [this] {
