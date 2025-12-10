@@ -10,13 +10,18 @@
 package shadow
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
+	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
 	adminv2 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/admin/v2"
 	"connectrpc.com/connect"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/adminapi"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/config"
+	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/oauth/providers/auth0"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/out"
+	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/publicapi"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
@@ -41,6 +46,12 @@ config generate' and update it with your source cluster details. The command
 prompts you to confirm the creation. Use the --no-confirm flag to skip the
 confirmation prompt.
 
+When creating a Shadow Link for Redpanda Cloud, make sure to login and select
+the cluster where you want to create the Shadow Link before running this
+command. See 'rpk cloud login' and 'rpk cloud select'. For SCRAM authentication,
+store your password in the secrets store. See 'rpk security secret --help' for
+more details.
+
 After you create the Shadow Link, use 'rpk shadow status' to monitor the
 replication progress.
 `,
@@ -52,12 +63,10 @@ Create a Shadow Link without confirmation prompt:
   rpk shadow create -c shadow-link.yaml --no-confirm
 `,
 		Run: func(cmd *cobra.Command, _ []string) {
-			p, err := p.LoadVirtualProfile(fs)
+			cfg, err := p.Load(fs)
 			out.MaybeDie(err, "unable to load rpk config: %v", err)
-			config.CheckExitCloudAdmin(p) // TODO: remove, for now is there because we don't support it in cloud yet.
-
-			cl, err := adminapi.NewClient(cmd.Context(), fs, p)
-			out.MaybeDie(err, "unable to initialize admin client: %v", err)
+			prof := cfg.VirtualProfile()
+			config.CheckExitServerlessAdmin(prof)
 
 			slCfg, err := parseShadowLinkConfig(fs, cfgLocation)
 			out.MaybeDie(err, "unable to parse Shadow Link configuration file: %v", err)
@@ -77,12 +86,37 @@ Create a Shadow Link without confirmation prompt:
 			}
 			fmt.Println()
 
+			successMsgTmpl := "Successfully created shadow link %q with ID %q. To query the status, run:\n  'rpk shadow status %[1]v'"
+			if prof.CheckFromCloud() {
+				cloudClient, err := publicapi.NewValidatedCloudClientSet(
+					cfg.DevOverrides().PublicAPIURL,
+					prof.CurrentAuth().AuthToken,
+					auth0.NewClient(cfg.DevOverrides()).Audience(),
+					[]string{prof.CurrentAuth().ClientID},
+				)
+				out.MaybeDieErr(err)
+
+				op, err := cloudClient.ShadowLink.CreateShadowLink(cmd.Context(), connect.NewRequest(&controlplanev1.CreateShadowLinkRequest{
+					ShadowLink: shadowLinkConfigToCloudCreate(slCfg),
+				}))
+				out.MaybeDie(err, "unable to create Shadow Link: %v", err)
+
+				isComplete, err := waitForOperation(cmd.Context(), cloudClient, op.Msg.GetOperation().GetId())
+				out.MaybeDie(err, "unable to confirm Shadow Link creation: %v", err)
+				if isComplete {
+					out.Exit(successMsgTmpl, slCfg.Name, op.Msg.GetOperation().GetResourceId())
+				}
+				out.Exit("Shadow link creation is taking longer than expected. Please check the status of the shadow link using 'rpk shadow status %q'", slCfg.Name)
+			}
+			cl, err := adminapi.NewClient(cmd.Context(), fs, prof)
+			out.MaybeDie(err, "unable to initialize admin client: %v", err)
+
 			link, err := cl.ShadowLinkService().CreateShadowLink(cmd.Context(), connect.NewRequest(&adminv2.CreateShadowLinkRequest{
 				ShadowLink: shadowLinkConfigToProto(slCfg),
 			}))
 			out.MaybeDie(err, "unable to create shadow link: %v", handleConnectError(err, "create", slCfg.Name))
 
-			fmt.Printf("Successfully created shadow link %q with ID %q. To query the status, run:\n  'rpk shadow status %[1]v'\n", link.Msg.GetShadowLink().GetName(), link.Msg.GetShadowLink().GetUid())
+			out.Exit(successMsgTmpl, link.Msg.GetShadowLink().GetName(), link.Msg.GetShadowLink().GetUid())
 		},
 	}
 
@@ -110,24 +144,36 @@ func printShadowLinkCfgOverview(slCfg *ShadowLinkConfig) {
 	tw := out.NewTable()
 	defer tw.Flush()
 	tw.Print("Link Name:", slCfg.Name)
-	tw.Print("Bootstrap Servers:")
-	for _, srv := range slCfg.ClientOptions.BootstrapServers {
-		tw.Print("", fmt.Sprintf("- %s", srv))
+	if slCfg.CloudOptions != nil {
+		tw.Print("Shadow Redpanda ID:", slCfg.CloudOptions.ShadowRedpandaID)
+		if slCfg.CloudOptions.SourceRedpandaID != "" {
+			tw.Print("Source Redpanda ID:", slCfg.CloudOptions.SourceRedpandaID)
+		}
+	}
+	if len(slCfg.ClientOptions.BootstrapServers) > 0 {
+		tw.Print("Bootstrap Servers:", "")
+		for _, srv := range slCfg.ClientOptions.BootstrapServers {
+			tw.Print("", fmt.Sprintf("- %s", srv))
+		}
 	}
 }
 
 func validateParsedShadowLinkConfig(slCfg *ShadowLinkConfig) error {
 	if slCfg == nil {
-		return fmt.Errorf("provided configuration file generated an empty configuration")
+		return errors.New("provided configuration file generated an empty configuration")
 	}
 	if slCfg.Name == "" {
-		return fmt.Errorf("the Shadow Link name is required")
+		return errors.New("the Shadow Link name is required")
 	}
-	if len(slCfg.ClientOptions.BootstrapServers) == 0 {
-		return fmt.Errorf("at least one bootstrap server is required")
+	// Cloud configuration does not require bootstrap servers.
+	if slCfg.CloudOptions == nil && len(slCfg.ClientOptions.BootstrapServers) == 0 {
+		return errors.New("at least one bootstrap server is required")
 	}
 	if tls := slCfg.ClientOptions.TLSSettings; tls != nil && tls.TLSFileSettings != nil && tls.TLSPEMSettings != nil {
-		return fmt.Errorf("only one of TLS file settings or PEM settings can be provided")
+		return errors.New("only one of TLS file settings or PEM settings can be provided")
+	}
+	if auth := slCfg.ClientOptions.AuthenticationConfiguration; auth != nil && auth.ScramConfiguration != nil && auth.PlainConfiguration != nil {
+		return errors.New("only one of scram_configuration or plain_configuration can be provided")
 	}
 	if ts := slCfg.TopicMetadataSyncOptions; ts != nil {
 		var count int
@@ -141,8 +187,45 @@ func validateParsedShadowLinkConfig(slCfg *ShadowLinkConfig) error {
 			count++
 		}
 		if count > 1 {
-			return fmt.Errorf("only one of start_at_latest, start_at_earliest, or start_at_timestamp can be provided")
+			return errors.New("only one of start_at_latest, start_at_earliest, or start_at_timestamp can be provided")
 		}
 	}
+
+	slc := slCfg.CloudOptions
+	if slc == nil {
+		return nil
+	}
+	// Cloud only validations.
+	if slc.ShadowRedpandaID == "" {
+		return errors.New("shadow_redpanda_id is required in cloud options")
+	}
+	if slc.ShadowRedpandaID == slc.SourceRedpandaID {
+		return errors.New("shadow_redpanda_id and source_redpanda_id cannot be the same")
+	}
+	co := slCfg.ClientOptions
+	if co == nil {
+		return nil
+	}
+	if co.TLSSettings != nil && co.TLSSettings.TLSFileSettings != nil {
+		return errors.New("TLS file settings are not supported when using cloud options; use tls_pem_settings instead")
+	}
+	if pw := authPassword(co); pw != "" && !strings.HasPrefix(pw, "${secrets.") {
+		return errors.New("cloud shadow links don't support plain passwords, you must use secrets from the secrets store. See 'rpk security secret --help' for more details")
+	}
 	return nil
+}
+
+// authPassword extracts the authentication password from the client options, if set.
+func authPassword(co *ShadowLinkClientOptions) string {
+	if co == nil || co.AuthenticationConfiguration == nil {
+		return ""
+	}
+	auth := co.AuthenticationConfiguration
+	if auth.ScramConfiguration != nil {
+		return auth.ScramConfiguration.Password
+	}
+	if auth.PlainConfiguration != nil {
+		return auth.PlainConfiguration.Password
+	}
+	return ""
 }
