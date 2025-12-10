@@ -690,8 +690,8 @@ bool recovery_stm::is_recovery_finished() {
      *
      */
     if (
-      _as.abort_requested() || _ptr->_bg.is_closed() || _term != _ptr->term()
-      || !_ptr->is_elected_leader()) {
+      _as.abort_requested() || _ptr->_bg.is_closed()
+      || term_or_leadership_changed()) {
         return true;
     }
 
@@ -709,6 +709,15 @@ ss::future<> recovery_stm::apply() {
     _raft_abort_sub = ssx::subscribe_or_trigger(
       _ptr->_as, [this] mutable noexcept { _as.request_abort(); });
     ssx::background
+      = ssx::spawn_with_gate_then(_gate, [this] {
+            return _ptr->_leadership_changed
+              .wait(_as, [this] { return term_or_leadership_changed(); })
+              .then([this] {
+                  vlog(_ctxlog.debug, "Leadership changed, aborting recovery");
+                  _as.request_abort();
+              });
+        }).handle_exception([](const std::exception_ptr&) {});
+    ssx::background
       = ssx::spawn_with_gate_then(
           _gate,
           [this] {
@@ -720,6 +729,7 @@ ss::future<> recovery_stm::apply() {
                 })
                 .finally([this] {
                     vlog(_ctxlog.trace, "Finished recovery");
+                    _as.request_abort();
                     auto meta = get_follower_meta();
                     if (meta) {
                         meta.value()->is_recovering = false;
@@ -745,6 +755,10 @@ std::optional<follower_index_metadata*> recovery_stm::get_follower_meta() {
         return std::nullopt;
     }
     return &it->second;
+}
+
+bool recovery_stm::term_or_leadership_changed() const {
+    return _term != _ptr->term() || !_ptr->is_elected_leader();
 }
 
 } // namespace raft
