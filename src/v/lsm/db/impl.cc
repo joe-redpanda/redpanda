@@ -253,7 +253,22 @@ ss::future<> impl::close() {
 
 ss::future<> impl::recover() {
     co_await _versions->recover();
-    co_return;
+    // If requested, then pre-open all the files we know about.
+    if (auto max_fibers = _opts->max_pre_open_fibers) {
+        chunked_vector<ss::lw_shared_ptr<file_meta_data>> all_files;
+        for (auto level : _opts->levels) {
+            auto files = _versions->current()->get_overlapping_inputs(
+              level.number, std::nullopt, std::nullopt);
+            for (auto& file : files) {
+                all_files.push_back(std::move(file));
+            }
+        }
+        co_await ss::max_concurrent_for_each(
+          all_files, max_fibers, [this](ss::lw_shared_ptr<file_meta_data> f) {
+              return _table_cache->create_iterator(f->handle, f->file_size)
+                .discard_result();
+          });
+    }
 }
 
 void impl::maybe_schedule_compaction() {
