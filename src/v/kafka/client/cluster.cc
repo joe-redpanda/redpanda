@@ -176,8 +176,9 @@ ss::future<> cluster::dispatch_and_apply_metadata_updates(
 
         co_await apply_metadata(std::move(mu));
     } catch (const broker_error& e) {
+        // TODO(CORE-14956) - We need to improve handling of broker errors
         vlog(
-          _logger.warn, "Failed to dispatch metadata request - {}", e.what());
+          _logger.debug, "Failed to dispatch metadata request - {}", e.what());
     }
 }
 
