@@ -109,11 +109,11 @@ public:
       size_t size,
       client_configuration conf,
       client_pool_overdraft_policy policy
-      = client_pool_overdraft_policy::wait_if_empty,
+      = client_pool_overdraft_policy::wait_if_empty);
+
+    ss::future<> start(
       std::optional<std::reference_wrapper<stop_signal>> application_stop_signal
       = std::nullopt);
-
-    ss::future<> start();
     ss::future<> stop();
 
     void shutdown_connections();

@@ -74,7 +74,10 @@ class TopicManifestDownloaderTest
 public:
     void SetUp() override {
         pool_.start(10, ss::sharded_parameter([this] { return conf; })).get();
-        pool_.invoke_on_all(&cloud_storage_clients::client_pool::start).get();
+        pool_
+          .invoke_on_all(
+            &cloud_storage_clients::client_pool::start, std::nullopt)
+          .get();
         io_
           .start(
             std::ref(pool_),

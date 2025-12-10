@@ -875,7 +875,10 @@ public:
             cloud_storage_clients::client_pool_overdraft_policy::wait_if_empty)
           .get();
 
-        pool.invoke_on_all(&cloud_storage_clients::client_pool::start).get();
+        pool
+          .invoke_on_all(
+            &cloud_storage_clients::client_pool::start, std::nullopt)
+          .get();
 
         server->start().get();
         server->set_routes(set_routes).get();

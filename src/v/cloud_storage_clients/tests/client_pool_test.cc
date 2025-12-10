@@ -66,7 +66,8 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_abortable) {
         cloud_storage_clients::client_pool_overdraft_policy::borrow_if_empty)
       .get();
 
-    pool.invoke_on_all(&cloud_storage_clients::client_pool::start).get();
+    pool.invoke_on_all(&cloud_storage_clients::client_pool::start, std::nullopt)
+      .get();
 
     auto pool_stop = ss::defer([&pool] { pool.stop().get(); });
 
@@ -101,7 +102,8 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_with_timeout) {
         cloud_storage_clients::client_pool_overdraft_policy::wait_if_empty)
       .get();
 
-    pool.invoke_on_all(&cloud_storage_clients::client_pool::start).get();
+    pool.invoke_on_all(&cloud_storage_clients::client_pool::start, std::nullopt)
+      .get();
 
     auto pool_stop = ss::defer([&pool] { pool.stop().get(); });
 
@@ -166,7 +168,8 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_timeout) {
         cloud_storage_clients::client_pool_overdraft_policy::borrow_if_empty)
       .get();
 
-    pool.invoke_on_all(&cloud_storage_clients::client_pool::start).get();
+    pool.invoke_on_all(&cloud_storage_clients::client_pool::start, std::nullopt)
+      .get();
 
     auto pool_stop = ss::defer([&pool] { pool.stop().get(); });
 

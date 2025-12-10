@@ -240,7 +240,10 @@ public:
                      return get_client_configuration();
                  }))
           .get();
-        _pool.invoke_on_all(&cloud_storage_clients::client_pool::start).get();
+        _pool
+          .invoke_on_all(
+            &cloud_storage_clients::client_pool::start, std::nullopt)
+          .get();
         _io
           .start(
             std::ref(_pool),

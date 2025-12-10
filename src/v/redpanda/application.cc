@@ -1721,21 +1721,22 @@ void application::wire_up_redpanda_services(
           cloud_configs.local().connection_limit,
           ss::sharded_parameter(
             [&cloud_configs] { return cloud_configs.local().client_config; }),
-          cloud_storage_clients::client_pool_overdraft_policy::borrow_if_empty,
-          ss::sharded_parameter(
-            [&app_signal]()
-              -> std::optional<std::reference_wrapper<::stop_signal>> {
-                if (
-                  ss::this_shard_id()
-                  == cloud_storage_clients::self_config_shard) {
-                    return std::ref(app_signal);
-                }
-
-                return std::nullopt;
-            }))
+          cloud_storage_clients::client_pool_overdraft_policy::borrow_if_empty)
           .get();
         cloud_storage_clients
-          .invoke_on_all(&cloud_storage_clients::client_pool::start)
+          .invoke_on_all(
+            &cloud_storage_clients::client_pool::start,
+            ss::sharded_parameter(
+              [&app_signal]()
+                -> std::optional<std::reference_wrapper<::stop_signal>> {
+                  if (
+                    ss::this_shard_id()
+                    == cloud_storage_clients::self_config_shard) {
+                      return std::ref(app_signal);
+                  }
+
+                  return std::nullopt;
+              }))
           .get();
         construct_service(
           cloud_io,

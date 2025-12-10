@@ -122,7 +122,10 @@ public:
     remote_fixture_base(cloud_storage_clients::s3_url_style url_style)
       : s3_imposter_fixture(url_style) {
         pool.start(10, ss::sharded_parameter([this] { return conf; })).get();
-        pool.invoke_on_all(&cloud_storage_clients::client_pool::start).get();
+        pool
+          .invoke_on_all(
+            &cloud_storage_clients::client_pool::start, std::nullopt)
+          .get();
         io.start(
             std::ref(pool),
             ss::sharded_parameter([this] { return conf; }),

@@ -37,10 +37,7 @@ constexpr auto self_config_timeout = 15s;
 namespace cloud_storage_clients {
 
 client_pool::client_pool(
-  size_t size,
-  client_configuration conf,
-  client_pool_overdraft_policy policy,
-  std::optional<std::reference_wrapper<stop_signal>> application_stop_signal)
+  size_t size, client_configuration conf, client_pool_overdraft_policy policy)
   : _capacity(size)
   , _config(std::move(conf))
   , _probe(std::visit([](auto&& p) { return p._probe; }, _config))
@@ -48,14 +45,7 @@ client_pool::client_pool(
   , _credential_manager(
       *this, _config, ss::visit(_config, [](const common_configuration& c) {
           return c.cloud_credentials_source;
-      })) {
-    if (ss::this_shard_id() == self_config_shard) {
-        ssx::spawn_with_gate(
-          _gate, [this, app_stop_signal = application_stop_signal]() {
-              return client_self_configure(app_stop_signal);
-          });
-    }
-}
+      })) {}
 
 ss::future<> client_pool::client_self_configure(
   std::optional<std::reference_wrapper<stop_signal>> application_stop_signal) {
@@ -173,7 +163,17 @@ ss::future<> client_pool::accept_self_configure_result(
     _self_config_barrier.signal(_self_config_barrier.max_counter());
 }
 
-ss::future<> client_pool::start() { co_await _credential_manager.start(); }
+ss::future<> client_pool::start(
+  std::optional<std::reference_wrapper<stop_signal>> application_stop_signal) {
+    if (ss::this_shard_id() == self_config_shard) {
+        ssx::spawn_with_gate(
+          _gate, [this, app_stop_signal = application_stop_signal]() {
+              return client_self_configure(app_stop_signal);
+          });
+    }
+
+    co_await _credential_manager.start();
+}
 
 ss::future<> client_pool::stop() {
     vlog(pool_log.info, "Stopping client pool: {}", _pool.size());
