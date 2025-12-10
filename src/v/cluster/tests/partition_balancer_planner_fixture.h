@@ -410,7 +410,8 @@ struct partition_balancer_planner_fixture {
                 model::node_id(i),
                 local_state,
                 std::move(node_topics),
-                std::nullopt));
+                /* drain status */ std::nullopt,
+                /* maybe_auto_decommission_status */ std::nullopt));
         }
 
         return health_report;

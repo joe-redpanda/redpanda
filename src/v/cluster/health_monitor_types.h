@@ -15,6 +15,7 @@
 #include "cluster/drain_manager.h"
 #include "cluster/errc.h"
 #include "cluster/node/types.h"
+#include "cluster/types.h"
 #include "container/chunked_hash_map.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"
@@ -197,6 +198,47 @@ struct topic_status
 };
 
 /**
+ * Status for the automatic decommissioning of dead nodes
+ */
+
+struct auto_decommission_status_data {
+    // ensures that the auto decommission configuration is the same on the
+    // source node and controller
+    config_version configuration_version{config_version_unset};
+    // a list of the node_ids which have exceeded the auto decommission timeout
+    std::vector<model::node_id> nodes_past_auto_decom_timeout;
+};
+
+struct auto_decommission_status
+  : serde::envelope<
+      auto_decommission_status,
+      serde::version<0>,
+      serde::compat_version<0>>
+  , auto_decommission_status_data {
+    static constexpr int8_t current_version = 0;
+
+    using auto_decommission_status_data::auto_decommission_status_data;
+
+    // NOLINTNEXTLINE hicpp-explicit-conversions
+    auto_decommission_status(auto_decommission_status_data data) noexcept
+      : auto_decommission_status_data{std::move(data)} {
+        static_assert(
+          sizeof(auto_decommission_status_data)
+          == sizeof(auto_decommission_status));
+    }
+
+    friend std::ostream&
+    operator<<(std::ostream&, const auto_decommission_status&);
+
+    auto serde_fields() {
+        return std::tie(configuration_version, nodes_past_auto_decom_timeout);
+    }
+
+    friend bool operator==(
+      const auto_decommission_status& a, const auto_decommission_status& b);
+};
+
+/**
  * Node health report is collected built based on node local state at given
  * instance of time
  */
@@ -211,12 +253,14 @@ struct node_health_report {
     node::local_state local_state;
     topics_t topics;
     std::optional<drain_manager::drain_status> drain_status;
+    std::optional<auto_decommission_status> maybe_auto_decommission_status;
 
     node_health_report(
       model::node_id,
       node::local_state,
       chunked_vector<topic_status>,
-      std::optional<drain_manager::drain_status>);
+      std::optional<drain_manager::drain_status>,
+      std::optional<auto_decommission_status>);
 
     node_health_report copy() const;
 
@@ -240,9 +284,15 @@ struct node_health_report_serde
     node::local_state local_state;
     chunked_vector<topic_status> topics;
     std::optional<drain_manager::drain_status> drain_status;
+    std::optional<auto_decommission_status> maybe_auto_decommission_status;
 
     auto serde_fields() {
-        return std::tie(id, local_state, topics, drain_status);
+        return std::tie(
+          id,
+          local_state,
+          topics,
+          drain_status,
+          maybe_auto_decommission_status);
     }
 
     node_health_report_serde() = default;
@@ -251,14 +301,22 @@ struct node_health_report_serde
       model::node_id id,
       node::local_state local_state,
       chunked_vector<topic_status> topics,
-      std::optional<drain_manager::drain_status> drain_status)
+      std::optional<drain_manager::drain_status> drain_status,
+      std::optional<auto_decommission_status> maybe_auto_decommission_status)
       : id(id)
       , local_state(std::move(local_state))
       , topics(std::move(topics))
-      , drain_status(drain_status) {}
+      , drain_status(drain_status)
+      , maybe_auto_decommission_status(
+          std::move(maybe_auto_decommission_status)) {}
 
     node_health_report_serde copy() const {
-        return {id, local_state, topics.copy(), drain_status};
+        return {
+          id,
+          local_state,
+          topics.copy(),
+          drain_status,
+          maybe_auto_decommission_status};
     }
 
     explicit node_health_report_serde(const node_health_report& hr);
@@ -268,7 +326,8 @@ struct node_health_report_serde
           id,
           std::move(local_state),
           std::move(topics),
-          std::move(drain_status)};
+          drain_status,
+          std::move(maybe_auto_decommission_status)};
     }
 
     friend std::ostream&

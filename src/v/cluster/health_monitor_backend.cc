@@ -20,6 +20,7 @@
 #include "cluster/logger.h"
 #include "cluster/members_table.h"
 #include "cluster/node/local_monitor.h"
+#include "cluster/node_status_table.h"
 #include "cluster/partition_manager.h"
 #include "cluster/partition_probe.h"
 #include "config/configuration.h"
@@ -203,7 +204,11 @@ std::optional<node_health_report_ptr> health_monitor_backend::build_node_report(
     }
 
     node_health_report ret{
-      it->second->id, it->second->local_state, {}, it->second->drain_status};
+      it->second->id,
+      it->second->local_state,
+      {},
+      it->second->drain_status,
+      /*maybe_auto_decommission_status*/ std::nullopt};
     ret.local_state.logical_version
       = features::feature_table::get_latest_logical_version();
     ret.topics = filter_topic_status(it->second->topics, f.ntp_filters);
@@ -898,7 +903,11 @@ health_monitor_backend::collect_current_node_health() {
     it->second.last_reply_timestamp = ss::lowres_clock::now();
 
     co_return node_health_report{
-      id, std::move(local_state), std::move(topics), std::move(drain_status)};
+      id,
+      std::move(local_state),
+      std::move(topics),
+      std::move(drain_status),
+      /*maybe_auto_decommission_status*/ std::nullopt};
 }
 ss::future<result<node_health_report_ptr>>
 health_monitor_backend::get_current_node_health() {
