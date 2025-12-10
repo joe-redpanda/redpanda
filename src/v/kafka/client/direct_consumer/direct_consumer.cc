@@ -122,7 +122,8 @@ void direct_consumer::filter_fetch_data(
 
               vassert(
                 maybe_subscription,
-                "nullopt implies stale and should have been handled above");
+                "offset filtering requires that unassigned subscriptions have "
+                "already been filtered out");
               return update_and_filter_offsets(
                 topic_data.topic, partition_data, *maybe_subscription);
           });
