@@ -835,7 +835,8 @@ class LogCompactionTxRemovalMixin:
                 produce_func()
             except Exception as e:
                 self.redpanda.logger.warning(
-                    f"Exception while checking STM snapshots, retrying... {e}"
+                    f"Exception while checking STM snapshots, retrying... {e}",
+                    exc_info=True,
                 )
             time.sleep(5)
 
@@ -994,7 +995,9 @@ class LogCompactionTxRemovalTest(LogCompactionTxRemovalTestBase):
             try:
                 self.do_test_tx_control_batch_removal(name, test_case)
             except Exception as e:
-                self.logger.info(f"Test case {name} failed with exception {e}")
+                self.logger.info(
+                    f"Test case {name} failed with exception {e}", exc_info=True
+                )
 
                 failed_test_cases.append(e)
         assert len(failed_test_cases) == 0, (
