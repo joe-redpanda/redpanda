@@ -27,6 +27,7 @@
 #include "cluster/cluster_link/table.h"
 #include "cluster/cluster_recovery_table.h"
 #include "cluster/cluster_utils.h"
+#include "cluster/config/cluster_config.h"
 #include "cluster/config_frontend.h"
 #include "cluster/controller_api.h"
 #include "cluster/controller_backend.h"
@@ -727,7 +728,11 @@ ss::future<> controller::start(
       std::ref(_drain_manager),
       std::ref(_feature_table),
       std::ref(_partition_leaders),
-      std::ref(_tp_state));
+      std::ref(_tp_state),
+      std::ref(_node_status_table),
+      ss::sharded_parameter([this]() {
+          return std::make_unique<cluster_config>(_config_manager);
+      }));
 
     _leader_balancer = std::make_unique<leader_balancer>(
       _tp_state.local(),

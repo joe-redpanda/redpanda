@@ -67,7 +67,9 @@ health_monitor_backend::health_monitor_backend(
   ss::sharded<drain_manager>& drain_manager,
   ss::sharded<features::feature_table>& feature_table,
   ss::sharded<partition_leaders_table>& partition_leaders_table,
-  ss::sharded<topic_table>& topic_table)
+  ss::sharded<topic_table>& topic_table,
+  ss::sharded<node_status_table>& node_status_table,
+  std::unique_ptr<config_i> config)
   : _raft0(std::move(raft0))
   , _members(mt)
   , _connections(connections)
@@ -78,6 +80,8 @@ health_monitor_backend::health_monitor_backend(
   , _feature_table(feature_table)
   , _partition_leaders_table(partition_leaders_table)
   , _topic_table(topic_table)
+  , _node_status_table(node_status_table)
+  , _config(std::move(config))
   , _reports{ss::make_lw_shared<report_cache_t>()}
   , _local_monitor(local_monitor)
   , _self(_raft0->self().id()) {}
