@@ -86,6 +86,7 @@ ss::lw_shared_ptr<internal::options> translate_options(options opts) {
       = opts.level_one_compaction_trigger;
     internal_opts->max_file_size = opts.max_file_size;
     internal_opts->max_open_files = opts.max_open_files;
+    internal_opts->max_pre_open_fibers = opts.max_pre_open_fibers;
     internal_opts->block_cache_size = opts.block_cache_size;
     internal_opts->sst_block_size = opts.sst_block_size;
     internal_opts->sst_filter_period = opts.sst_filter_period;

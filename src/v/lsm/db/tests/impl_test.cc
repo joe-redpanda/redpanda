@@ -26,14 +26,10 @@ namespace {
 namespace io = lsm::io;
 using lsm::internal::file_handle;
 
-class proxy_persistence
-  : public io::data_persistence
-  , public io::metadata_persistence {
+class proxy_data_persistence : public io::data_persistence {
 public:
-    explicit proxy_persistence(
-      io::data_persistence* p, io::metadata_persistence* mdp)
-      : _p(p)
-      , _mdp(mdp) {}
+    explicit proxy_data_persistence(io::data_persistence* p)
+      : _p(p) {}
 
     ss::future<io::optional_pointer<io::random_access_file_reader>>
     open_random_access_reader(file_handle h) override {
@@ -53,12 +49,22 @@ public:
         return _p->list_files();
     }
 
+    ss::future<> close() override { co_return; };
+
+private:
+    io::data_persistence* _p;
+};
+
+class proxy_metadata_persistence : public io::metadata_persistence {
+public:
+    explicit proxy_metadata_persistence(io::metadata_persistence* mdp)
+      : _mdp(mdp) {}
+
     ss::future<std::optional<iobuf>>
     read_manifest(lsm::internal::database_epoch e) override {
         return _mdp->read_manifest(e);
     }
 
-    // Write the manifest atomically to durable storage.
     ss::future<>
     write_manifest(lsm::internal::database_epoch e, iobuf b) override {
         return _mdp->write_manifest(e, std::move(b));
@@ -67,8 +73,43 @@ public:
     ss::future<> close() override { co_return; };
 
 private:
-    io::data_persistence* _p;
     io::metadata_persistence* _mdp;
+};
+
+// Wrapper that tracks all open_random_access_reader calls
+class tracking_data_persistence : public io::data_persistence {
+public:
+    explicit tracking_data_persistence(io::data_persistence* underlying)
+      : _underlying(underlying) {}
+
+    ss::future<io::optional_pointer<io::random_access_file_reader>>
+    open_random_access_reader(file_handle h) override {
+        _opened_files.insert(h);
+        return _underlying->open_random_access_reader(h);
+    }
+
+    ss::future<std::unique_ptr<io::sequential_file_writer>>
+    open_sequential_writer(file_handle h) override {
+        return _underlying->open_sequential_writer(h);
+    }
+
+    ss::future<> remove_file(file_handle h) override {
+        return _underlying->remove_file(h);
+    }
+
+    ss::coroutine::experimental::generator<file_handle> list_files() override {
+        return _underlying->list_files();
+    }
+
+    ss::future<> close() override { return _underlying->close(); }
+
+    const std::set<file_handle>& opened_files() const { return _opened_files; }
+
+    void reset_tracking() { _opened_files.clear(); }
+
+private:
+    io::data_persistence* _underlying;
+    std::set<file_handle> _opened_files;
 };
 
 class ImplTest : public testing::Test {
@@ -81,22 +122,24 @@ public:
           .level_one_compaction_trigger = 2,
           .max_file_size = 2_MiB,
         });
-        _data_persistence = lsm::io::make_memory_data_persistence();
+        _underlying_data_persistence = lsm::io::make_memory_data_persistence();
         _meta_persistence = lsm::io::make_memory_metadata_persistence();
+        _tracking_data = std::make_unique<tracking_data_persistence>(
+          _underlying_data_persistence.get());
         _db = lsm::db::impl::open(
                 _options,
                 {
-                  .data = std::make_unique<proxy_persistence>(
-                    _data_persistence.get(), _meta_persistence.get()),
-                  .metadata = std::make_unique<proxy_persistence>(
-                    _data_persistence.get(), _meta_persistence.get()),
+                  .data = std::make_unique<proxy_data_persistence>(
+                    _tracking_data.get()),
+                  .metadata = std::make_unique<proxy_metadata_persistence>(
+                    _meta_persistence.get()),
                 })
                 .get();
     }
 
     void TearDown() override {
         _db->close().get();
-        _data_persistence->close().get();
+        _underlying_data_persistence->close().get();
         _meta_persistence->close().get();
     }
 
@@ -150,13 +193,14 @@ public:
 
     void restart() {
         _db->close().get();
+        _tracking_data->reset_tracking();
         _db = lsm::db::impl::open(
                 _options,
                 {
-                  .data = std::make_unique<proxy_persistence>(
-                    _data_persistence.get(), _meta_persistence.get()),
-                  .metadata = std::make_unique<proxy_persistence>(
-                    _data_persistence.get(), _meta_persistence.get()),
+                  .data = std::make_unique<proxy_data_persistence>(
+                    _tracking_data.get()),
+                  .metadata = std::make_unique<proxy_metadata_persistence>(
+                    _meta_persistence.get()),
                 })
                 .get();
     }
@@ -165,7 +209,7 @@ public:
     auto max_persisted_seqno() { return _db->max_persisted_seqno(); }
 
     ss::future<std::vector<file_handle>> list_files() {
-        auto gen = _data_persistence->list_files();
+        auto gen = _underlying_data_persistence->list_files();
         std::vector<file_handle> files;
         while (auto file = co_await gen()) {
             files.push_back(*file);
@@ -173,11 +217,16 @@ public:
         co_return files;
     }
 
+    const std::set<file_handle>& opened_files() const {
+        return _tracking_data->opened_files();
+    }
+
 protected:
     std::map<ss::sstring, iobuf> _shadow;
     ss::lw_shared_ptr<lsm::internal::options> _options;
-    std::unique_ptr<lsm::io::data_persistence> _data_persistence;
+    std::unique_ptr<lsm::io::data_persistence> _underlying_data_persistence;
     std::unique_ptr<lsm::io::metadata_persistence> _meta_persistence;
+    std::unique_ptr<tracking_data_persistence> _tracking_data;
     std::unique_ptr<lsm::db::impl> _db;
 };
 
@@ -297,6 +346,37 @@ TEST_F(ImplTest, ReadYourOwnWrites) {
     EXPECT_EQ(seen.size(), 2);
     EXPECT_EQ(seen["key1"], value1);
     EXPECT_EQ(seen["key2"], value2_updated);
+}
+
+TEST_F(ImplTest, PreOpenFiles) {
+    // Write some data and flush to create SST files
+    write_at_least(512_KiB);
+    write_at_least(512_KiB);
+    EXPECT_TRUE(matches_shadow());
+    tests::drain_task_queue().get();
+    _db->flush().get();
+
+    // Get the list of files
+    auto files = list_files().get();
+    EXPECT_GT(files.size(), 0);
+
+    // Restart with max_pre_open_fibers = 0 (disabled)
+    _options->max_pre_open_fibers = 0;
+    restart();
+
+    EXPECT_EQ(opened_files().size(), 0);
+    EXPECT_TRUE(matches_shadow());
+
+    // Restart with max_pre_open_fibers > 0 (enabled)
+    _options->max_pre_open_fibers = 4;
+    restart();
+
+    EXPECT_EQ(opened_files().size(), files.size());
+    for (const auto& file : files) {
+        EXPECT_TRUE(opened_files().contains(file))
+          << "File " << file << " was not pre-opened";
+    }
+    EXPECT_TRUE(matches_shadow());
 }
 
 } // namespace

@@ -88,6 +88,13 @@ struct options {
     constexpr static uint32_t default_max_open_files = 1000;
     uint32_t max_open_files = default_max_open_files;
 
+    // If non-zero, the number of fibers to use to pre-open all the files in the
+    // database, which populates the table cache.
+    //
+    // This allows ensuring files are all present and readable at database open
+    // time.
+    uint32_t max_pre_open_fibers = 0;
+
     // The size of the cache that stores uncompressed blocks.
     constexpr static size_t default_block_cache_size = 10_MiB;
     size_t block_cache_size = default_block_cache_size;
