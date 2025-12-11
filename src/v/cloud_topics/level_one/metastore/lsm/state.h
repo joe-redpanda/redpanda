@@ -117,4 +117,11 @@ struct lsm_state
     std::optional<serialized_manifest> persisted_manifest;
 };
 
+struct lsm_stm_snapshot
+  : public serde::
+      envelope<lsm_stm_snapshot, serde::version<0>, serde::compat_version<0>> {
+    auto serde_fields() { return std::tie(state); }
+    lsm_state state;
+};
+
 } // namespace cloud_topics::l1

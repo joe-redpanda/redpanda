@@ -71,3 +71,29 @@ redpanda_cc_library(
         "@seastar",
     ],
 )
+
+redpanda_cc_library(
+    name = "stm",
+    srcs = [
+        "stm.cc",
+    ],
+    hdrs = [
+        "stm.h",
+    ],
+    implementation_deps = [
+        "//src/v/cloud_topics:logger",
+        "//src/v/serde",
+        "//src/v/ssx:future_util",
+        "//src/v/utils:prefix_logger",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lsm_update",
+        ":state",
+        "//src/v/cluster:state_machine_registry",
+        "//src/v/config",
+        "//src/v/model",
+        "//src/v/raft",
+        "@seastar",
+    ],
+)
