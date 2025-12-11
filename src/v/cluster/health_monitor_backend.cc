@@ -23,6 +23,7 @@
 #include "cluster/node_status_table.h"
 #include "cluster/partition_manager.h"
 #include "cluster/partition_probe.h"
+#include "cluster/types.h"
 #include "config/configuration.h"
 #include "config/property.h"
 #include "container/chunked_hash_map.h"
@@ -48,6 +49,7 @@
 #include <fmt/ranges.h>
 
 #include <algorithm>
+#include <chrono>
 #include <iterator>
 #include <optional>
 #include <ranges>
@@ -208,7 +210,7 @@ std::optional<node_health_report_ptr> health_monitor_backend::build_node_report(
       it->second->local_state,
       {},
       it->second->drain_status,
-      /*maybe_auto_decommission_status*/ std::nullopt};
+      it->second->maybe_auto_decommission_status};
     ret.local_state.logical_version
       = features::feature_table::get_latest_logical_version();
     ret.topics = filter_topic_status(it->second->topics, f.ntp_filters);
@@ -897,6 +899,7 @@ health_monitor_backend::collect_current_node_health() {
 
     auto drain_status = co_await _drain_manager.local().status();
     auto topics = co_await collect_topic_status();
+    auto maybe_auto_decommission_status = collect_auto_decommission_status();
 
     auto [it, _] = _status.try_emplace(id);
     it->second.is_alive = alive::yes;
@@ -906,8 +909,8 @@ health_monitor_backend::collect_current_node_health() {
       id,
       std::move(local_state),
       std::move(topics),
-      std::move(drain_status),
-      /*maybe_auto_decommission_status*/ std::nullopt};
+      drain_status,
+      std::move(maybe_auto_decommission_status)};
 }
 ss::future<result<node_health_report_ptr>>
 health_monitor_backend::get_current_node_health() {
@@ -1037,6 +1040,7 @@ reports_acc_t reduce_reports_map(reports_acc_t acc, shard_report shard_report) {
     return acc;
 }
 } // namespace
+
 ss::future<chunked_vector<topic_status>>
 health_monitor_backend::collect_topic_status() {
     auto reports_map = co_await _partition_manager.map_reduce0(
@@ -1051,6 +1055,76 @@ health_monitor_backend::collect_topic_status() {
     }
 
     co_return topics;
+}
+
+namespace {
+// small helper for getting the boot time of the redpanda application
+ss::lowres_clock::time_point get_boot_time() {
+    return rpc::clock_type::now()
+           - std::chrono::duration_cast<std::chrono::seconds>(
+             ss::engine().uptime());
+}
+} // namespace
+
+std::optional<auto_decommission_status>
+health_monitor_backend::collect_auto_decommission_status() {
+    const auto timeout_duration
+      = config::shard_local_cfg()
+          .partition_autobalancing_node_autodecommission_time();
+
+    auto maybe_config_version = _config->get_config();
+    vassert(
+      maybe_config_version,
+      "current implementation of config_i::get_config should never return an "
+      "error");
+    auto config_version = *maybe_config_version;
+    // bounce to static method
+    return do_collect_auto_decommission_status(
+      {.timeout_duration = timeout_duration,
+       .now = rpc::clock_type::now(),
+       .default_last_seen = get_boot_time(),
+       .nodes = _members.local().node_ids(),
+       .node_status_getter = get_node_status_t{[this](model::node_id node_id) {
+           return _node_status_table.local().get_node_status(node_id);
+       }},
+       .current_config_version = config_version});
+}
+
+std::optional<auto_decommission_status>
+health_monitor_backend::do_collect_auto_decommission_status(
+  const do_collect_auto_decommission_status_params& params) {
+    // gather the list of all nodes past the configured auto decom time
+    // package that with the current configuration version s.t. a decision is
+    // guaranteed to be made with the same decom timeout
+
+    auto all_past_last_seen
+      = params.nodes | // get last seen, if missing clock min
+        std::ranges::views::transform(
+          [&params](const model::node_id node) -> node_status {
+              return params.node_status_getter(node).value_or(
+                node_status{
+                  .node_id = node, .last_seen = params.default_last_seen});
+          })
+        | // filter to node statuses that are above timeout duration
+        std::ranges::views::filter([&params](const node_status status) {
+            return params.now - status.last_seen > params.timeout_duration;
+        })
+        | // grab the node ids
+        std::ranges::views::transform(
+          [](const node_status status) { return status.node_id; })
+        | // to vector
+        std::ranges::to<std::vector<model::node_id>>();
+
+    if (all_past_last_seen.empty()) [[likely]] {
+        // the overwhelming majority of the time the list should be empty
+        return std::nullopt;
+    }
+
+    auto_decommission_status status{
+      {.configuration_version = params.current_config_version,
+       .nodes_past_auto_decom_timeout = std::move(all_past_last_seen)}};
+
+    return status;
 }
 
 std::chrono::milliseconds health_monitor_backend::max_metadata_age() {

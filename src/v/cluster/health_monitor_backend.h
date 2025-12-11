@@ -18,6 +18,7 @@
 #include "cluster/node_status_table.h"
 #include "cluster/notification.h"
 #include "features/feature_table.h"
+#include "model/fundamental.h"
 #include "model/metadata.h"
 #include "rpc/fwd.h"
 #include "ssx/semaphore.h"
@@ -168,6 +169,22 @@ private:
     build_node_report(model::node_id, const node_report_filter&);
 
     ss::future<chunked_vector<topic_status>> collect_topic_status();
+
+    // get the status info of all nodes which are past auto decommission timeout
+    std::optional<auto_decommission_status> collect_auto_decommission_status();
+    using get_node_status_t
+      = ss::noncopyable_function<std::optional<node_status>(model::node_id)>;
+    struct do_collect_auto_decommission_status_params {
+        std::chrono::seconds timeout_duration;
+        rpc::clock_type::time_point now;
+        rpc::clock_type::time_point default_last_seen;
+        std::vector<model::node_id> nodes;
+        get_node_status_t node_status_getter;
+        config_version current_config_version;
+    };
+    static std::optional<auto_decommission_status>
+    do_collect_auto_decommission_status(
+      const do_collect_auto_decommission_status_params& params);
 
     result<node_health_report>
       process_node_reply(model::node_id, result<get_node_health_reply>);
