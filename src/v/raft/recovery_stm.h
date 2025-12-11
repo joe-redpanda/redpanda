@@ -109,6 +109,7 @@ private:
     size_t _recovered_bytes_since_flush = 0;
     ss::abort_source _as;
     ss::optimized_optional<ss::abort_source::subscription> _raft_abort_sub;
+    ss::gate _gate;
 };
 
 } // namespace raft

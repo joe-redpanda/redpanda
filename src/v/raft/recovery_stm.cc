@@ -705,29 +705,37 @@ bool recovery_stm::is_recovery_finished() {
 }
 
 ss::future<> recovery_stm::apply() {
+    _gate.check();
     _raft_abort_sub = ssx::subscribe_or_trigger(
       _ptr->_as, [this] mutable noexcept { _as.request_abort(); });
-    return ss::with_gate(
-             _ptr->_bg,
-             [this] {
-                 return recover().then([this] {
-                     return ss::do_until(
-                       [this] { return is_recovery_finished(); },
-                       [this] { return recover(); });
-                 });
-             })
-      .finally([this] {
-          vlog(_ctxlog.trace, "Finished recovery");
-          auto meta = get_follower_meta();
-          if (meta) {
-              meta.value()->is_recovering = false;
-              meta.value()->recovery_finished.broadcast();
-          }
-          if (_snapshot_reader != nullptr) {
-              return close_snapshot_reader();
-          }
-          return ss::now();
-      });
+    ssx::background
+      = ssx::spawn_with_gate_then(
+          _gate,
+          [this] {
+              return recover()
+                .then([this] {
+                    return ss::do_until(
+                      [this] { return is_recovery_finished(); },
+                      [this] { return recover(); });
+                })
+                .finally([this] {
+                    vlog(_ctxlog.trace, "Finished recovery");
+                    auto meta = get_follower_meta();
+                    if (meta) {
+                        meta.value()->is_recovering = false;
+                        meta.value()->recovery_finished.broadcast();
+                    }
+                    if (_snapshot_reader != nullptr) {
+                        return close_snapshot_reader();
+                    }
+                    return ss::now();
+                });
+          })
+          .handle_exception([this](const std::exception_ptr& e) {
+              vlog(_ctxlog.warn, "Ignoring exception during recovery: {}", e);
+          })
+          .finally([holder = _gate.hold()] {});
+    return _gate.close();
 }
 
 std::optional<follower_index_metadata*> recovery_stm::get_follower_meta() {
