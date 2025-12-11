@@ -518,12 +518,26 @@ def search_logs_with_timeout(redpanda, pattern: str, timeout_s: int = 5):
     )
 
 
-def wait_for_recovery_throttle_rate(redpanda, new_rate: int):
+def wait_for_recovery_throttle_rate(
+    redpanda, new_rate: int, await_rehabilitation: bool = True
+):
     # Recovery rate activates in the next coordinator tick, wait for it
     # to happen.
     def wait_for_throttle_update():
         def check_throttle_rate(node):
             try:
+                config = redpanda._admin.get_cluster_config(node, include_defaults=True)
+                current_rate = int(config["raft_learner_recovery_rate"])
+                redpanda.logger.debug(
+                    f"Node {node.name} has recovery throttle rate: {current_rate}, expecting: {new_rate}"
+                )
+                if current_rate != new_rate:
+                    return False
+                if not await_rehabilitation:
+                    # when recovery rate is set to low ongoing recoveries may
+                    # constantly overuse the allowance so that it never reaches
+                    # the set rate
+                    return True
                 metrics = list(redpanda.metrics(node))
                 family = filter(
                     lambda fam: fam.name
@@ -548,7 +562,7 @@ def wait_for_recovery_throttle_rate(redpanda, new_rate: int):
                 )
             except Exception:
                 redpanda.logger.debug(
-                    f"Error getting throttle rate for {node}", exc_info=True
+                    f"Error getting throttle rate for {node.name}", exc_info=True
                 )
                 return False
 
@@ -559,7 +573,7 @@ def wait_for_recovery_throttle_rate(redpanda, new_rate: int):
             n for n in redpanda.started_nodes() if redpanda.node_id(n) in active_brokers
         ]
         assert filtered
-        return all([check_throttle_rate(n) for n in filtered])
+        return all(check_throttle_rate(n) for n in filtered)
 
     wait_until(
         wait_for_throttle_update,
