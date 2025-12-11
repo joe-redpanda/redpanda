@@ -29,6 +29,10 @@
 
 #include <deque>
 
+static const cloud_storage_clients::bucket_name_parts test_bucket{
+  .name = cloud_storage_clients::plain_bucket_name("test-bucket"),
+};
+
 using namespace std::chrono_literals;
 using namespace cloud_storage_clients::tests;
 
@@ -72,20 +76,20 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_blocked_on_another_shard) {
     // deplete own connections
     std::deque<cloud_storage_clients::client_pool::client_lease> leases;
     for (size_t i = 0; i < num_connections_per_shard; i++) {
-        leases.push_back(pool.local().acquire(as).get());
+        leases.push_back(pool.local().acquire(test_bucket, as).get());
     }
 
     vlog(test_log.debug, "borrow connections from others");
     // deplete others connections
     for (size_t i = 0; i < num_connections_per_shard; i++) {
-        leases.push_back(pool.local().acquire(as).get());
+        leases.push_back(pool.local().acquire(test_bucket, as).get());
     }
 
     auto fut = ss::smp::invoke_on_others([&pool] {
         return ss::async([&pool] {
             ss::abort_source local_as;
             vlog(test_log.debug, "acquire extra connection on the other shard");
-            std::ignore = pool.local().acquire(local_as).get();
+            std::ignore = pool.local().acquire(test_bucket, local_as).get();
             vlog(test_log.debug, "connection acquired");
         });
     });
@@ -160,7 +164,8 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_blocked_on_this_shard) {
       .invoke_on_all([&pool](shard_leases& sl) mutable {
           return ss::async([&] {
               for (size_t i = 0; i < num_connections_per_shard; i++) {
-                  sl.leases.push_back(pool.local().acquire(sl.as).get());
+                  sl.leases.push_back(
+                    pool.local().acquire(test_bucket, sl.as).get());
               }
           });
       })
@@ -175,7 +180,7 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_blocked_on_this_shard) {
 
     // Free local resources which should become available to the prevoiusly
     // created future.
-    auto fut = pool.local().acquire(leases.local().as);
+    auto fut = pool.local().acquire(test_bucket, leases.local().as);
     try {
         ss::with_timeout(ss::lowres_clock::now() + 1s, std::move(fut)).get();
     } catch (const ss::timed_out_error&) {
@@ -219,7 +224,7 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_after_leasing_all) {
     // Lease all connections from all the shards.
     for (size_t i = 0; i < ss::smp::count * num_connections_per_shard; i++) {
         leases.local().leases.push_back(
-          pool.local().acquire(leases.local().as).get());
+          pool.local().acquire(test_bucket, leases.local().as).get());
     }
 
     vlog(test_log.debug, "connections depleted");
@@ -238,7 +243,8 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_after_leasing_all) {
         [&pool](shard_leases& sl) {
             return ss::async([&sl, &pool] {
                 for (size_t i = 0; i < num_connections_per_shard; i++) {
-                    sl.leases.push_back(pool.local().acquire(sl.as).get());
+                    sl.leases.push_back(
+                      pool.local().acquire(test_bucket, sl.as).get());
                 }
             });
         })
@@ -246,7 +252,7 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_after_leasing_all) {
 
     vlog(test_log.debug, "done borrowing leases");
 
-    auto pending_acquire = pool.local().acquire(as);
+    auto pending_acquire = pool.local().acquire(test_bucket, as);
     ss::yield().get();
 
     if (pending_acquire.available()) {
