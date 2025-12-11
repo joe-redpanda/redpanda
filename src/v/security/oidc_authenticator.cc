@@ -96,6 +96,7 @@ result<authentication_data> authenticate(
     }
 
     auto jwt = std::move(jwt_res).assume_value();
+    vlog(seclog.debug, "Claims found in JWT: {}", jwt.get_claim_names());
     auto a_res = authenticate(
       jwt, mapping, group_policy, issuer, audience, clock_skew_tolerance, now);
     if (a_res.has_error()) {

@@ -351,6 +351,13 @@ public:
     // https://www.rfc-editor.org/rfc/rfc7519#section-4.1.7
     auto jti() const { return claim("jti"); }
 
+    // Return all claim names in the payload
+    auto get_claim_names() const {
+        return std::views::transform(_payload.GetObject(), [](const auto& m) {
+            return ss::sstring(detail::as_string_view(m.name));
+        });
+    }
+
 private:
     friend std::ostream& operator<<(std::ostream& os, const jwt& jwt) {
         const auto write = [](std::ostream& os, const auto& doc) {
