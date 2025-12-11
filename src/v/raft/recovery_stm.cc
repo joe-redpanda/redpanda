@@ -59,7 +59,7 @@ ss::future<> recovery_stm::recover() {
     auto meta = get_follower_meta();
     if (!meta) {
         // stop recovery when node was removed
-        _stop_requested = true;
+        _as.request_abort();
         return ss::now();
     }
 
@@ -74,7 +74,7 @@ ss::future<> recovery_stm::do_recover() {
     auto meta = get_follower_meta();
     if (!meta) {
         // stop recovery when node was removed
-        _stop_requested = true;
+        _as.request_abort();
         co_return;
     }
 
@@ -125,12 +125,12 @@ ss::future<> recovery_stm::do_recover() {
 
     meta = get_follower_meta();
     if (!meta) {
-        _stop_requested = true;
+        _as.request_abort();
         co_return;
     }
 
     if (is_recovery_finished()) {
-        _stop_requested = true;
+        _as.request_abort();
         co_return;
     }
 
@@ -144,7 +144,7 @@ ss::future<> recovery_stm::do_recover() {
         co_await meta.value()
           ->follower_state_change.wait()
           .handle_exception_type([this](const ss::broken_condition_variable&) {
-              _stop_requested = true;
+              _as.request_abort();
           });
         co_return;
     }
@@ -160,7 +160,7 @@ ss::future<> recovery_stm::do_recover() {
     auto range_size = std::get<1>(*tuple);
 
     if (is_recovery_finished()) {
-        _stop_requested = true;
+        _as.request_abort();
         co_return;
     }
 
@@ -271,7 +271,7 @@ recovery_stm::read_range_for_recovery(
 
         if (gap_filled_batches.empty()) {
             vlog(_ctxlog.trace, "Read no batches for recovery, stopping");
-            _stop_requested = true;
+            _as.request_abort();
             co_return std::nullopt;
         }
         vlog(
@@ -326,7 +326,7 @@ recovery_stm::read_range_for_recovery(
           _ctxlog.error,
           "Timeout reading batches starting from {}. Stopping recovery",
           start_offset);
-        _stop_requested = true;
+        _as.request_abort();
         co_return std::nullopt;
     }
 }
@@ -375,7 +375,7 @@ ss::future<> recovery_stm::send_install_snapshot_request() {
             auto meta = get_follower_meta();
             if (!meta) {
                 // stop recovery when node was removed
-                _stop_requested = true;
+                _as.request_abort();
                 return ss::make_ready_future<>();
             }
             (*meta)->expected_log_end_offset
@@ -418,7 +418,7 @@ ss::future<> recovery_stm::handle_install_snapshot_reply(
     if (reply.has_error() || !reply.value().success) {
         // if snapshot delivery failed, stop recovery to update follower state
         // and retry
-        _stop_requested = true;
+        _as.request_abort();
         return close_snapshot_reader();
     }
     if (reply.value().term > _ptr->_term) {
@@ -435,7 +435,7 @@ ss::future<> recovery_stm::handle_install_snapshot_reply(
     auto meta = get_follower_meta();
     if (!meta) {
         // stop recovery when node was removed
-        _stop_requested = true;
+        _as.request_abort();
         return ss::make_ready_future<>();
     }
 
@@ -463,7 +463,7 @@ ss::future<> recovery_stm::install_snapshot(required_snapshot_type s_type) {
     // we are outside of raft operation lock if snapshot isn't yet ready we
     // have to wait for it till next recovery loop
     if (!_snapshot_reader) {
-        _stop_requested = true;
+        _as.request_abort();
         co_return;
     }
     co_return co_await send_install_snapshot_request();
@@ -500,7 +500,7 @@ recovery_stm::take_on_demand_snapshot(model::offset last_included_offset) {
           "Configuration or term for on demand snapshot offset {} is not "
           "available, stopping recovery",
           last_included_offset);
-        _stop_requested = true;
+        _as.request_abort();
         co_return;
     }
 
@@ -580,7 +580,7 @@ ss::future<> recovery_stm::replicate(
     auto meta = get_follower_meta();
 
     if (!meta) {
-        _stop_requested = true;
+        _as.request_abort();
         return ss::now();
     }
     if (meta.value()->expected_log_end_offset >= _last_batch_offset) {
@@ -592,7 +592,7 @@ ss::future<> recovery_stm::replicate(
           meta.value()->expected_log_end_offset,
           _last_batch_offset);
 
-        _stop_requested = true;
+        _as.request_abort();
         return ss::now();
     }
     /**
@@ -616,7 +616,7 @@ ss::future<> recovery_stm::replicate(
                 _ctxlog.warn,
                 "recovery append entries error: {}",
                 r.error().message());
-              _stop_requested = true;
+              _as.request_abort();
               _ptr->get_probe().recovery_request_error();
           }
           _ptr->process_append_entries_reply(
@@ -624,13 +624,13 @@ ss::future<> recovery_stm::replicate(
           // If follower stats aren't present we have to stop recovery as
           // follower was removed from configuration
           if (!_ptr->_fstates.contains(_node_id)) {
-              _stop_requested = true;
+              _as.request_abort();
               return;
           }
           // If request was reordered we have to stop recovery as follower state
           // is not known
           if (seq < _ptr->_fstates.get(_node_id).last_received_seq) {
-              _stop_requested = true;
+              _as.request_abort();
               return;
           }
           // move the follower next index backward if recovery were not
@@ -643,7 +643,7 @@ ss::future<> recovery_stm::replicate(
           if (r.value().result == reply_result::failure) {
               auto meta = get_follower_meta();
               if (!meta) {
-                  _stop_requested = true;
+                  _as.request_abort();
                   return;
               }
               meta.value()->next_index = std::max(
@@ -690,8 +690,8 @@ bool recovery_stm::is_recovery_finished() {
      *
      */
     if (
-      _as.abort_requested() || _ptr->_bg.is_closed() || _stop_requested
-      || _term != _ptr->term() || !_ptr->is_elected_leader()) {
+      _as.abort_requested() || _ptr->_bg.is_closed() || _term != _ptr->term()
+      || !_ptr->is_elected_leader()) {
         return true;
     }
 

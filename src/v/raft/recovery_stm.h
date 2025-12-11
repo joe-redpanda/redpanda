@@ -105,8 +105,6 @@ private:
     std::unique_ptr<snapshot_reader_t> _snapshot_reader;
     size_t _sent_snapshot_bytes = 0;
     size_t _snapshot_size = 0;
-    // needed to early exit. (node down)
-    bool _stop_requested = false;
     recovery_memory_quota& _memory_quota;
     size_t _recovered_bytes_since_flush = 0;
     ss::abort_source _as;
