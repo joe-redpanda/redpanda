@@ -50,6 +50,7 @@ enum class feature : std::uint64_t {
     shadow_linking = 1ULL << 8U,
     coordinated_compaction = 1ULL << 10U,
     cloud_retention = 1ULL << 11U,
+    group_based_authorization = 1ULL << 12U,
     node_isolation = 1ULL << 19U,
     group_offset_retention = 1ULL << 20U,
     membership_change_controller_cmds = 1ULL << 22U,
@@ -518,6 +519,12 @@ inline constexpr std::array feature_schema{
     release_version::v25_3_1,
     "coordinated_compaction",
     feature::coordinated_compaction,
+    feature_spec::available_policy::always,
+    feature_spec::prepare_policy::always},
+  feature_spec{
+    release_version::v26_1_1,
+    "group_based_authorization",
+    feature::group_based_authorization,
     feature_spec::available_policy::always,
     feature_spec::prepare_policy::always},
 };
