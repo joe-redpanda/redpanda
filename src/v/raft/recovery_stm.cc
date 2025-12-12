@@ -705,47 +705,44 @@ bool recovery_stm::is_recovery_finished() {
 }
 
 ss::future<> recovery_stm::apply() {
-    _gate.check();
-    _raft_abort_sub = ssx::subscribe_or_trigger(
+    auto raft_abort_sub = ssx::subscribe_or_trigger(
       _ptr->_as, [this] mutable noexcept { _as.request_abort(); });
-    ssx::background
-      = ssx::spawn_with_gate_then(_gate, [this] {
-            return _ptr->_leadership_changed
-              .wait(_as, [this] { return term_or_leadership_changed(); })
-              .then([this] {
-                  vlog(_ctxlog.debug, "Leadership changed, aborting recovery");
-                  _as.request_abort();
-              });
-        }).handle_exception([](const std::exception_ptr&) {});
-    ssx::background
-      = ssx::spawn_with_gate_then(
-          _gate,
-          [this] {
-              return recover()
-                .then([this] {
-                    return ss::do_until(
-                      [this] { return is_recovery_finished(); },
-                      [this] { return recover(); });
-                })
-                .finally([this] {
-                    vlog(_ctxlog.trace, "Finished recovery");
-                    _as.request_abort();
-                    auto meta = get_follower_meta();
-                    if (meta) {
-                        meta.value()->is_recovering = false;
-                        meta.value()->recovery_finished.broadcast();
-                    }
-                    if (_snapshot_reader != nullptr) {
-                        return close_snapshot_reader();
-                    }
-                    return ss::now();
-                });
+    auto abort_on_leadership_change_f
+      = _ptr->_leadership_changed
+          .wait(_as, [this] { return term_or_leadership_changed(); })
+          .then([this] {
+              vlog(_ctxlog.debug, "Leadership changed, aborting recovery");
+              _as.request_abort();
+          })
+          .handle_exception([](const std::exception_ptr&) {});
+    auto recovery_f
+      = recover()
+          .then([this] {
+              return ss::do_until(
+                [this] { return is_recovery_finished(); },
+                [this] { return recover(); });
+          })
+          .finally([this] {
+              vlog(_ctxlog.trace, "Finished recovery");
+              _as.request_abort();
+              auto meta = get_follower_meta();
+              if (meta) {
+                  meta.value()->is_recovering = false;
+                  meta.value()->recovery_finished.broadcast();
+              }
+              if (_snapshot_reader != nullptr) {
+                  return close_snapshot_reader();
+              }
+              return ss::now();
           })
           .handle_exception([this](const std::exception_ptr& e) {
+              if (ssx::is_shutdown_exception(e)) {
+                  return;
+              }
               vlog(_ctxlog.warn, "Ignoring exception during recovery: {}", e);
-          })
-          .finally([holder = _gate.hold()] {});
-    return _gate.close();
+          });
+    co_await ss::when_all_succeed(
+      std::move(recovery_f), std::move(abort_on_leadership_change_f));
 }
 
 std::optional<follower_index_metadata*> recovery_stm::get_follower_meta() {
