@@ -4530,13 +4530,47 @@ configuration::configuration()
       "negatively impact performance and stability of the cluster.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       false)
-  , cloud_topics_reconciliation_interval(
+  , cloud_topics_reconciliation_min_interval(
       *this,
-      "cloud_topics_reconciliation_interval",
-      "Time interval after which data is moved from short term storage "
-      "to long term storage.",
+      "cloud_topics_reconciliation_min_interval",
+      "Minimum reconciliation interval for adaptive scheduling. The "
+      "reconciler will not run more frequently than this.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      250ms)
+  , cloud_topics_reconciliation_max_interval(
+      *this,
+      "cloud_topics_reconciliation_max_interval",
+      "Maximum reconciliation interval for adaptive scheduling.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       10s)
+  , cloud_topics_reconciliation_target_fill_ratio(
+      *this,
+      "cloud_topics_reconciliation_target_fill_ratio",
+      "Target fill ratio for L1 objects. The reconciler adapts its interval "
+      "to produce objects at approximately this fill level (0.0 to 1.0).",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      0.8,
+      validate_0_to_1_ratio)
+  , cloud_topics_reconciliation_speedup_blend(
+      *this,
+      "cloud_topics_reconciliation_speedup_blend",
+      "Blend factor for speeding up reconciliation (0.0 to 1.0). Higher "
+      "values mean reconciliation increases its frequency faster when trying "
+      "to find a frequency that produces well-sized objects.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      0.9,
+      validate_0_to_1_ratio)
+  , cloud_topics_reconciliation_slowdown_blend(
+      *this,
+      "cloud_topics_reconciliation_slowdown_blend",
+      "Blend factor for slowing down reconciliation (0.0 to 1.0). Higher "
+      "values mean reconciliation lowers its frequency faster when trying to "
+      "find a frequency that produces well-sized objects. Generally this "
+      "should be lower than the speedup blend, because reconciliation has less "
+      "opportunities to adapt its frequency when it runs less frequently.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      0.4,
+      validate_0_to_1_ratio)
   , cloud_topics_long_term_garbage_collection_interval(
       *this,
       "cloud_topics_long_term_garbage_collection_interval",

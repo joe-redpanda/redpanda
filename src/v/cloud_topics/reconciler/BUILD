@@ -65,11 +65,13 @@ redpanda_cc_library(
         "//src/v/cloud_topics:logger",
         "//src/v/cloud_topics/frontend",
         "//src/v/cloud_topics/level_zero/stm:ctp_stm_api",
+        "//src/v/config",
         "//src/v/kafka/utils:txn_reader",
         "//src/v/utils:retry_chain_node",
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":adaptive_interval",
         ":reconciler_probe",
         ":reconciliation_consumer",
         "//src/v/base",

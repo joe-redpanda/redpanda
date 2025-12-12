@@ -23,6 +23,7 @@
 #include "cloud_topics/reconciler/reconciliation_consumer.h"
 #include "cloud_topics/reconciler/reconciliation_source.h"
 #include "cluster/partition.h"
+#include "config/configuration.h"
 #include "model/fundamental.h"
 #include "ssx/future-util.h"
 #include "utils/retry_chain_node.h"
@@ -58,7 +59,17 @@ void log_error(
 
 reconciler::reconciler(l1::io* l1_io, l1::metastore* metastore)
   : _l1_io(l1_io)
-  , _metastore(metastore) {}
+  , _metastore(metastore)
+  , _scheduler(
+      config::shard_local_cfg().cloud_topics_reconciliation_min_interval.bind(),
+      config::shard_local_cfg().cloud_topics_reconciliation_max_interval.bind(),
+      config::shard_local_cfg()
+        .cloud_topics_reconciliation_target_fill_ratio.bind(),
+      config::shard_local_cfg()
+        .cloud_topics_reconciliation_speedup_blend.bind(),
+      config::shard_local_cfg()
+        .cloud_topics_reconciliation_slowdown_blend.bind(),
+      max_object_size) {}
 
 ss::future<> reconciler::start() {
     _probe.setup_metrics();
@@ -104,10 +115,6 @@ void reconciler::detach(const model::ntp& ntp) {
     }
 }
 
-ss::lowres_clock::duration reconciler::reconciliation_interval() const {
-    return config::shard_local_cfg().cloud_topics_reconciliation_interval();
-}
-
 ss::future<> reconciler::reconciliation_loop() {
     /*
      * Polling is not particularly efficient, and in practice, we'll probably
@@ -118,7 +125,7 @@ ss::future<> reconciler::reconciliation_loop() {
 
     auto deferred = ss::defer(
       [] { vlog(lg.debug, "Reconciliation loop exiting"); });
-    ss::lowres_clock::duration next_wait = reconciliation_interval();
+    ss::lowres_clock::duration next_wait = _scheduler.current_interval();
     while (!_gate.is_closed()) {
         try {
             co_await ss::sleep_abortable(next_wait, _as);
@@ -130,7 +137,8 @@ ss::future<> reconciler::reconciliation_loop() {
         if (config::shard_local_cfg()
               .cloud_topics_disable_reconciliation_loop()) {
             vlog(lg.debug, "Reconciliation loop disabled, skipping iteration");
-            next_wait = reconciliation_interval();
+            next_wait = config::shard_local_cfg()
+                          .cloud_topics_reconciliation_max_interval.value();
             continue;
         }
 
@@ -184,7 +192,6 @@ ss::future<> reconciler::reconciliation_loop() {
          *   except for shutdown
          */
         // clang-format on
-        auto round_start = ss::lowres_clock::now();
         try {
             co_await reconcile();
         } catch (...) {
@@ -196,10 +203,7 @@ ss::future<> reconciler::reconciliation_loop() {
               "Recoverable error during reconciliation: {}",
               std::current_exception());
         }
-        auto round_duration = ss::lowres_clock::now() - round_start;
-        next_wait = std::max(
-          reconciliation_interval() - round_duration,
-          ss::lowres_clock::duration(0));
+        next_wait = _scheduler.current_interval();
     }
 }
 
@@ -322,6 +326,16 @@ ss::future<> reconciler::reconcile() {
         vassert(
           rm_ret.has_value(), "Removing object {} in non-pending state", oid);
     }
+
+    // Adapt scheduling interval based on max object size produced.
+    // Note that we slow down if there's nothing to reconcile or if all
+    // objects failed. This is a sort of retry with backoff mechanism.
+    size_t max_bytes_produced = 0;
+    for (const auto& obj : successful_objects) {
+        max_bytes_produced = std::max(
+          max_bytes_produced, obj.object_info.size_bytes);
+    }
+    _scheduler.adapt(max_bytes_produced);
 
     // Check if we have any successful objects to commit.
     if (successful_objects.empty()) {

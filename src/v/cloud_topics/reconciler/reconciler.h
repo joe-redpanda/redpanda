@@ -15,6 +15,7 @@
 #include "cloud_topics/level_one/common/object.h"
 #include "cloud_topics/level_one/common/object_id.h"
 #include "cloud_topics/level_one/metastore/metastore.h"
+#include "cloud_topics/reconciler/adaptive_interval.h"
 #include "cloud_topics/reconciler/reconciler_probe.h"
 #include "cloud_topics/reconciler/reconciliation_consumer.h"
 #include "cluster/partition.h"
@@ -121,7 +122,9 @@ private:
     chunked_hash_map<model::ntp, ss::shared_ptr<source>> _sources;
 
 private:
-    static constexpr size_t max_object_size = 64_MiB;
+    // Maximum size of an L1 object. With target fill ratio of 0.8, this gives
+    // an effective target object size of 64 MiB.
+    static constexpr size_t max_object_size = 80_MiB;
 
     /*
      * A container for an object in the process of being built.
@@ -172,7 +175,6 @@ private:
 
     // Top-level background worker that drives reconciliation.
     ss::future<> reconciliation_loop();
-    ss::lowres_clock::duration reconciliation_interval() const;
 
     /*
      * Reconcile a set of sources into an object with id `oid`.
@@ -256,6 +258,7 @@ private:
     ss::gate _gate;
     ss::abort_source _as;
     reconciler_probe _probe;
+    adaptive_interval _scheduler;
 };
 
 } // namespace cloud_topics::reconciler
