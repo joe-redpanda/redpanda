@@ -254,7 +254,8 @@ public:
       acl_operation operation,
       const acl_principal& principal,
       const acl_host& host,
-      superuser_required superuser_required) const;
+      superuser_required superuser_required,
+      const chunked_vector<acl_principal>& groups) const;
 
     ss::future<chunked_vector<acl_binding>> all_bindings() const;
     ss::future<> reset_bindings(const chunked_vector<acl_binding>& bindings);
@@ -269,7 +270,8 @@ private:
       acl_operation operation,
       const acl_principal& principal,
       const acl_host& host,
-      superuser_required superuser_required) const;
+      superuser_required superuser_required,
+      const chunked_vector<acl_principal>& groups) const;
 
     /*
      * Compute whether the specified operation is allowed based on the implied

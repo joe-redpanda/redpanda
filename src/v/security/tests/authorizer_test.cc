@@ -126,7 +126,8 @@ TEST(AUTHORIZER_TEST, authz_empty_resource_name) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no));
+      security::superuser_required::no,
+      {}));
 
     acl_entry acl(
       acl_wildcard_user,
@@ -145,7 +146,8 @@ TEST(AUTHORIZER_TEST, authz_empty_resource_name) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(result.authorized);
     ASSERT_EQ(result.acl, acl);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -185,7 +187,8 @@ TEST(AUTHORIZER_TEST, authz_deny_applies_first) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_FALSE(result.authorized);
     ASSERT_EQ(result.acl, deny);
@@ -221,7 +224,8 @@ TEST(AUTHORIZER_TEST, authz_allow_all) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(result.authorized);
     ASSERT_EQ(result.acl, acl);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -260,7 +264,8 @@ TEST(AUTHORIZER_TEST, authz_super_user_allow) {
       acl_operation::read,
       user1,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_FALSE(result.authorized);
     ASSERT_EQ(result.acl, acl);
@@ -277,7 +282,8 @@ TEST(AUTHORIZER_TEST, authz_super_user_allow) {
       acl_operation::read,
       user2,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_FALSE(result.authorized);
     ASSERT_EQ(result.acl, acl);
@@ -297,7 +303,8 @@ TEST(AUTHORIZER_TEST, authz_super_user_allow) {
       acl_operation::read,
       user1,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_TRUE(result.authorized);
     ASSERT_FALSE(result.acl.has_value());
@@ -314,7 +321,8 @@ TEST(AUTHORIZER_TEST, authz_super_user_allow) {
       acl_operation::read,
       user2,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_TRUE(result.authorized);
     ASSERT_FALSE(result.acl.has_value());
@@ -334,7 +342,8 @@ TEST(AUTHORIZER_TEST, authz_super_user_allow) {
       acl_operation::read,
       user1,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_FALSE(result.authorized);
     ASSERT_EQ(result.acl, acl);
@@ -351,7 +360,8 @@ TEST(AUTHORIZER_TEST, authz_super_user_allow) {
       acl_operation::read,
       user2,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_TRUE(result.authorized);
     ASSERT_FALSE(result.acl.has_value());
@@ -375,7 +385,8 @@ TEST(AUTHORIZER_TEST, authz_wildcards) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_FALSE(result.authorized);
     ASSERT_FALSE(result.acl.has_value());
@@ -404,7 +415,8 @@ TEST(AUTHORIZER_TEST, authz_wildcards) {
       acl_operation::read,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_TRUE(result.authorized);
     ASSERT_EQ(result.acl, read_acl);
@@ -437,7 +449,8 @@ TEST(AUTHORIZER_TEST, authz_wildcards) {
       acl_operation::write,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result.authorized);
     ASSERT_EQ(result.acl, deny_write_acl);
     ASSERT_EQ(result.resource_pattern, wildcard_resource);
@@ -460,7 +473,8 @@ TEST(AUTHORIZER_TEST, authz_no_acls_deny) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_FALSE(result.authorized);
     ASSERT_FALSE(result.acl.has_value());
@@ -484,7 +498,8 @@ TEST(AUTHORIZER_TEST, authz_no_acls_allow) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_TRUE(result.authorized);
     ASSERT_FALSE(result.acl.has_value());
@@ -540,7 +555,8 @@ static void do_implied_acls(
               test_op,
               user,
               host,
-              security::superuser_required::no);
+              security::superuser_required::no,
+              {});
             if (allowed.contains(test_op) || test_op == op) {
                 ASSERT_TRUE(ok.authorized);
                 ASSERT_EQ(ok.acl, acl);
@@ -608,7 +624,8 @@ static void do_implied_acls(
               test_op,
               user,
               host,
-              security::superuser_required::no);
+              security::superuser_required::no,
+              {});
             if (denied.contains(test_op) || test_op == op) {
                 ASSERT_FALSE(ok.authorized);
                 ASSERT_EQ(ok.acl, deny);
@@ -694,7 +711,8 @@ TEST(AUTHORIZER_TEST, authz_allow_for_all_wildcard_resource) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_TRUE(result.authorized);
     ASSERT_EQ(result.acl, acl);
@@ -767,7 +785,8 @@ TEST(AUTHORIZER_TEST, authz_allow_for_all_prefixed_resource) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_TRUE(result.authorized);
     ASSERT_EQ(result.acl, acl);
@@ -943,7 +962,8 @@ TEST(AUTHORIZER_TEST, authz_auth_prefix_resource) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result.authorized);
     ASSERT_FALSE(result.acl.has_value());
     ASSERT_FALSE(result.resource_pattern.has_value());
@@ -963,7 +983,8 @@ TEST(AUTHORIZER_TEST, authz_auth_prefix_resource) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     ASSERT_TRUE(result.authorized);
     ASSERT_EQ(result.acl, allow_read_acl);
@@ -992,7 +1013,8 @@ TEST(AUTHORIZER_TEST, authz_single_char) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, allow_read_acl);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1002,7 +1024,8 @@ TEST(AUTHORIZER_TEST, authz_single_char) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result);
     ASSERT_FALSE(result.acl.has_value());
     ASSERT_FALSE(result.resource_pattern.has_value());
@@ -1018,7 +1041,8 @@ TEST(AUTHORIZER_TEST, authz_single_char) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, allow_read_acl);
     ASSERT_EQ(result.resource_pattern, resource1);
@@ -1028,7 +1052,8 @@ TEST(AUTHORIZER_TEST, authz_single_char) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, allow_read_acl);
     ASSERT_EQ(result.resource_pattern, resource1);
@@ -1038,7 +1063,8 @@ TEST(AUTHORIZER_TEST, authz_single_char) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result);
     ASSERT_FALSE(result.acl.has_value());
     ASSERT_FALSE(result.resource_pattern.has_value());
@@ -1203,7 +1229,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::read,
       user1,
       host2,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, acl2);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1213,7 +1240,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::read,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result);
     ASSERT_EQ(result.acl, acl3);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1223,7 +1251,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::write,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, acl4);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1233,7 +1262,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::write,
       user1,
       host2,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result);
     ASSERT_FALSE(result.acl.has_value());
     ASSERT_FALSE(result.resource_pattern.has_value());
@@ -1243,7 +1273,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::describe,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, acl5);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1253,7 +1284,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::describe,
       user1,
       host2,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, acl5);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1263,7 +1295,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::alter,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result);
     ASSERT_FALSE(result.acl.has_value());
     ASSERT_FALSE(result.resource_pattern.has_value());
@@ -1273,7 +1306,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::alter,
       user1,
       host2,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result);
     ASSERT_FALSE(result.acl.has_value());
     ASSERT_FALSE(result.resource_pattern.has_value());
@@ -1283,7 +1317,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::describe,
       user2,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, acl6);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1293,7 +1328,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::describe,
       user3,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, acl7);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1303,7 +1339,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::read,
       user2,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, acl6);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1313,7 +1350,8 @@ TEST(AUTHORIZER_TEST, authz_topic_acl) {
       acl_operation::write,
       user3,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(bool(result));
     ASSERT_EQ(result.acl, acl7);
     ASSERT_EQ(result.resource_pattern, resource);
@@ -1340,13 +1378,15 @@ TEST(AUTHORIZER_TEST, authz_topic_group_same_name) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no));
+      security::superuser_required::no,
+      {}));
     ASSERT_FALSE(auth.authorized(
       kafka::group_id("topic-foo-xxx"),
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no));
+      security::superuser_required::no,
+      {}));
 }
 
 TEST(AUTHORIZER_TEST, role_authz_principal_view) {
@@ -1423,7 +1463,8 @@ TEST(AUTHORIZER_TEST, role_authz_simple_allow) {
       acl_operation::read,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     EXPECT_FALSE(bool(result));
     EXPECT_FALSE(result.acl.has_value());
     EXPECT_FALSE(result.resource_pattern.has_value());
@@ -1439,7 +1480,8 @@ TEST(AUTHORIZER_TEST, role_authz_simple_allow) {
           acl_operation::read,
           user,
           host1,
-          security::superuser_required::no);
+          security::superuser_required::no,
+          {});
         EXPECT_TRUE(bool(result));
         EXPECT_EQ(result.acl, acl1);
         EXPECT_EQ(result.resource_pattern, resource);
@@ -1452,7 +1494,8 @@ TEST(AUTHORIZER_TEST, role_authz_simple_allow) {
       acl_operation::read,
       user3,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     EXPECT_FALSE(bool(result));
     EXPECT_FALSE(result.acl.has_value());
     EXPECT_FALSE(result.resource_pattern.has_value());
@@ -1464,7 +1507,8 @@ TEST(AUTHORIZER_TEST, role_authz_simple_allow) {
       acl_operation::write,
       user4,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     EXPECT_TRUE(bool(result));
     EXPECT_EQ(result.acl, acl3);
     EXPECT_EQ(result.resource_pattern, resource);
@@ -1477,7 +1521,8 @@ TEST(AUTHORIZER_TEST, role_authz_simple_allow) {
           acl_operation::write,
           user,
           host1,
-          security::superuser_required::no);
+          security::superuser_required::no,
+          {});
         EXPECT_FALSE(bool(result));
         EXPECT_FALSE(result.acl.has_value());
         EXPECT_FALSE(result.resource_pattern.has_value());
@@ -1500,7 +1545,8 @@ TEST(AUTHORIZER_TEST, role_authz_simple_allow) {
       acl_operation::read,
       user3,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     EXPECT_TRUE(bool(result));
     EXPECT_EQ(result.acl, acl1);
     EXPECT_EQ(result.resource_pattern, resource);
@@ -1541,7 +1587,12 @@ TEST(AUTHORIZER_TEST, role_authz_user_deny_applies_first) {
     for (auto op :
          {acl_operation::read, acl_operation::write, acl_operation::describe}) {
         auto result = auth.authorized(
-          default_topic, op, user1, host1, security::superuser_required::no);
+          default_topic,
+          op,
+          user1,
+          host1,
+          security::superuser_required::no,
+          {});
         EXPECT_FALSE(bool(result));
         if (op == acl_operation::write) {
             EXPECT_EQ(result.acl, deny_user);
@@ -1565,7 +1616,12 @@ TEST(AUTHORIZER_TEST, role_authz_user_deny_applies_first) {
     for (auto op :
          {acl_operation::read, acl_operation::write, acl_operation::describe}) {
         auto result = auth.authorized(
-          default_topic, op, user1, host1, security::superuser_required::no);
+          default_topic,
+          op,
+          user1,
+          host1,
+          security::superuser_required::no,
+          {});
         if (op == acl_operation::write) {
             EXPECT_FALSE(bool(result));
             EXPECT_EQ(result.acl, deny_user);
@@ -1614,7 +1670,12 @@ TEST(AUTHORIZER_TEST, role_authz_role_deny_applies_first) {
     for (auto op :
          {acl_operation::read, acl_operation::write, acl_operation::describe}) {
         auto result = auth.authorized(
-          default_topic, op, user1, host1, security::superuser_required::no);
+          default_topic,
+          op,
+          user1,
+          host1,
+          security::superuser_required::no,
+          {});
         EXPECT_TRUE(bool(result));
         EXPECT_EQ(result.acl, allow_user);
         EXPECT_EQ(result.resource_pattern, resource);
@@ -1634,7 +1695,12 @@ TEST(AUTHORIZER_TEST, role_authz_role_deny_applies_first) {
     for (auto op :
          {acl_operation::read, acl_operation::write, acl_operation::describe}) {
         auto result = auth.authorized(
-          default_topic, op, user1, host1, security::superuser_required::no);
+          default_topic,
+          op,
+          user1,
+          host1,
+          security::superuser_required::no,
+          {});
         if (op == acl_operation::write) {
             EXPECT_FALSE(bool(result));
             EXPECT_EQ(result.acl, deny_role);
@@ -1721,7 +1787,8 @@ TEST(AUTHORIZER_TEST, role_authz_wildcard_no_auth) {
       acl_operation::write,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     EXPECT_FALSE(result.authorized);
 }
@@ -1766,7 +1833,8 @@ TEST(AUTHORIZER_TEST, role_authz_user_same_name) {
       acl_operation::read,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     EXPECT_TRUE(result.authorized);
     EXPECT_EQ(result.acl, allow_user);
     EXPECT_EQ(result.principal, user1);
@@ -1776,7 +1844,8 @@ TEST(AUTHORIZER_TEST, role_authz_user_same_name) {
       acl_operation::read,
       user2,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     EXPECT_FALSE(result.authorized);
     EXPECT_FALSE(result.acl.has_value());
     EXPECT_EQ(result.principal, user2);
@@ -1791,7 +1860,8 @@ TEST(AUTHORIZER_TEST, role_authz_user_same_name) {
       acl_operation::read,
       user1,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     EXPECT_TRUE(result.authorized);
     EXPECT_EQ(result.acl, allow_user);
     EXPECT_EQ(result.principal, user1);
@@ -1801,7 +1871,8 @@ TEST(AUTHORIZER_TEST, role_authz_user_same_name) {
       acl_operation::read,
       user2,
       host1,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     EXPECT_FALSE(result.authorized);
     EXPECT_EQ(result.acl, deny_role);
     EXPECT_EQ(result.principal, user2);
@@ -1883,7 +1954,8 @@ TEST(AUTHORIZER_TEST, authz_filter_out_non_kafka_resources) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(result.is_authorized());
 
     auto kafka_acls = get_acls(auth, acl_binding_filter::any());
@@ -1901,7 +1973,8 @@ TEST(AUTHORIZER_TEST, authz_filter_out_non_kafka_resources) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(result.is_authorized());
 
     // Check read implies describe
@@ -1910,7 +1983,8 @@ TEST(AUTHORIZER_TEST, authz_filter_out_non_kafka_resources) {
       acl_operation::describe,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(result.is_authorized());
 
     // Check read does not imply write
@@ -1919,7 +1993,8 @@ TEST(AUTHORIZER_TEST, authz_filter_out_non_kafka_resources) {
       acl_operation::write,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result.is_authorized());
 
     // Check global resource
@@ -1928,7 +2003,8 @@ TEST(AUTHORIZER_TEST, authz_filter_out_non_kafka_resources) {
       acl_operation::describe,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_TRUE(result.is_authorized());
 
     // Check that describe does not imply read
@@ -1937,7 +2013,8 @@ TEST(AUTHORIZER_TEST, authz_filter_out_non_kafka_resources) {
       acl_operation::read,
       user,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
     ASSERT_FALSE(result.is_authorized());
 }
 
@@ -1968,7 +2045,8 @@ TEST(AUTHORIZER_TEST, authz_superuser_required) {
       acl_operation::read,
       normaluser,
       host,
-      security::superuser_required::no);
+      security::superuser_required::no,
+      {});
 
     // Verify that the normal user is authorized still
     EXPECT_TRUE(result.is_authorized());
@@ -1979,7 +2057,8 @@ TEST(AUTHORIZER_TEST, authz_superuser_required) {
       acl_operation::read,
       normaluser,
       host,
-      security::superuser_required::yes);
+      security::superuser_required::yes,
+      {});
     EXPECT_FALSE(result.is_authorized());
     EXPECT_TRUE(result.required_superuser);
 
@@ -1988,7 +2067,8 @@ TEST(AUTHORIZER_TEST, authz_superuser_required) {
       acl_operation::read,
       superuser,
       host,
-      security::superuser_required::yes);
+      security::superuser_required::yes,
+      {});
     EXPECT_TRUE(result.is_authorized());
     EXPECT_TRUE(result.is_superuser);
 }

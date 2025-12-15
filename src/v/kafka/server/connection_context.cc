@@ -312,7 +312,7 @@ security::auth_result connection_context::authorized_user(
   const T& name,
   authz_quiet quiet,
   superuser_required superuser_required,
-  const chunked_vector<security::acl_principal>&) {
+  const chunked_vector<security::acl_principal>& groups) {
     auto authorized = _server.authorizer().authorized(
       name,
       operation,
@@ -320,7 +320,8 @@ security::auth_result connection_context::authorized_user(
       security::acl_host(_client_addr),
       security::superuser_required{
         superuser_required ? security::superuser_required::yes
-                           : security::superuser_required::no});
+                           : security::superuser_required::no},
+      groups);
 
     if (!authorized) {
         if (_sasl) {
