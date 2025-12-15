@@ -43,6 +43,7 @@ redpanda_cc_library(
         "//src/v/config",
         "//src/v/container:chunked_vector",
         "//src/v/container:intrusive",
+        "//src/v/crash_tracker",
         "//src/v/hashing:secure",
         "//src/v/http",
         "//src/v/http:utils",
