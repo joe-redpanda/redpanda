@@ -817,6 +817,10 @@ public:
     property<std::chrono::milliseconds> cloud_topics_reconciliation_interval;
     property<std::chrono::milliseconds>
       cloud_topics_long_term_garbage_collection_interval;
+    property<std::chrono::milliseconds>
+      cloud_topics_epoch_service_epoch_increment_interval;
+    property<std::chrono::milliseconds>
+      cloud_topics_epoch_service_local_epoch_cache_duration;
 
     development_feature_property<int> development_feature_property_testing_only;
 
