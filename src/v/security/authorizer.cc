@@ -184,7 +184,7 @@ auth_result authorizer::do_authorized(
   const acl_principal& principal,
   const acl_host& host,
   superuser_required superuser_required,
-  const chunked_vector<acl_principal>&) const {
+  const chunked_vector<acl_principal>& groups) const {
     auto type = get_resource_type<T>();
     auto acls = store().find(type, resource_name());
 
@@ -225,6 +225,11 @@ auth_result authorizer::do_authorized(
         append_roles(principal);
     }
 
+    std::ranges::for_each(groups, [&effective_principals](const auto& g) {
+        effective_principals.emplace_back(g);
+        // TODO(gbac) Call append_roles for groups
+    });
+
     auto check_access =
       [this, &acls, &operation, &host, &resource_name](
         acl_permission perm,
@@ -249,11 +254,20 @@ auth_result authorizer::do_authorized(
             return auth_result::acl_match(
               user, host, operation, resource_name, is_allow, *entry);
         case principal_type::role:
-        // TODO(GBAC) - CORE-14896
-        case principal_type::group:
             return auth_result::role_acl_match(
               user,
               security::role_name{check_principal.name_view()},
+              host,
+              operation,
+              resource_name,
+              is_allow,
+              *entry);
+        case principal_type::group:
+            return auth_result::group_acl_match(
+              user,
+              acl_principal{
+                check_principal.type(),
+                ss::sstring{check_principal.name_view()}},
               host,
               operation,
               resource_name,
