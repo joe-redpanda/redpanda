@@ -56,7 +56,7 @@ class CloudTopicsL0GCTest(RedpandaTest):
             )
 
     @cluster(num_nodes=4)
-    @matrix(cloud_storage_type=[get_cloud_storage_type()[1]])
+    @matrix(cloud_storage_type=get_cloud_storage_type())
     def test_l0_gc(self, cloud_storage_type: CloudStorageType):
         self.topics = [TopicSpec(partition_count=2)]
         self.__create_topics(self.topics)
