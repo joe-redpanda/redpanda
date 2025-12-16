@@ -12,6 +12,7 @@
 
 #include "base/vlog.h"
 #include "cluster/cluster_utils.h"
+#include "cluster/health_monitor_types.h"
 #include "cluster/logger.h"
 #include "cluster/members_table.h"
 #include "cluster/node_status_table.h"
@@ -23,6 +24,8 @@
 #include "cluster/scheduling/types.h"
 #include "cluster/types.h"
 #include "container/chunked_hash_map.h"
+#include "model/fundamental.h"
+#include "model/metadata.h"
 #include "model/namespace.h"
 #include "random/generators.h"
 #include "ssx/sformat.h"
@@ -33,6 +36,8 @@
 
 #include <functional>
 #include <optional>
+#include <ranges>
+#include <unordered_map>
 
 namespace cluster {
 
@@ -109,6 +114,7 @@ public:
     absl::flat_hash_set<model::node_id> all_unavailable_nodes;
     absl::flat_hash_set<model::node_id> timed_out_unavailable_nodes;
     absl::flat_hash_set<model::node_id> decommissioning_nodes;
+    absl::flat_hash_set<model::node_id> maintenance_mode_nodes;
     absl::flat_hash_map<model::node_id, node_disk_space> node_disk_reports;
 
     ss::future<> for_each_partition(
@@ -326,6 +332,7 @@ void partition_balancer_planner::init_per_node_state(
   request_context& ctx,
   plan_data& result) {
     const auto now = rpc::clock_type::now();
+
     for (const auto& [id, broker] : _state.members().nodes()) {
         if (
           broker.state.get_membership_state()
@@ -341,6 +348,13 @@ void partition_balancer_planner::init_per_node_state(
             vlog(clusterlog.debug, "node {}: decommissioning", id);
             ctx.decommissioning_nodes.insert(id);
         }
+
+        if (
+          broker.state.get_maintenance_state()
+          == model::maintenance_state::active) {
+            ctx.maintenance_mode_nodes.insert(id);
+        }
+
         auto node_status = _state.node_status().get_node_status(id);
         // node status is not yet available, wait for it to be updated
         if (!node_status) {
@@ -380,13 +394,6 @@ void partition_balancer_planner::init_per_node_state(
                   model::timestamp_clock::now()
                   - std::chrono::duration_cast<
                     model::timestamp_clock::duration>(time_since_last_seen));
-
-                // get all nodes which are unresponsive enough to decom
-                if (time_since_last_seen > _config.decommission_timeout) {
-                    if (!ctx.decommissioning_nodes.contains(id)) {
-                        ctx._nodes_to_be_decommed.insert(id);
-                    }
-                }
 
                 result.violations.unavailable_nodes.emplace_back(
                   id, unavailable_since);
@@ -2149,6 +2156,124 @@ partition_balancer_planner::get_force_repair_actions(request_context& ctx) {
     }
 }
 
+absl::flat_hash_set<model::node_id>
+partition_balancer_planner::do_get_auto_decommission_actions(
+  const do_get_auto_decommission_actions_params& params) noexcept {
+    // rule: a quorum of nodes in the cluster must vote that a node has passed
+    // the current auto decommission timeout
+    size_t quorum = params.cluster_members.size() / 2 + 1;
+
+    // given a map from the health report on node_id -> decom_report, filter to
+    // 1. only cluster members
+    // 2. only reports that have a value
+    // 3. only reports that have the current configuration version
+    //    - this checks that we are working with the current decommission
+    //      timeout
+    auto decom_reports
+      = params.node_to_decom
+        | std::ranges::views::filter(
+          [&params](const auto& node_and_decom_report) {
+              return
+                // only cluster members
+                params.cluster_members.contains(node_and_decom_report.first)
+                // only reports with values
+                && node_and_decom_report.second.get().has_value()
+                // only reports with the current configuration version
+                && node_and_decom_report.second.get()
+                       .value()
+                       .configuration_version
+                     == params.current_config;
+          })
+        | // quick type convert from ptr<optional<T>> -> ref_wrapper<T>
+        std::ranges::views::transform(
+          [](const auto& node_and_decom_report)
+            -> std::reference_wrapper<const auto_decommission_status> {
+              return node_and_decom_report.second.get().value();
+          })
+        | std::ranges::to<std::vector<
+          std::reference_wrapper<const auto_decommission_status>>>();
+
+    if (decom_reports.size() < quorum) {
+        // not enough health reports to continue
+        return {};
+    }
+
+    // bin the filtered reports on decom vote count by node_id
+    std::unordered_map<model::node_id, uint16_t> node_to_decom_vote_counts{};
+    for (const auto& decom_report : decom_reports) {
+        for (const model::node_id candidate_node :
+             decom_report.get().nodes_past_auto_decom_timeout) {
+            node_to_decom_vote_counts[candidate_node] += 1;
+        }
+    }
+
+    // filter out invalid choices which are
+    // 1. nodes without enough votes
+    // 2. nodes that are already decommissioning
+    // 3. nodes that are in maintanence mode
+    //    - if a customer has to take a node down for over the auto decom
+    //      timeout and doesn't want it ejected from the cluster, they should
+    //      put it in maintanence mode
+    auto nodes_to_decommission
+      = node_to_decom_vote_counts | // filter invalid choices
+        std::ranges::views::filter(
+          [quorum, &params](const auto& node_and_count) {
+              const auto& [node_id, decom_vote_count] = node_and_count;
+              return
+                // no nodes with less than a quorum of votes
+                decom_vote_count >= quorum
+                // no nodes that are already decommissioning
+                && !params.decommissioning_nodes.contains(node_id)
+                // no nodes in maintenance_mode
+                && !params.maintenance_mode_nodes.contains(node_id);
+          })
+        | // shave it down to only node id
+        std::ranges::views::transform(
+          [](const auto& node_and_count) { return node_and_count.first; })
+        | std::ranges::to<absl::flat_hash_set<model::node_id>>();
+
+    return nodes_to_decommission;
+}
+
+void partition_balancer_planner::get_auto_decommission_actions(
+  request_context& ctx, const cluster_health_report& health_report) {
+    absl::flat_hash_set<model::node_id> member_nodes{};
+    for (auto node : ctx.all_nodes) {
+        member_nodes.insert(node);
+    }
+
+    auto_decom_ref_map node_to_decom{};
+    for (const auto& report : health_report.node_reports) {
+        vlog(
+          clusterlog.debug,
+          "auto decom report from node: {}, with decom status: {}",
+          report->id,
+          report->maybe_auto_decommission_status);
+        node_to_decom.emplace(
+          report->id, report->maybe_auto_decommission_status);
+    }
+
+    ctx._nodes_to_be_decommed = do_get_auto_decommission_actions(
+      {.node_to_decom = node_to_decom,
+       .cluster_members = member_nodes,
+       .decommissioning_nodes = ctx.decommissioning_nodes,
+       .maintenance_mode_nodes = ctx.maintenance_mode_nodes,
+       .current_config = ctx.state().get_config_version()});
+
+    if (ctx._nodes_to_be_decommed.empty()) {
+        vlog(clusterlog.debug, "no auto decommission actions found");
+        return;
+    }
+
+    ss::sstring auto_decommission_log_line
+      = "found nodes to auto decommission: ";
+    for (auto node_id : ctx._nodes_to_be_decommed) {
+        auto_decommission_log_line += fmt::format("{}, ", node_id);
+    }
+
+    vlog(clusterlog.info, "{}", auto_decommission_log_line);
+}
+
 void partition_balancer_planner::request_context::collect_actions(
   partition_balancer_planner::plan_data& result) {
     result.reassignments.reserve(_reassignments.size());
@@ -2206,12 +2331,18 @@ partition_balancer_planner::plan_actions(
         co_return result;
     }
 
+    if (ctx.config().mode == model::partition_autobalancing_mode::continuous) {
+        get_auto_decommission_actions(ctx, health_report);
+    }
+
+    // early exit if theres nothing to be done
     if (
       result.violations.is_empty() && ctx.decommissioning_nodes.empty()
       && _state.ntps_with_broken_rack_constraint().empty()
       && _state.nodes_to_rebalance().empty()
       && _state.topics().partitions_to_force_recover().empty()
-      && !_config.ondemand_rebalance_requested) {
+      && !_config.ondemand_rebalance_requested
+      && ctx._nodes_to_be_decommed.empty()) {
         result.status = status::empty;
         co_return result;
     }
@@ -2229,8 +2360,6 @@ partition_balancer_planner::plan_actions(
           change_reason::node_unavailable);
         co_await get_full_node_actions(ctx);
         co_await get_rack_constraint_repair_actions(ctx);
-        // get node decommission actions is already part of
-        // init_per_node_state
     }
     co_await get_counts_rebalancing_actions(ctx);
     co_await get_force_repair_actions(ctx);

@@ -91,6 +91,8 @@ public:
 
     ss::future<> apply_snapshot(const controller_snapshot&);
 
+    config_version get_config_version() const;
+
 private:
     struct probe {
         explicit probe(const partition_balancer_state&);

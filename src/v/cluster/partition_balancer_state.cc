@@ -165,4 +165,16 @@ void partition_balancer_state::probe::setup_metrics(
       });
 }
 
+config_version partition_balancer_state::get_config_version() const {
+    auto maybe_config = _config->get_config();
+    if (!maybe_config) {
+        vlog(
+          clusterlog.error,
+          "failed to get config version with error: {}",
+          maybe_config.error());
+    }
+    vassert(maybe_config, "config version should not return an error");
+    return *maybe_config;
+}
+
 } // namespace cluster
