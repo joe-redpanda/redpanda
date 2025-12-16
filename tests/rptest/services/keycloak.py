@@ -176,6 +176,28 @@ class KeycloakAdminClient:
             self.logger.debug("Creating group mapper")
             self.kc_admin.add_mapper_to_client(id, mapper_representation)
 
+    def create_group(
+        self,
+        group_name: str,
+        parent: str | None = None,
+        skip_exists: bool = True,
+        **kwargs,
+    ) -> str:
+        self.logger.debug(f"Creating group named {group_name}")
+        payload = {"name": group_name}
+        payload.update(kwargs)
+
+        group_id = self.kc_admin.create_group(
+            payload=payload, parent=parent, skip_exists=skip_exists
+        )
+
+        if group_id is None:
+            if not skip_exists:
+                raise RuntimeError(f"Failed to create group named {group_name}")
+            group_id = self.kc_admin.get_groups({"name": group_name})[0]["id"]
+
+        return group_id
+
     def generate_client_secret(self, client_id):
         id = self.kc_admin.get_client_id(client_id)
         assert id is not None, f"Client {client_id} not found"
