@@ -171,7 +171,9 @@ public:
         return _bg_gate.get_count() > 0;
     }
 
-    bool has_waiters() const noexcept { return _cvar.has_waiters(); }
+    bool has_waiters() const noexcept {
+        return _cvar.has_waiters() || _pool_ready_barrier.waiters() > 0;
+    }
 
 private:
     ss::future<> client_self_configure(

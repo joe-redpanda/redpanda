@@ -53,6 +53,7 @@ redpanda_cc_library(
         "//src/v/net",
         "//src/v/net:tls",
         "//src/v/net:types",
+        "//src/v/ssx:abort_source",
         "//src/v/ssx:future_util",
         "//src/v/ssx:sformat",
         "//src/v/ssx:watchdog",

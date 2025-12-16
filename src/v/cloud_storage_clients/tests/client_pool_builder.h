@@ -69,6 +69,12 @@ public:
         return copy;
     }
 
+    client_pool_builder skip_start(bool skip) const {
+        auto copy = *this;
+        copy.skip_start_ = skip;
+        return copy;
+    }
+
     ss::future<client_pool_stop_guard>
     build(ss::sharded<cloud_storage_clients::client_pool>& pool) && {
         co_await pool.start(
@@ -76,8 +82,10 @@ public:
 
         std::exception_ptr e;
         try {
-            co_await pool.invoke_on_all(
-              &cloud_storage_clients::client_pool::start, std::nullopt);
+            if (!skip_start_) {
+                co_await pool.invoke_on_all(
+                  &cloud_storage_clients::client_pool::start, std::nullopt);
+            }
         } catch (...) {
             e = std::current_exception();
         }
@@ -93,6 +101,7 @@ private:
     size_t num_connections_{10};
     cloud_storage_clients::client_pool_overdraft_policy overdraft_policy_{
       cloud_storage_clients::client_pool_overdraft_policy::wait_if_empty};
+    bool skip_start_{false};
 };
 
 }; // namespace cloud_storage_clients::tests

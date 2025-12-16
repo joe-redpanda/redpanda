@@ -200,3 +200,40 @@ SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_timeout) {
           ss::timed_out_error);
     }
 }
+
+SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_self_configure_deadline) {
+    // Test that acquire times out within the specified deadline while waiting
+    // for self-configuration to complete.
+    ss::sharded<cloud_storage_clients::client_pool> pool;
+    auto stop_guard = test_pool_builder.skip_start(true).build(pool).get();
+
+    ss::abort_source as;
+    auto f = pool.local().acquire(as, ss::lowres_clock::now() - 100ms);
+
+    ss::with_timeout(
+      ss::lowres_clock::now() + 1s,
+      [&]() {
+          BOOST_REQUIRE_THROW(f.get(), ss::timed_out_error);
+
+          return ss::now();
+      }())
+      .get();
+}
+
+SEASTAR_THREAD_TEST_CASE(test_client_pool_acquire_self_configure_abortable) {
+    // Test that acquire can be aborted while waiting for self-configuration to
+    // complete.
+    ss::sharded<cloud_storage_clients::client_pool> pool;
+    auto stop_guard = test_pool_builder.skip_start(true).build(pool).get();
+
+    ss::abort_source as;
+    auto f = pool.local().acquire(as);
+
+    while (!pool.local().has_waiters()) {
+        ss::yield().get();
+    }
+
+    as.request_abort();
+
+    BOOST_REQUIRE_THROW(f.get(), ss::abort_requested_exception);
+}
