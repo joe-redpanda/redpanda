@@ -12,13 +12,17 @@
 
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_set.h"
+#include "cluster/config/config_i.h"
 #include "cluster/fwd.h"
+#include "cluster/types.h"
 #include "metrics/metrics.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"
 #include "utils/stable_iterator_adaptor.h"
 
 #include <seastar/core/sharded.hh>
+
+#include <memory>
 
 namespace cluster {
 
@@ -31,7 +35,8 @@ public:
       ss::sharded<topic_table>&,
       ss::sharded<members_table>&,
       ss::sharded<partition_allocator>&,
-      ss::sharded<node_status_table>&);
+      ss::sharded<node_status_table>&,
+      std::unique_ptr<config_i>);
 
     topic_table& topics() const { return _topic_table; }
 
@@ -102,6 +107,7 @@ private:
     members_table& _members_table;
     partition_allocator& _partition_allocator;
     node_status_table& _node_status;
+    std::unique_ptr<config_i> _config;
     absl::btree_set<model::ntp> _ntps_with_broken_rack_constraint;
     // revision increment to be paired with all updates
     // _ntps_with_broken_rack_constraint set. Relied upon by the iterator.

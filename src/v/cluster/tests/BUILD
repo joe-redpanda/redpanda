@@ -68,6 +68,7 @@ redpanda_test_cc_library(
         ":utils",
         "//src/v/base",
         "//src/v/cluster",
+        "//src/v/cluster/config/test:test_config",
         "//src/v/config",
         "//src/v/features",
         "//src/v/model",
@@ -149,6 +150,7 @@ redpanda_test_cc_library(
         ":utils",
         "//src/v/base",
         "//src/v/cluster",
+        "//src/v/cluster/config/test:test_config",
         "@boost//:test",
     ],
 )

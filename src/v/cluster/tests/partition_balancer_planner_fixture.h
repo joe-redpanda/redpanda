@@ -13,6 +13,7 @@
 
 #include "base/units.h"
 #include "cluster/commands.h"
+#include "cluster/config/test/test_config.h"
 #include "cluster/data_migrated_resources.h"
 #include "cluster/health_monitor_types.h"
 #include "cluster/members_table.h"
@@ -109,7 +110,8 @@ public:
             std::ref(table),
             std::ref(members),
             std::ref(allocator),
-            std::ref(node_status_table))
+            std::ref(node_status_table),
+            ss::sharded_parameter(cluster::test::test_config::make_default))
           .get();
     }
 

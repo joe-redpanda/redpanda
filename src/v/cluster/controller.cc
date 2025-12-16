@@ -228,7 +228,10 @@ ss::future<> controller::wire_up() {
             std::ref(_tp_state),
             std::ref(_members_table),
             std::ref(_partition_allocator),
-            std::ref(_node_status_table));
+            std::ref(_node_status_table),
+            ss::sharded_parameter([this] {
+                return std::make_unique<cluster_config>(_config_manager);
+            }));
       })
       .then([this] {
           return _shard_placement.start(

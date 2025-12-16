@@ -29,11 +29,13 @@ partition_balancer_state::partition_balancer_state(
   ss::sharded<topic_table>& topic_table,
   ss::sharded<members_table>& members_table,
   ss::sharded<partition_allocator>& pa,
-  ss::sharded<node_status_table>& nst)
+  ss::sharded<node_status_table>& nst,
+  std::unique_ptr<config_i> config)
   : _topic_table(topic_table.local())
   , _members_table(members_table.local())
   , _partition_allocator(pa.local())
   , _node_status(nst.local())
+  , _config(std::move(config))
   , _probe(*this) {}
 
 void partition_balancer_state::handle_ntp_move_begin_or_cancel(
