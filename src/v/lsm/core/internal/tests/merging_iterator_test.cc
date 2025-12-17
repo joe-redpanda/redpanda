@@ -9,6 +9,7 @@
  * by the Apache License, Version 2.0
  */
 
+#include "lsm/core/internal/keys.h"
 #include "lsm/core/internal/merging_iterator.h"
 #include "lsm/core/internal/tests/iterator_test_harness.h"
 
@@ -93,7 +94,9 @@ std::map<lsm::internal::key, iobuf>
 make_test_data(std::vector<std::pair<std::string, std::string>> data) {
     std::map<lsm::internal::key, iobuf> result;
     for (auto& [k, v] : data) {
-        result.emplace(lsm::internal::key::encode({.key = k}), iobuf::from(v));
+        result.emplace(
+          lsm::internal::key::encode({.key = lsm::user_key_view(k)}),
+          iobuf::from(v));
     }
     return result;
 }
@@ -103,7 +106,7 @@ collect_all_pairs(std::unique_ptr<lsm::internal::iterator>& it) {
     std::vector<std::pair<std::string, std::string>> results;
     it->seek_to_first().get();
     while (it->valid()) {
-        results.emplace_back(it->key().user_key(), to_string(it->value()));
+        results.emplace_back(it->key().user_key()(), to_string(it->value()));
         it->next().get();
     }
     return results;
@@ -114,7 +117,7 @@ collect_all_pairs_reverse(std::unique_ptr<lsm::internal::iterator>& it) {
     std::vector<std::pair<std::string, std::string>> results;
     it->seek_to_last().get();
     while (it->valid()) {
-        results.emplace_back(it->key().user_key(), to_string(it->value()));
+        results.emplace_back(it->key().user_key()(), to_string(it->value()));
         it->prev().get();
     }
     return results;

@@ -3,6 +3,14 @@ load("//bazel:build.bzl", "redpanda_cc_library")
 package(default_visibility = ["//src/v/lsm:__subpackages__"])
 
 redpanda_cc_library(
+    name = "keys",
+    hdrs = ["keys.h"],
+    deps = [
+        "//src/v/utils:named_type",
+    ],
+)
+
+redpanda_cc_library(
     name = "compression",
     srcs = ["compression.cc"],
     hdrs = ["compression.h"],

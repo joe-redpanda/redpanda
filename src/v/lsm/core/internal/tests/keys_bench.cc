@@ -45,7 +45,7 @@ std::vector<key> generate_keys(size_t count, size_t key_length) {
         auto type = i % 2 == 0 ? value_type::value : value_type::tombstone;
         keys.push_back(
           key::encode({
-            .key = user_key,
+            .key = lsm::user_key_view(user_key),
             .seqno = seqno,
             .type = type,
           }));

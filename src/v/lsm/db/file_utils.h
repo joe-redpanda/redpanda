@@ -39,6 +39,9 @@ total_file_size(const chunked_vector<ss::lw_shared_ptr<file_meta_data>>& files);
 size_t find_file(
   const chunked_vector<ss::lw_shared_ptr<file_meta_data>>& files,
   internal::key_view target);
+size_t find_file(
+  const chunked_vector<ss::lw_shared_ptr<file_meta_data>>& files,
+  user_key_view target);
 
 // Returns true iff some file in `files` overlaps the user key range
 // [*smallest,*largest].
@@ -49,8 +52,8 @@ size_t find_file(
 bool some_file_overlaps_range(
   bool disjoint_sorted_files,
   const chunked_vector<ss::lw_shared_ptr<file_meta_data>>& files,
-  std::optional<internal::key_view> smallest_key,
-  std::optional<internal::key_view> largest_key);
+  std::optional<user_key_view> smallest_key,
+  std::optional<user_key_view> largest_key);
 
 // Extracts the largest file b1 from `compaction_files` and then searches for a
 // b2 in `level_files` for which user_key(u1) = user_key(l2). If it finds such a

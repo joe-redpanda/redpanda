@@ -69,8 +69,8 @@ public:
     // end==nullptr, means after all keys.
     chunked_vector<ss::lw_shared_ptr<file_meta_data>> get_overlapping_inputs(
       internal::level,
-      std::optional<internal::key_view> begin,
-      std::optional<internal::key_view> end);
+      std::optional<user_key_view> begin,
+      std::optional<user_key_view> end);
 
     // Lookup the value for key.
     ss::future<lookup_result> get(internal::key_view target, get_stats*);
@@ -82,13 +82,13 @@ public:
     // end==nullopt, means after all keys.
     bool overlap_in_level(
       internal::level,
-      std::optional<internal::key_view> begin,
-      std::optional<internal::key_view> end);
+      std::optional<user_key_view> begin,
+      std::optional<user_key_view> end);
 
     // Return the level at which we should place a new memtable compaction
     // result that covers the range [begin,end].
-    internal::level pick_level_for_memtable_output(
-      internal::key_view begin, internal::key_view end);
+    internal::level
+    pick_level_for_memtable_output(user_key_view begin, user_key_view end);
 
     size_t num_files(internal::level level) { return _files[level].size(); }
 

@@ -526,7 +526,7 @@ private:
             auto key = ss::sstring(fmt::format("missing{:016d}", i));
 
             auto key_encoded = lsm::internal::key::encode(
-              {.key = key,
+              {.key = lsm::user_key_view(key),
                .seqno = _seqno,
                .type = lsm::internal::value_type::value});
 
@@ -579,7 +579,7 @@ private:
     write_key(ss::sstring key, iobuf value, benchmark_stats& stats) {
         auto batch = ss::make_lw_shared<lsm::db::memtable>();
         auto key_encoded = lsm::internal::key::encode(
-          {.key = key,
+          {.key = lsm::user_key_view(key),
            .seqno = ++_seqno,
            .type = lsm::internal::value_type::value});
 
@@ -597,7 +597,7 @@ private:
     ss::future<> delete_key(const ss::sstring& key, benchmark_stats& stats) {
         auto batch = ss::make_lw_shared<lsm::db::memtable>();
         auto key_encoded = lsm::internal::key::encode(
-          {.key = key,
+          {.key = lsm::user_key_view(key),
            .seqno = ++_seqno,
            .type = lsm::internal::value_type::tombstone});
 
@@ -613,7 +613,7 @@ private:
 
     ss::future<> read_key(const ss::sstring& key, benchmark_stats& stats) {
         auto key_encoded = lsm::internal::key::encode(
-          {.key = key,
+          {.key = lsm::user_key_view(key),
            .seqno = _seqno,
            .type = lsm::internal::value_type::value});
 

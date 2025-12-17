@@ -57,7 +57,7 @@ public:
       lsm::internal::sequence_number seqno,
       lsm::internal::value_type type = lsm::internal::value_type::value) {
         auto ikey = lsm::internal::key::encode(
-          {.key = ss::sstring{key}, .seqno = seqno, .type = type});
+          {.key = lsm::user_key_view{key}, .seqno = seqno, .type = type});
         if (type == lsm::internal::value_type::value) {
             _memtable->put(ikey, iobuf::from(value));
         } else {

@@ -26,15 +26,25 @@ size_t total_file_size(
     return total;
 }
 
-size_t find_file(
-  const chunked_vector<ss::lw_shared_ptr<file_meta_data>>& files,
-  internal::key_view target) {
+namespace {
+
+template<typename Key>
+size_t find_file_impl(
+  const chunked_vector<ss::lw_shared_ptr<file_meta_data>>& files, Key target) {
     size_t left = 0;
     size_t right = files.size();
     while (left < right) {
         size_t mid = (left + right) / 2;
         const auto& f = files[mid];
-        if (f->largest < target) {
+        bool target_after_file = false;
+        if constexpr (std::is_same_v<internal::key_view, Key>) {
+            target_after_file = f->largest < target;
+        } else if constexpr (std::is_same_v<user_key_view, Key>) {
+            target_after_file = f->largest.user_key() < target;
+        } else {
+            static_assert(false, "unsupported type");
+        }
+        if (target_after_file) {
             // kkey at mid.largest is < target. Therefore all files at or before
             // mid are uninteresting.
             left = mid + 1;
@@ -47,16 +57,30 @@ size_t find_file(
     return right;
 }
 
+} // namespace
+
+size_t find_file(
+  const chunked_vector<ss::lw_shared_ptr<file_meta_data>>& files,
+  internal::key_view target) {
+    return find_file_impl(files, target);
+}
+
+size_t find_file(
+  const chunked_vector<ss::lw_shared_ptr<file_meta_data>>& files,
+  user_key_view target) {
+    return find_file_impl(files, target);
+}
+
 namespace {
 
 bool after_file(
-  const file_meta_data& file, const std::optional<internal::key_view>& key) {
-    return key && *key > file.largest;
+  const file_meta_data& file, const std::optional<user_key_view>& key) {
+    return key && *key > file.largest.user_key();
 }
 
 bool before_file(
-  const file_meta_data& file, const std::optional<internal::key_view>& key) {
-    return key && *key < file.smallest;
+  const file_meta_data& file, const std::optional<user_key_view>& key) {
+    return key && *key < file.smallest.user_key();
 }
 
 } // namespace
@@ -64,8 +88,8 @@ bool before_file(
 bool some_file_overlaps_range(
   bool disjoint_sorted_files,
   const chunked_vector<ss::lw_shared_ptr<file_meta_data>>& files,
-  std::optional<internal::key_view> smallest_key,
-  std::optional<internal::key_view> largest_key) {
+  std::optional<user_key_view> smallest_key,
+  std::optional<user_key_view> largest_key) {
     if (!disjoint_sorted_files) {
         // Need to check against all files
         for (const auto& file : files) {
@@ -157,8 +181,8 @@ std::pair<internal::key, internal::key> get_key_range(const Range& r) {
         if (file->smallest < smallest) {
             smallest = file->smallest;
         }
-        if (file->largest < largest) {
-            smallest = file->largest;
+        if (file->largest > largest) {
+            largest = file->largest;
         }
     }
     return std::make_pair(std::move(smallest), std::move(largest));

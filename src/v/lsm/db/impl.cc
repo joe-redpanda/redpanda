@@ -474,9 +474,10 @@ ss::future<> impl::flush_memtable() {
     auto v = _versions->current();
     auto id = _versions->new_file_id();
     auto& imm = *_imm;
-    auto level = imm->empty() ? 0_level
-                              : v->pick_level_for_memtable_output(
-                                  imm->min_key(), imm->max_key());
+    auto level = imm->empty()
+                   ? 0_level
+                   : v->pick_level_for_memtable_output(
+                       imm->min_key().user_key(), imm->max_key().user_key());
     auto result = co_await build_table(
       _persistence.data.get(),
       {.id = id, .epoch = _opts->database_epoch},

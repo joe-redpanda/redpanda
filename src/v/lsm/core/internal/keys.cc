@@ -27,15 +27,15 @@ namespace lsm::internal {
 
 key key::encode(parts p) {
     internal::key::underlying_t v(
-      underlying_t::initialized_later{}, p.key.size() + 1 + sizeof(uint64_t));
+      underlying_t::initialized_later{}, p.key().size() + 1 + sizeof(uint64_t));
     dassert(
-      std::ranges::find(p.key, '\0') == p.key.end(),
+      std::ranges::find(p.key(), '\0') == p.key().end(),
       "key must not contain null characters");
     // First we append the user key.
-    std::ranges::copy(p.key, v.data());
+    std::ranges::copy(p.key(), v.data());
     // Then we null terminate, so that keys of different lengths compare
     // lexicographically.
-    v[p.key.size()] = '\0';
+    v[p.key().size()] = '\0';
     // Next we want to encode the sequence number and type, and have them sort
     // in descending order for the same key. Use 7 bytes for the offset, since
     // that should give us plenty of values before overflow.
@@ -44,7 +44,7 @@ key key::encode(parts p) {
     uint64_t encoded = (p.seqno() << CHAR_WIDTH)
                        | static_cast<uint64_t>(p.type);
     encoded = ss::cpu_to_be(~encoded);
-    std::memcpy(&v[p.key.size() + 1], &encoded, sizeof(encoded));
+    std::memcpy(&v[p.key().size() + 1], &encoded, sizeof(encoded));
     return key{v};
 }
 
@@ -90,11 +90,10 @@ fmt::iterator key_view::format_to(fmt::iterator it) const {
       it, "internal_key_view={{user={},suffix=o{:08o}}}", user_key(), encoded);
 }
 
-key::parts key::parts::value(std::string_view key, sequence_number seq_num) {
+key::parts key::parts::value(user_key_view key, sequence_number seq_num) {
     return {.key = key, .seqno = seq_num, .type = value_type::value};
 }
-key::parts
-key::parts::tombstone(std::string_view key, sequence_number seq_num) {
+key::parts key::parts::tombstone(user_key_view key, sequence_number seq_num) {
     return {.key = key, .seqno = seq_num, .type = value_type::tombstone};
 }
 
@@ -106,7 +105,7 @@ key_view::parts key_view::decode() const {
     // The sequence number is the rest of the bytes, which we decode from BE
     // form and invert the bits.
     uint64_t encoded; // NOLINT
-    std::memcpy(&encoded, &_value[p.key.size() + 1], sizeof(encoded));
+    std::memcpy(&encoded, &_value[p.key().size() + 1], sizeof(encoded));
     encoded = ~ss::be_to_cpu(encoded);
     // The last byte is the type.
     p.type = static_cast<value_type>(
@@ -144,7 +143,7 @@ key::operator iobuf() const { return iobuf::from(_value); }
 
 key operator""_seek_key(const char* s, size_t len) {
     return key::encode({
-      .key = ss::sstring(s, len),
+      .key = user_key_view(std::string_view(s, len)),
       .seqno = sequence_number::max(),
       .type = value_type::value,
     });
@@ -159,7 +158,7 @@ key operator""_key(const char* s, size_t len) {
         seq_num = 0; // Default seqno
     }
     return key::encode({
-      .key = k,
+      .key = user_key_view(k),
       .seqno = sequence_number(std::abs(seq_num)),
       .type = seq_num < 0 ? value_type::tombstone : value_type::value,
     });

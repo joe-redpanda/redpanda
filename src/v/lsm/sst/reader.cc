@@ -70,7 +70,8 @@ read_block(io::random_access_file_reader* file, block::handle handle) {
 ss::future<std::optional<block::filter_reader>> read_filter(
   io::random_access_file_reader* file, block::reader metaindex_block) {
     auto iter = metaindex_block.create_iterator();
-    auto key = internal::key::encode({.key = "filter.RedpandaBloomV0"});
+    auto key = internal::key::encode(
+      {.key = lsm::user_key_view("filter.RedpandaBloomV0")});
     co_await iter->seek(key);
     if (!iter->valid() || iter->key() != key) {
         co_return std::nullopt;

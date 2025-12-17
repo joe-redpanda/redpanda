@@ -14,6 +14,7 @@
 #include "base/format_to.h"
 #include "base/seastarx.h"
 #include "base/vassert.h"
+#include "lsm/core/keys.h"
 #include "utils/named_type.h"
 
 #include <seastar/core/sstring.hh>
@@ -57,14 +58,14 @@ class key {
 
 public:
     struct parts {
-        std::string_view key;
+        user_key_view key;
         sequence_number seqno = sequence_number(0);
         value_type type = value_type::value;
 
         // Create a value internal key
-        static parts value(std::string_view key, sequence_number);
+        static parts value(user_key_view key, sequence_number);
         // Create a tombstone internal key
-        static parts tombstone(std::string_view key, sequence_number);
+        static parts tombstone(user_key_view key, sequence_number);
         bool operator==(const parts& other) const = default;
         fmt::iterator format_to(fmt::iterator) const;
     };
@@ -95,12 +96,13 @@ public:
     bool empty() const { return _value.empty(); }
 
     // Returns the user portion of the key.
-    std::string_view user_key() const {
+    user_key_view user_key() const {
         dassert(
           _value.size() >= 5,
           "expected key size to be at least 5, got: {}",
           _value.size());
-        return {_value.data(), _value.size() - sizeof(uint64_t) - 1};
+        return user_key_view{
+          _value.data(), _value.size() - sizeof(uint64_t) - 1};
     }
 
     bool operator==(const key& other) const = default;
@@ -122,7 +124,7 @@ private:
 class key_view {
 public:
     struct parts {
-        std::string_view key;
+        user_key_view key;
         sequence_number seqno = sequence_number(0);
         value_type type = value_type::value;
 
@@ -143,12 +145,13 @@ public:
     bool empty() const { return _value.empty(); }
 
     // The user portion of the key.
-    std::string_view user_key() const {
+    user_key_view user_key() const {
         dassert(
           _value.size() >= 5,
           "expected key size to be at least 5, got: {}",
           _value.size());
-        return {_value.data(), _value.size() - sizeof(uint64_t) - 1};
+        return user_key_view{
+          _value.data(), _value.size() - sizeof(uint64_t) - 1};
     }
     // Returns this key's value type
     value_type type() const;

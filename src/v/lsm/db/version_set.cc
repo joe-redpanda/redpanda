@@ -284,27 +284,27 @@ ss::future<bool> version::record_read_sample(internal::key_view key) {
 chunked_vector<ss::lw_shared_ptr<file_meta_data>>
 version::get_overlapping_inputs(
   internal::level level,
-  std::optional<internal::key_view> begin,
-  std::optional<internal::key_view> end) {
+  std::optional<user_key_view> begin,
+  std::optional<user_key_view> end) {
     chunked_vector<ss::lw_shared_ptr<file_meta_data>> inputs;
     const auto& files = _files[level];
-    for (size_t i = 0; i < files.size(); ++i) {
-        const auto& file = files[i];
-        if (begin && file->largest < *begin) { // NOLINT(*branch-clone*)
+    for (size_t i = 0; i < files.size();) {
+        const auto& file = files[i++];
+        if (begin && file->largest.user_key() < *begin) {
             // file is completely before specified range; skip it
-        } else if (end && file->smallest > *end) {
+        } else if (end && file->smallest.user_key() > *end) {
             // file is completely after specified range; skip it
         } else {
             inputs.push_back(file);
             // Level 0 files may overlap each over. So check if the newly added
             // file has expanded the range. If so, restart search.
             if (level == 0_level) {
-                if (begin && file->smallest < *begin) {
-                    begin = file->smallest;
+                if (begin && file->smallest.user_key() < *begin) {
+                    begin = file->smallest.user_key();
                     inputs.clear();
                     i = 0;
-                } else if (end && file->largest > *end) {
-                    end = file->largest;
+                } else if (end && file->largest.user_key() > *end) {
+                    end = file->largest.user_key();
                     inputs.clear();
                     i = 0;
                 }
@@ -378,13 +378,13 @@ version::get(internal::key_view target, get_stats* stats) {
 
 bool version::overlap_in_level(
   internal::level level,
-  std::optional<internal::key_view> begin,
-  std::optional<internal::key_view> end) {
+  std::optional<user_key_view> begin,
+  std::optional<user_key_view> end) {
     return some_file_overlaps_range(level > 0_level, _files[level], begin, end);
 }
 
 internal::level version::pick_level_for_memtable_output(
-  internal::key_view begin, internal::key_view end) {
+  user_key_view begin, user_key_view end) {
     auto level = 0_level;
     if (!overlap_in_level(level, begin, end)) {
         // Push to next level if there is no overlap in next level,
@@ -683,13 +683,13 @@ std::optional<compaction> version_set::pick_compaction() {
     if (level == 0_level) {
         auto [smallest, largest] = get_range(c->_inputs[which::input_level]);
         c->_inputs[which::input_level] = _current->get_overlapping_inputs(
-          0_level, smallest, largest);
+          0_level, smallest.user_key(), largest.user_key());
     }
     add_boundary_inputs(
       _current->_files[level], &c->_inputs[which::input_level]);
     auto [smallest, largest] = get_range(c->_inputs[which::input_level]);
     c->_inputs[which::output_level] = _current->get_overlapping_inputs(
-      level + 1_level, smallest, largest);
+      level + 1_level, smallest.user_key(), largest.user_key());
     add_boundary_inputs(
       _current->_files[level + 1_level], &c->_inputs[which::output_level]);
     // Get entire range covered by compaction
@@ -699,7 +699,7 @@ std::optional<compaction> version_set::pick_compaction() {
     // number of "level+1" files we pick up.
     if (!c->_inputs[which::output_level].empty()) {
         auto expanded0 = _current->get_overlapping_inputs(
-          level, all_smallest, all_largest);
+          level, all_smallest.user_key(), all_largest.user_key());
         add_boundary_inputs(_current->_files[level], &expanded0);
         auto inputs1_size = total_file_size(c->_inputs[which::output_level]);
         auto expanded0_size = total_file_size(expanded0);
@@ -709,7 +709,7 @@ std::optional<compaction> version_set::pick_compaction() {
                < _options->expanded_compaction_byte_size_limit(level)) {
             auto [new_smallest, new_largest] = get_range(expanded0);
             auto expanded1 = _current->get_overlapping_inputs(
-              level + 1_level, new_smallest, new_largest);
+              level + 1_level, new_smallest.user_key(), new_largest.user_key());
             add_boundary_inputs(_current->_files[level + 1_level], &expanded1);
             if (expanded1.size() == c->_inputs[which::output_level].size()) {
                 smallest = new_smallest;
@@ -727,8 +727,12 @@ std::optional<compaction> version_set::pick_compaction() {
     // Compute the set of grandparent files that overlap this compaction.
     if (level() + 2 < _options->levels.size()) {
         c->_grandparents = _current->get_overlapping_inputs(
-          level + 2_level, all_smallest, all_largest);
+          level + 2_level, all_smallest.user_key(), all_largest.user_key());
     }
+    // Update the place where we will do the next compaction for this level.
+    // We update this immediately instead of waiting for the version_edit
+    // to be applied so that if the compaction fails, we will try a different
+    // key range next time.
     _compact_pointer[level] = largest;
     c->_edit.set_compact_pointer(level, largest);
     return c;

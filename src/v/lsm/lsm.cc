@@ -136,7 +136,7 @@ ss::future<> iterator::seek_to_first() { return _impl->seek_to_first(); }
 ss::future<> iterator::seek_to_last() { return _impl->seek_to_last(); }
 ss::future<> iterator::seek(std::string_view target) {
     auto key = internal::key::encode({
-      .key = target,
+      .key = lsm::user_key_view(target),
       .seqno = internal::sequence_number::max(),
       .type = internal::value_type::value,
     });
@@ -177,7 +177,7 @@ ss::future<> database::apply(write_batch batch) {
 
 ss::future<std::optional<iobuf>> database::get(std::string_view target) {
     auto key = internal::key::encode({
-      .key = target,
+      .key = lsm::user_key_view(target),
       .seqno = internal::sequence_number::max(),
       .type = internal::value_type::value,
     });
@@ -201,7 +201,7 @@ write_batch::~write_batch() noexcept = default;
 
 void write_batch::put(std::string_view key, iobuf value, model::offset offset) {
     auto k = internal::key::encode({
-      .key = key,
+      .key = lsm::user_key_view(key),
       .seqno = seqno_cast(offset),
       .type = internal::value_type::value,
     });
@@ -210,7 +210,7 @@ void write_batch::put(std::string_view key, iobuf value, model::offset offset) {
 
 void write_batch::remove(std::string_view key, model::offset offset) {
     auto k = internal::key::encode({
-      .key = key,
+      .key = lsm::user_key_view(key),
       .seqno = seqno_cast(offset),
       .type = internal::value_type::tombstone,
     });
@@ -219,7 +219,7 @@ void write_batch::remove(std::string_view key, model::offset offset) {
 
 ss::future<std::optional<iobuf>> write_batch::get(std::string_view target) {
     auto key = internal::key::encode({
-      .key = target,
+      .key = lsm::user_key_view(target),
       .seqno = internal::sequence_number::max(),
       .type = internal::value_type::value,
     });

@@ -28,7 +28,8 @@ protected:
     std::unique_ptr<lsm::internal::iterator> make_iterator(const data& d) {
         std::map<lsm::internal::key, iobuf> encoded;
         for (const auto& [key, value] : d) {
-            auto encoded_key = lsm::internal::key::encode({.key = key});
+            auto encoded_key = lsm::internal::key::encode(
+              {.key = lsm::user_key_view(key)});
             encoded[std::move(encoded_key)] = iobuf::from(value);
         }
         return _factory.make_iterator(std::move(encoded));

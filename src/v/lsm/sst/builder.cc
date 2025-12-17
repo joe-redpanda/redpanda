@@ -108,7 +108,8 @@ ss::future<> builder::finish() {
     // NOTE: if we add more keys here they need to be added lexicographically
     block::builder meta_index_block;
     if (_filter) {
-        auto key = internal::key::encode({.key = "filter.RedpandaBloomV0"});
+        auto key = internal::key::encode(
+          {.key = lsm::user_key_view("filter.RedpandaBloomV0")});
         meta_index_block.add(std::move(key), filter_block_handle.as_iobuf());
     }
     metaindex_block_handle = co_await write_raw_block(

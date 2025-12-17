@@ -30,7 +30,7 @@ lsm::block::filter_reader make_filter(const keys_by_block& keys) {
         builder.start_block(block);
         for (const auto& key : keys_in_block) {
             builder.add_key(
-              lsm::internal::key::encode({.key = ss::sstring(key)}));
+              lsm::internal::key::encode({.key = lsm::user_key_view(key)}));
         }
     }
     auto c = lsm::block::contents::copy_from(builder.finish());

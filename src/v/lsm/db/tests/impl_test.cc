@@ -146,7 +146,8 @@ public:
         auto seqno = _db->max_applied_seqno();
         while (batch->approximate_memory_usage() < size) {
             auto key = lsm::internal::key::encode({
-              .key = random_generators::gen_alphanum_max_distinct(100'000),
+              .key = lsm::user_key_view(
+                random_generators::gen_alphanum_max_distinct(100'000)),
               .seqno = ++seqno,
             });
             auto value = iobuf::from(
@@ -282,14 +283,14 @@ TEST_F(ImplTest, ReadYourOwnWrites) {
     auto batch1 = ss::make_lw_shared<lsm::db::memtable>();
     auto seqno = _db->max_applied_seqno();
     auto key1 = lsm::internal::key::encode({
-      .key = "key1",
+      .key = lsm::user_key_view("key1"),
       .seqno = ++seqno,
     });
     auto value1 = iobuf::from("value1");
     batch1->put(key1, value1.share());
 
     auto key2 = lsm::internal::key::encode({
-      .key = "key2",
+      .key = lsm::user_key_view("key2"),
       .seqno = ++seqno,
     });
     auto value2 = iobuf::from("value2");
@@ -302,7 +303,7 @@ TEST_F(ImplTest, ReadYourOwnWrites) {
     seqno = _db->max_applied_seqno();
 
     auto key3 = lsm::internal::key::encode({
-      .key = "key3",
+      .key = lsm::user_key_view("key3"),
       .seqno = ++seqno,
     });
     auto value3 = iobuf::from("value3");
@@ -325,7 +326,7 @@ TEST_F(ImplTest, ReadYourOwnWrites) {
     seqno = _db->max_applied_seqno();
 
     auto key2_updated = lsm::internal::key::encode({
-      .key = "key2",
+      .key = lsm::user_key_view("key2"),
       .seqno = ++seqno,
     });
     auto value2_updated = iobuf::from("value2_updated");

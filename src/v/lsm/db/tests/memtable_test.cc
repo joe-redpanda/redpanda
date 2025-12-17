@@ -142,7 +142,7 @@ TEST_F(MemtableTest, GetAtVersion) {
 
     for (const auto& tc : testcases) {
         auto key = lsm::internal::key::encode({
-          .key = tc.key,
+          .key = lsm::user_key_view(tc.key),
           .seqno = lsm::internal::sequence_number(tc.version),
         });
         if (!tc.value) {

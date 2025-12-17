@@ -64,6 +64,7 @@ redpanda_cc_library(
     deps = [
         "//src/v/base",
         "//src/v/bytes:iobuf",
+        "//src/v/lsm/core:keys",
         "//src/v/utils:named_type",
         "@seastar",
     ],
