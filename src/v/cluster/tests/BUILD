@@ -1334,3 +1334,22 @@ redpanda_cc_gtest(
         "@seastar",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "health_monitor_autodecom_test",
+    timeout = "short",
+    srcs = [
+        "health_monitor_autodecom_test.cc",
+    ],
+    deps = [
+        "//src/v/cluster",
+        "//src/v/config",
+        "//src/v/container:chunked_vector",
+        "//src/v/model",
+        "//src/v/random:generators",
+        "//src/v/rpc",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)
