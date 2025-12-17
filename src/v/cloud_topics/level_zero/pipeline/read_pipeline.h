@@ -116,6 +116,8 @@ public:
             _parent->_probe.register_micro_probe(p);
         }
 
+        pipeline_stage id() const noexcept { return _ps; }
+
     private:
         pipeline_stage _ps;
         read_pipeline<Clock>* _parent;
