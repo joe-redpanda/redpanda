@@ -682,6 +682,7 @@ ss::future<> controller::start(
       std::ref(_members_table),
       std::ref(_partition_balancer),
       std::ref(_partition_manager),
+      std::ref(_partition_leaders),
       std::ref(_as));
 
     co_await set_raft_manager_remake_cb();
