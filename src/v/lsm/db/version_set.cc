@@ -288,8 +288,8 @@ version::get_overlapping_inputs(
   std::optional<internal::key_view> end) {
     chunked_vector<ss::lw_shared_ptr<file_meta_data>> inputs;
     const auto& files = _files[level];
-    for (size_t i = 0; i < files.size(); ++i) {
-        const auto& file = files[i];
+    for (size_t i = 0; i < files.size();) {
+        const auto& file = files[i++];
         if (begin && file->largest < *begin) { // NOLINT(*branch-clone*)
             // file is completely before specified range; skip it
         } else if (end && file->smallest > *end) {

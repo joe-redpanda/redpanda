@@ -19,9 +19,18 @@
 #include "lsm/sst/builder.h"
 
 #include <gmock/gmock-matchers.h>
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 namespace {
+
+using lsm::internal::operator""_level;
+using lsm::internal::operator""_file_id;
+using lsm::internal::operator""_key;
+using lsm::internal::operator""_seqno;
+using testing::ElementsAre;
+using testing::IsEmpty;
+using testing::UnorderedElementsAre;
 
 struct sst_spec {
     lsm::internal::file_id id;
@@ -101,9 +110,91 @@ private:
         _metadata_persistence.get(), &_table_cache, _options);
 };
 
-using lsm::internal::operator""_level;
-using lsm::internal::operator""_file_id;
-using lsm::internal::operator""_key;
+// Fixture for compaction tests that only uses file metadata.
+class CompactionTest : public testing::Test {
+public:
+    constexpr static size_t default_max_entries = 10;
+
+    CompactionTest() {
+        // Use small sizes that are easier to reason about
+        _options->level_one_compaction_trigger = 4;
+        _options->write_buffer_size = 1000;
+        _options->levels = lsm::internal::options::make_levels(
+          /*base_config=*/
+          {
+            .max_total_bytes = 10000, // L0/L1: 10KB total
+            .max_file_size = 1000,    // L0/L1: 1KB per file
+          },
+          /*multiplier=*/10,
+          /*max_level=*/6_level);
+    }
+
+    void TearDown() override {
+        _table_cache.close().get();
+        _data_persistence->close().get();
+        _metadata_persistence->close().get();
+    }
+
+    const lsm::internal::options& options() { return *_options; }
+    lsm::db::version_set& version_set() { return *_version_set; }
+
+    // Add a file to the version using only metadata (no actual SST file).
+    void add_file(
+      lsm::internal::level level,
+      lsm::internal::file_id id,
+      lsm::internal::key smallest,
+      lsm::internal::key largest,
+      uint64_t file_size = 100) {
+        lsm::db::version_edit edit(*_options);
+        edit.add_file({
+          .level = level,
+          .file_handle = {.id = id},
+          .file_size = file_size,
+          .smallest = smallest,
+          .largest = largest,
+          .oldest_seqno = 0_seqno,
+          .newest_seqno = 0_seqno,
+        });
+        _version_set->log_and_apply(std::move(edit)).get();
+    }
+
+    // Extract file IDs from compaction inputs at the specified level.
+    static std::vector<lsm::internal::file_id> input_file_ids(
+      const lsm::db::compaction& c, lsm::db::compaction::which which) {
+        std::vector<lsm::internal::file_id> ids;
+        for (size_t i = 0; i < c.num_input_files(which); ++i) {
+            ids.push_back(c.input(which, i)->handle.id);
+        }
+        return ids;
+    }
+
+    // Extract file IDs from compaction input level.
+    static std::vector<lsm::internal::file_id>
+    input_file_ids(const lsm::db::compaction& c) {
+        return input_file_ids(c, lsm::db::compaction::input_level);
+    }
+
+    // Extract file IDs from compaction output level.
+    static std::vector<lsm::internal::file_id>
+    output_file_ids(const lsm::db::compaction& c) {
+        return input_file_ids(c, lsm::db::compaction::output_level);
+    }
+
+private:
+    ss::lw_shared_ptr<lsm::internal::options> _options
+      = ss::make_lw_shared<lsm::internal::options>();
+    std::unique_ptr<lsm::io::data_persistence> _data_persistence
+      = lsm::io::make_memory_data_persistence();
+    std::unique_ptr<lsm::io::metadata_persistence> _metadata_persistence
+      = lsm::io::make_memory_metadata_persistence();
+    lsm::db::table_cache _table_cache{
+      _data_persistence.get(),
+      default_max_entries,
+      ss::make_lw_shared<lsm::sst::block_cache>(1_MiB)};
+    ss::lw_shared_ptr<lsm::db::version_set> _version_set
+      = ss::make_lw_shared<lsm::db::version_set>(
+        _metadata_persistence.get(), &_table_cache, _options);
+};
 
 } // namespace
 
@@ -314,4 +405,173 @@ TEST_F(VersionSetTest, Get) {
     EXPECT_THAT(result, IsLookupValue("b"_key, 1_level));
     result = vset.current()->get("j"_key, &stats).get();
     EXPECT_THAT(result, IsMissing());
+}
+
+TEST_F(CompactionTest, PickCompactionLevel0ToLevel1) {
+    // Add 4 files to L0 to trigger compaction
+    add_file(0_level, 1_file_id, "a"_key, "d"_key);
+    add_file(0_level, 2_file_id, "e"_key, "h"_key);
+    add_file(0_level, 3_file_id, "i"_key, "m"_key);
+    add_file(0_level, 4_file_id, "n"_key, "z"_key);
+
+    // Add overlapping files in L1
+    add_file(1_level, 10_file_id, "b"_key, "f"_key);
+    add_file(1_level, 11_file_id, "g"_key, "k"_key);
+
+    auto c = version_set().pick_compaction();
+
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->level(), 0_level);
+    // L0 compaction includes all overlapping files
+    EXPECT_THAT(input_file_ids(*c), ElementsAre(1_file_id));
+    // L1 files overlapping with the L0 range [a-h]
+    EXPECT_THAT(output_file_ids(*c), ElementsAre(10_file_id));
+}
+
+TEST_F(CompactionTest, TrivialMove) {
+    // Add 4 files to L0 to trigger compaction
+    add_file(0_level, 1_file_id, "a"_key, "d"_key);
+    add_file(0_level, 2_file_id, "e"_key, "h"_key);
+    add_file(0_level, 3_file_id, "i"_key, "m"_key);
+    add_file(0_level, 4_file_id, "n"_key, "z"_key);
+
+    // L1 has no files - first file can be trivially moved
+    auto c = version_set().pick_compaction();
+
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->level(), 0_level);
+    EXPECT_THAT(input_file_ids(*c), ElementsAre(1_file_id));
+    EXPECT_THAT(output_file_ids(*c), IsEmpty());
+    EXPECT_TRUE(c->is_trivial_move());
+}
+
+TEST_F(CompactionTest, OverlappingL0Files) {
+    // Add 4 files to L0 with overlapping key ranges.
+    // This tests that when picking files from L0, overlapping files are
+    // properly expanded.
+    add_file(0_level, 1_file_id, "a"_key, "e"_key);
+    add_file(0_level, 2_file_id, "c"_key, "g"_key); // Overlaps with file 1
+    add_file(0_level, 3_file_id, "f"_key, "j"_key); // Overlaps with file 2
+    add_file(0_level, 4_file_id, "m"_key, "z"_key); // Disjoint
+
+    // Add overlapping file in L1
+    add_file(1_level, 10_file_id, "d"_key, "h"_key);
+
+    auto c = version_set().pick_compaction();
+
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->level(), 0_level);
+    // Should include all overlapping L0 files: starts with file 1, which
+    // overlaps with file 2, which overlaps with file 3
+    EXPECT_THAT(
+      input_file_ids(*c),
+      UnorderedElementsAre(1_file_id, 2_file_id, 3_file_id));
+    // L1 file overlapping with the selected range
+    EXPECT_THAT(output_file_ids(*c), ElementsAre(10_file_id));
+}
+
+TEST_F(CompactionTest, Level1ToLevel2Compaction) {
+    // L0 is empty, but L1 has enough data to trigger size-based compaction
+    // Each file is 1KB, L1 max is 10KB, so we need >10 files
+    add_file(1_level, 1_file_id, "aa"_key, "ab"_key, 1000);
+    add_file(1_level, 2_file_id, "ac"_key, "ad"_key, 1000);
+    add_file(1_level, 3_file_id, "ae"_key, "af"_key, 1000);
+    add_file(1_level, 4_file_id, "ag"_key, "ah"_key, 1000);
+    add_file(1_level, 5_file_id, "ai"_key, "aj"_key, 1000);
+    add_file(1_level, 6_file_id, "ak"_key, "al"_key, 1000);
+    add_file(1_level, 7_file_id, "am"_key, "an"_key, 1000);
+    add_file(1_level, 8_file_id, "ao"_key, "ap"_key, 1000);
+    add_file(1_level, 9_file_id, "aq"_key, "ar"_key, 1000);
+    add_file(1_level, 10_file_id, "as"_key, "at"_key, 1000);
+    add_file(1_level, 11_file_id, "au"_key, "av"_key, 1000);
+    add_file(1_level, 12_file_id, "aw"_key, "ax"_key, 1000);
+
+    // Add overlapping file in L2
+    add_file(2_level, 100_file_id, "aa"_key, "ac"_key);
+
+    auto c = version_set().pick_compaction();
+
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->level(), 1_level); // L1→L2 compaction
+    EXPECT_THAT(input_file_ids(*c), ElementsAre(1_file_id));
+    EXPECT_THAT(output_file_ids(*c), ElementsAre(100_file_id));
+}
+
+TEST_F(CompactionTest, GrandparentOverlapTracking) {
+    // Add files to trigger L0→L1 compaction
+    add_file(0_level, 1_file_id, "a"_key, "d"_key);
+    add_file(0_level, 2_file_id, "e"_key, "h"_key);
+    add_file(0_level, 3_file_id, "i"_key, "m"_key);
+    add_file(0_level, 4_file_id, "n"_key, "z"_key);
+
+    // L1 file
+    add_file(1_level, 10_file_id, "b"_key, "f"_key);
+
+    // Add grandparent files in L2 that overlap with compaction range
+    add_file(2_level, 20_file_id, "a"_key, "c"_key);
+    add_file(2_level, 21_file_id, "d"_key, "e"_key);
+
+    auto c = version_set().pick_compaction();
+
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->level(), 0_level);
+    // Compaction should track grandparents to not create too big of compactions
+    // later, this is why file 2 isn't picked up.
+    EXPECT_THAT(input_file_ids(*c), ElementsAre(1_file_id));
+    EXPECT_THAT(output_file_ids(*c), ElementsAre(10_file_id));
+}
+
+TEST_F(CompactionTest, DisjointL0Files) {
+    // Tests compaction with disjoint (non-overlapping) L0 files.
+    // Only the first file is selected even though file 2 is within the
+    // combined L0+L1 range - expansion doesn't occur for disjoint L0 files.
+    add_file(0_level, 1_file_id, "a"_key, "c"_key);
+    add_file(0_level, 2_file_id, "d"_key, "f"_key); // Disjoint from file 1
+    add_file(0_level, 3_file_id, "m"_key, "p"_key);
+    add_file(0_level, 4_file_id, "q"_key, "z"_key);
+
+    // L1 file overlaps with file 1
+    add_file(1_level, 10_file_id, "a"_key, "g"_key);
+
+    auto c = version_set().pick_compaction();
+
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->level(), 0_level);
+    // Only picks file 1; file 2 is not included despite being in L1 range
+    EXPECT_THAT(input_file_ids(*c), ElementsAre(1_file_id));
+    EXPECT_THAT(output_file_ids(*c), ElementsAre(10_file_id));
+}
+
+TEST_F(CompactionTest, BoundaryKeyHandling) {
+    // Add files with exact boundary matches to test add_boundary_inputs
+    add_file(0_level, 1_file_id, "a"_key, "d"_key);
+    add_file(0_level, 2_file_id, "e"_key, "h"_key);
+    add_file(0_level, 3_file_id, "i"_key, "m"_key);
+    add_file(0_level, 4_file_id, "n"_key, "z"_key);
+
+    // L1 files where one has a boundary that matches an L0 file's boundary
+    add_file(1_level, 10_file_id, "b"_key, "d"_key); // Ends at 'd' like file 1
+    add_file(
+      1_level, 11_file_id, "e"_key, "g"_key); // Starts at 'e' like file 2
+
+    auto c = version_set().pick_compaction();
+
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->level(), 0_level);
+    // Should include file 1 from L0
+    EXPECT_THAT(input_file_ids(*c), ElementsAre(1_file_id));
+    // Should include L1 file with matching boundary
+    EXPECT_THAT(output_file_ids(*c), ElementsAre(10_file_id));
+}
+
+TEST_F(CompactionTest, NoCompactionBelowThreshold) {
+    // Add only 3 files to L0 (below the trigger of 4)
+    add_file(0_level, 1_file_id, "a"_key, "d"_key);
+    add_file(0_level, 2_file_id, "e"_key, "h"_key);
+    add_file(0_level, 3_file_id, "i"_key, "m"_key);
+
+    auto c = version_set().pick_compaction();
+
+    // No compaction should be triggered
+    EXPECT_FALSE(c.has_value());
 }
