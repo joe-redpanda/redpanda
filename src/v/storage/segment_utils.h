@@ -219,6 +219,7 @@ model::record_batch_reader create_segment_full_reader(
 ss::future<storage::index_state> do_copy_segment_data(
   ss::lw_shared_ptr<storage::segment>,
   compaction::compaction_config,
+  ss::lw_shared_ptr<storage::stm_manager>,
   storage::probe&,
   ss::rwlock::holder,
   storage_resources&);

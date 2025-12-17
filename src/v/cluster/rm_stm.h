@@ -225,6 +225,9 @@ public:
         return raft::stm_initial_recovery_policy::read_everything;
     }
 
+    bool is_last_batch_for_idempotent_producer(
+      const model::record_batch_header&) const override;
+
 protected:
     ss::future<> stop() override;
     ss::future<> apply_raft_snapshot(const iobuf&) final;

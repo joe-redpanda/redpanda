@@ -348,6 +348,7 @@ ss::future<size_t> do_compact_segment_index(
 ss::future<storage::index_state> do_copy_segment_data(
   ss::lw_shared_ptr<segment> seg,
   compaction::compaction_config cfg,
+  ss::lw_shared_ptr<storage::stm_manager> stm_manager,
   storage::probe& pb,
   ss::rwlock::holder rw_lock_holder,
   storage_resources& resources,
@@ -451,6 +452,7 @@ ss::future<storage::index_state> do_copy_segment_data(
       segment_last_offset,
       compaction_placeholder_enabled,
       unset_transactional_bit_enabled,
+      stm_manager,
       /*cidx=*/nullptr,
       /*inject_failure=*/false,
       cfg.asrc);
@@ -571,6 +573,7 @@ ss::future<> do_swap_data_file_handles(
 ss::future<compaction_result> do_self_compact_segment(
   ss::lw_shared_ptr<segment> s,
   compaction::compaction_config cfg,
+  ss::lw_shared_ptr<storage::stm_manager> stm_manager,
   storage::probe& pb,
   storage::readers_cache& readers_cache,
   storage_resources& resources,
@@ -605,6 +608,7 @@ ss::future<compaction_result> do_self_compact_segment(
     auto idx = co_await do_copy_segment_data(
       s,
       cfg,
+      stm_manager,
       pb,
       std::move(read_holder),
       resources,
@@ -818,6 +822,7 @@ ss::future<compaction_result> self_compact_segment(
     auto res = co_await do_self_compact_segment(
       s,
       cfg,
+      stm_manager,
       pb,
       readers_cache,
       resources,

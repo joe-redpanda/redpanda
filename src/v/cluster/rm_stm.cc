@@ -1793,7 +1793,8 @@ ss::future<> rm_stm::do_apply(const model::record_batch& b) {
           b.header().producer_id);
     } else if (
       hdr.type == model::record_batch_type::raft_data
-      || hdr.type == model::record_batch_type::ctp_placeholder) {
+      || hdr.type == model::record_batch_type::ctp_placeholder
+      || hdr.type == model::record_batch_type::compaction_placeholder) {
         if (hdr.attrs.is_control()) {
             apply_control(bid.pid, parse_control_batch(b));
         } else {
@@ -2295,6 +2296,31 @@ ss::future<> rm_stm::apply_raft_snapshot(const iobuf&) {
     co_await reset_producers();
     set_next(_raft->start_offset());
     co_return;
+}
+
+bool rm_stm::is_last_batch_for_idempotent_producer(
+  const model::record_batch_header& hdr) const {
+    const auto bid = model::batch_identity::from(hdr);
+    if (!bid.is_idempotent()) {
+        return false;
+    }
+
+    const auto& pid = bid.pid;
+
+    auto it = _producers.find(pid.get_id());
+    if (it == _producers.end()) {
+        // We cannot know for sure if this is the last batch for the
+        // producer or not. But we cannot retain placeholder batches forever
+        // either.
+        return false;
+    }
+
+    const tx::producer_ptr& producer = it->second;
+
+    const auto last_seq = producer->last_sequence_number();
+    const auto producer_epoch = producer->id().get_epoch();
+
+    return last_seq == bid.last_seq && producer_epoch == pid.get_epoch();
 }
 
 void rm_stm::setup_metrics() {

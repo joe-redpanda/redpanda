@@ -194,6 +194,7 @@ ss::future<index_state> deduplicate_segment(
   ss::lw_shared_ptr<storage::segment> seg,
   segment_appender& appender,
   compacted_index_writer& cmp_idx_writer,
+  ss::lw_shared_ptr<storage::stm_manager> stm_manager,
   probe& probe,
   offset_delta_time should_offset_delta_times,
   ss::sharded<features::feature_table>& feature_table,
@@ -266,6 +267,7 @@ ss::future<index_state> deduplicate_segment(
       segment_last_offset,
       compaction_placeholder_enabled,
       unset_transactional_bit_enabled,
+      stm_manager,
       &cmp_idx_writer,
       inject_reader_failure,
       cfg.asrc);
