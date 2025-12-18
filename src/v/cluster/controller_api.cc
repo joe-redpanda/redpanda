@@ -20,6 +20,7 @@
 #include "cluster/partition_balancer_backend.h"
 #include "cluster/partition_balancer_rpc_service.h"
 #include "cluster/partition_balancer_types.h"
+#include "cluster/partition_leaders_table.h"
 #include "cluster/partition_manager.h"
 #include "cluster/shard_table.h"
 #include "cluster/topic_table.h"
@@ -283,6 +284,22 @@ controller_api::get_reconciliation_state(
           }
           return ret_t(reply.error());
       });
+}
+
+ss::future<result<ntp_reconciliation_state>>
+controller_api::get_partition_leader_reconciliation_state(
+  model::ntp ntp, model::timeout_clock::time_point timeout) {
+    auto leader = _partition_leaders.local().get_leader(ntp);
+    if (!leader) {
+        vlog(
+          clusterlog.debug,
+          "can't get partition leader for ntp {} to get its reconciliation "
+          "state",
+          ntp);
+        co_return result<ntp_reconciliation_state>(errc::no_leader_controller);
+    }
+    co_return co_await get_reconciliation_state(
+      *leader, std::move(ntp), timeout);
 }
 
 ss::future<result<ntp_reconciliation_state>>

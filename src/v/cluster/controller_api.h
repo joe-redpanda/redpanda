@@ -66,6 +66,10 @@ public:
     ss::future<result<ntp_reconciliation_state>> get_reconciliation_state(
       model::node_id, model::ntp, model::timeout_clock::time_point);
 
+    ss::future<result<ntp_reconciliation_state>>
+      get_partition_leader_reconciliation_state(
+        model::ntp, model::timeout_clock::time_point);
+
     // high level APIs
     ss::future<std::error_code> wait_for_topic(
       model::topic_namespace_view, model::timeout_clock::time_point);
@@ -108,7 +112,7 @@ private:
     ss::sharded<members_table>& _members;
     ss::sharded<partition_balancer_backend>& _partition_balancer;
     ss::sharded<partition_manager>& _partition_manager;
-    [[maybe_unused]] ss::sharded<partition_leaders_table>& _partition_leaders;
+    ss::sharded<partition_leaders_table>& _partition_leaders;
     ss::sharded<ss::abort_source>& _as;
 };
 } // namespace cluster
