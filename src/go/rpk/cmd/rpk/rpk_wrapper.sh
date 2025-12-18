@@ -16,5 +16,5 @@ fi
 
 root_dir=$BUILD_WORKSPACE_DIRECTORY
 pushd "$root_dir"
-${rpk_path} ${cmd} ${extra_cmd_args} ${*}
+${rpk_path} ${cmd} ${extra_cmd_args} "${@}"
 popd
