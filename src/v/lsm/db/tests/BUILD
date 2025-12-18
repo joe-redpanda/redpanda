@@ -46,6 +46,22 @@ redpanda_cc_gtest(
 )
 
 redpanda_cc_gtest(
+    name = "snapshot_test",
+    timeout = "short",
+    srcs = [
+        "snapshot_test.cc",
+    ],
+    deps = [
+        "//src/v/base",
+        "//src/v/lsm/core/internal:keys",
+        "//src/v/lsm/db:snapshot",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_gtest(
     name = "weak_intrusive_list_test",
     timeout = "short",
     srcs = [

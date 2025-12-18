@@ -206,6 +206,20 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "snapshot",
+    srcs = [
+        "snapshot.cc",
+    ],
+    hdrs = [
+        "snapshot.h",
+    ],
+    deps = [
+        "//src/v/base",
+        "//src/v/lsm/core/internal:keys",
+    ],
+)
+
+redpanda_cc_library(
     name = "weak_intrusive_list",
     hdrs = ["weak_intrusive_list.h"],
     deps = [
