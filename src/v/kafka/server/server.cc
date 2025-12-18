@@ -2015,10 +2015,13 @@ ss::future<response_ptr> create_acls_handler::handle(
         ss::visit(
           result,
           [&response, &results](size_t i) {
-              if (results[i] == cluster::errc::feature_disabled) {
+              if (results[i] == cluster::errc::feature_sanctioned) {
                   response.data.results.emplace_back(
                     error_code::invalid_config,
                     features::enterprise_error_message::acl_with_rbac());
+              } else if (results[i] == cluster::errc::feature_disabled) {
+                  response.data.results.emplace_back(
+                    error_code::invalid_config, "GBAC feature not yet active");
               } else {
                   response.data.results.emplace_back(
                     map_topic_error_code(results[i]));
