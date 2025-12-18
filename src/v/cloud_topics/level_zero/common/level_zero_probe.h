@@ -112,6 +112,8 @@ public:
         _rx_bytes_xshard += bytes;
     }
 
+    void set_active_groups(uint64_t count) { _active_groups = count; }
+
 private:
     void setup_internal_metrics(bool disable);
 
@@ -124,6 +126,8 @@ private:
     /// Number of requests and total bytes received from another shard
     uint64_t _rx_requests_xshard{0};
     uint64_t _rx_bytes_xshard{0};
+    /// Number of active upload groups
+    uint64_t _active_groups{0};
 
     metrics::internal_metric_groups _metrics;
 };

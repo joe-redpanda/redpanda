@@ -246,6 +246,12 @@ void write_request_scheduler_probe::setup_internal_metrics(bool disable) {
          "rx_bytes_xshard",
          [this] { return _rx_bytes_xshard; },
          sm::description("Total number of bytes received from another shard."),
+         labels),
+
+       sm::make_gauge(
+         "active_groups",
+         [this] { return _active_groups; },
+         sm::description("Number of active upload groups in the scheduler."),
          labels)});
 }
 batcher_probe::batcher_probe(bool disable) { setup_internal_metrics(disable); }

@@ -401,6 +401,15 @@ write_pipeline<Clock>::stage_bytes_ref(pipeline_stage s) const {
 }
 
 template<class Clock>
+const std::atomic<size_t>*
+write_pipeline<Clock>::stage_bytes_ref_by_index(int index) const {
+    if (index < 0 || static_cast<size_t>(index) >= _stage_bytes.size()) {
+        return nullptr;
+    }
+    return &_stage_bytes[static_cast<size_t>(index)].count;
+}
+
+template<class Clock>
 size_t write_pipeline<Clock>::current_size() const {
     size_t total = 0;
     for (const auto& bytes : _stage_bytes) {

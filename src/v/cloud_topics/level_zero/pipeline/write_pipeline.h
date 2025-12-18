@@ -188,6 +188,15 @@ public:
         /// Get pointer to the stage's pending bytes counter
         auto stage_bytes_ref() { return _parent->stage_bytes_ref(_ps); }
 
+        /// Get pointer to the next stage's pending bytes counter.
+        /// Unlike next_stage(), this method returns a valid pointer even if
+        /// the next stage hasn't been registered yet. The counters are
+        /// pre-allocated, so they can be accessed before registration.
+        auto next_stage_bytes_ref() {
+            return _parent->stage_bytes_ref_by_index(
+              _parent->next_stage_index(_ps));
+        }
+
     private:
         /// Pick the right abort source to use.
         ///
@@ -220,6 +229,14 @@ public:
     /// Get the number of bytes at a specific pipeline stage.
     size_t stage_bytes(pipeline_stage s) const;
     const std::atomic<size_t>* stage_bytes_ref(pipeline_stage s) const;
+
+    /// Get pointer to stage bytes counter by index.
+    /// Unlike stage_bytes_ref(pipeline_stage), this method does not require
+    /// the stage to be registered. It returns the pointer to the pre-allocated
+    /// counter at the given index.
+    /// \param index The stage index (0-based)
+    /// \return Pointer to the atomic counter, or nullptr if index is invalid
+    const std::atomic<size_t>* stage_bytes_ref_by_index(int index) const;
 
 private:
     /// Transfer bytes from one stage to another.
