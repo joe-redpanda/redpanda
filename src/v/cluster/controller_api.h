@@ -75,7 +75,7 @@ public:
       model::topic_namespace_view, model::timeout_clock::time_point);
 
     ss::future<result<chunked_vector<partition_reconfiguration_state>>>
-    get_partitions_reconfiguration_state(
+    get_partitions_leader_reconfiguration_state(
       const chunked_vector<model::ntp>&, model::timeout_clock::time_point);
     /**
      * Returns state of controller backend from each node in the cluster for

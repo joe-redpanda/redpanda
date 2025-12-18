@@ -352,9 +352,9 @@ ss::future<std::error_code> controller_api::wait_for_topic(
 }
 
 ss::future<result<chunked_vector<partition_reconfiguration_state>>>
-controller_api::get_partitions_reconfiguration_state(
+controller_api::get_partitions_leader_reconfiguration_state(
   const chunked_vector<model::ntp>& partitions,
-  model::timeout_clock::time_point) {
+  model::timeout_clock::time_point timeout) {
     auto& updates_in_progress = _topics.local().updates_in_progress();
 
     absl::node_hash_map<model::ntp, partition_reconfiguration_state> states;
@@ -375,21 +375,25 @@ controller_api::get_partitions_reconfiguration_state(
         state.state = progress_it->second.get_state();
         state.policy = progress_it->second.get_reconfiguration_policy();
 
-        auto reconciliation_state = co_await get_reconciliation_state(ntp);
-        for (auto& operation : reconciliation_state.pending_operations()) {
-            if (operation.recovery_state) {
-                state.current_partition_size
-                  = operation.recovery_state->local_size;
-                for (auto& [id, recovery_state] :
-                     operation.recovery_state->replicas) {
-                    state.replicas.push_back(
-                      replica_bytes{
-                        .node = id,
-                        .bytes_left = recovery_state.bytes_left,
-                        .bytes_transferred = state.current_partition_size
-                                             - recovery_state.bytes_left,
-                        .offset = recovery_state.last_offset,
-                      });
+        auto reconciliation_state
+          = co_await get_partition_leader_reconciliation_state(ntp, timeout);
+        if (reconciliation_state.has_value()) {
+            for (auto& operation :
+                 reconciliation_state.value().pending_operations()) {
+                if (operation.recovery_state) {
+                    state.current_partition_size
+                      = operation.recovery_state->local_size;
+                    for (auto& [id, recovery_state] :
+                         operation.recovery_state->replicas) {
+                        state.replicas.push_back(
+                          replica_bytes{
+                            .node = id,
+                            .bytes_left = recovery_state.bytes_left,
+                            .bytes_transferred = state.current_partition_size
+                                                 - recovery_state.bytes_left,
+                            .offset = recovery_state.last_offset,
+                          });
+                    }
                 }
             }
         }
@@ -518,7 +522,7 @@ controller_api::get_node_decommission_progress(
     // replicas that are moving from decommissioned node are still present on a
     // node but their metadata is update, add them explicitly
     ret.replicas_left += moving_from_node.size();
-    auto states = co_await get_partitions_reconfiguration_state(
+    auto states = co_await get_partitions_leader_reconfiguration_state(
       std::move(moving_from_node), timeout);
 
     if (states) {
