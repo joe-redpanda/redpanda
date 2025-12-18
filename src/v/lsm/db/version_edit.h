@@ -105,7 +105,7 @@ private:
     };
     absl::FixedArray<mutation> _mutations_by_level;
     // This is safe because it is applied idempotently.
-    internal::sequence_number _last_seqno = internal::sequence_number::min();
+    std::optional<internal::sequence_number> _last_seqno;
 };
 
 } // namespace lsm::db

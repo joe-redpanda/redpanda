@@ -25,6 +25,7 @@ namespace {
 
 namespace io = lsm::io;
 using lsm::internal::file_handle;
+using lsm::internal::operator""_seqno;
 
 class proxy_data_persistence : public io::data_persistence {
 public:
@@ -143,7 +144,7 @@ public:
     void write_at_least(size_t size) {
         auto batch = ss::make_lw_shared<lsm::db::memtable>();
         decltype(_shadow) shadow_batch;
-        auto seqno = _db->max_applied_seqno();
+        auto seqno = _db->max_applied_seqno().value_or(0_seqno);
         while (batch->approximate_memory_usage() < size) {
             auto key = lsm::internal::key::encode({
               .key = lsm::user_key_view(
@@ -281,7 +282,7 @@ TEST_F(ImplTest, Randomized) {
 TEST_F(ImplTest, ReadYourOwnWrites) {
     // Write some initial data to the database
     auto batch1 = ss::make_lw_shared<lsm::db::memtable>();
-    auto seqno = _db->max_applied_seqno();
+    auto seqno = _db->max_applied_seqno().value_or(0_seqno);
     auto key1 = lsm::internal::key::encode({
       .key = lsm::user_key_view("key1"),
       .seqno = ++seqno,
@@ -300,7 +301,7 @@ TEST_F(ImplTest, ReadYourOwnWrites) {
 
     // Create a pending write batch with new keys (not yet applied)
     auto pending_batch = ss::make_lw_shared<lsm::db::memtable>();
-    seqno = _db->max_applied_seqno();
+    seqno = _db->max_applied_seqno().value_or(0_seqno);
 
     auto key3 = lsm::internal::key::encode({
       .key = lsm::user_key_view("key3"),
@@ -323,7 +324,7 @@ TEST_F(ImplTest, ReadYourOwnWrites) {
 
     // Create another pending write batch that updates an existing key
     auto update_batch = ss::make_lw_shared<lsm::db::memtable>();
-    seqno = _db->max_applied_seqno();
+    seqno = _db->max_applied_seqno().value_or(0_seqno);
 
     auto key2_updated = lsm::internal::key::encode({
       .key = lsm::user_key_view("key2"),
@@ -405,6 +406,19 @@ TEST_F(ImplTest, Readonly) {
     EXPECT_ANY_THROW(write_at_least(1_KiB));
     EXPECT_TRUE(matches_shadow());
     EXPECT_ANY_THROW(write_at_least(1_KiB));
+}
+
+TEST_F(ImplTest, SnapshotEmpty) {
+    auto it = _db->create_iterator(std::nullopt).get();
+    it->seek_to_first().get();
+    EXPECT_FALSE(it->valid());
+    write_at_least(512_KiB);
+    EXPECT_TRUE(matches_shadow());
+    // Even though there is now data, the DB should be empty
+    it->seek_to_first().get();
+    EXPECT_FALSE(it->valid());
+    it->seek_to_last().get();
+    EXPECT_FALSE(it->valid());
 }
 
 } // namespace

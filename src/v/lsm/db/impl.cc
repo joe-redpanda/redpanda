@@ -15,6 +15,7 @@
 #include "base/vlog.h"
 #include "lsm/core/exceptions.h"
 #include "lsm/core/internal/files.h"
+#include "lsm/core/internal/iterator.h"
 #include "lsm/core/internal/keys.h"
 #include "lsm/core/internal/logger.h"
 #include "lsm/core/internal/merging_iterator.h"
@@ -35,6 +36,7 @@
 namespace lsm::db {
 
 using internal::operator""_level;
+using internal::operator""_seqno;
 
 impl::impl(ctor, io::persistence p, ss::lw_shared_ptr<internal::options> o)
   : _persistence(std::move(p))
@@ -200,19 +202,27 @@ ss::future<lookup_result> impl::get(internal::key_view key) {
 ss::future<std::unique_ptr<internal::iterator>>
 impl::create_iterator(ss::optimized_optional<ss::lw_shared_ptr<memtable>> wb) {
     auto iter = co_await create_internal_iterator(wb->get());
-    internal::sequence_number iter_seqno = max_applied_seqno();
+    std::optional<internal::sequence_number> iter_seqno = max_applied_seqno();
     if (wb) {
-        auto wb_seqno = (*wb)->last_seqno().value_or(iter_seqno);
+        auto wb_seqno = (*wb)->last_seqno();
         vassert(
           wb_seqno > iter_seqno,
           "write memtable seqno must be greater than the current "
           "max_applied_seqno: {} > {}",
-          wb_seqno,
-          iter_seqno);
+          wb_seqno.value_or(0_seqno),
+          iter_seqno.value_or(0_seqno));
         iter_seqno = wb_seqno;
     }
+    if (!iter_seqno) {
+        // If there is no data in the memtable and the database, then we create
+        // a view of empty data, since we cannot pin before 0.
+        co_return internal::iterator::create_empty();
+    }
     co_return create_db_iterator(
-      std::move(iter), iter_seqno, _opts, [this](internal::key_view key) {
+      std::move(iter),
+      iter_seqno.value(),
+      _opts,
+      [this](internal::key_view key) {
           return _versions->current()->record_read_sample(key).then(
             [this](bool compaction_needed) {
                 if (compaction_needed) {
@@ -374,7 +384,7 @@ ss::future<> impl::run_background_compaction() {
     }
     compaction_state state{
       // TODO: If we support snapshot reads we need to track the last seqno.
-      .smallest_snapshot = _versions->last_seqno(),
+      .smallest_snapshot = _versions->last_seqno().value(),
     };
     auto output_level = compaction.level() + 1_level;
     auto max_file_size = _opts->levels[output_level].max_file_size;
@@ -528,14 +538,20 @@ ss::future<> impl::remove_obsolete_files() {
     }
 }
 
-internal::sequence_number impl::max_persisted_seqno() const {
+std::optional<internal::sequence_number> impl::max_persisted_seqno() const {
     return _versions->last_seqno();
 }
 
-internal::sequence_number impl::max_applied_seqno() const {
-    return _mem->last_seqno()
-      .or_else([this] { return _imm ? (*_imm)->last_seqno() : std::nullopt; })
-      .value_or(max_persisted_seqno());
+std::optional<internal::sequence_number> impl::max_applied_seqno() const {
+    if (auto seqno = _mem->last_seqno()) {
+        return seqno;
+    }
+    if (_imm) {
+        if (auto seqno = (*_imm)->last_seqno()) {
+            return seqno;
+        }
+    }
+    return max_persisted_seqno();
 }
 
 } // namespace lsm::db

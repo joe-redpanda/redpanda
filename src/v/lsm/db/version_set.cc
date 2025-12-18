@@ -525,7 +525,10 @@ ss::future<> version_set::log_and_apply(version_edit edit) {
     // deltas, but just snapshot the full manifest. At somepoint we will
     // want delta writes (but that's not possible in the cloud), but for
     // now we will just write full snapshots.
-    auto updated_seqno = std::max(_last_seqno, edit._last_seqno);
+
+    // Invariant: Between the two we must have a seqno, either data exists or
+    // we're writing the first data which must have a seqno
+    auto updated_seqno = std::max(_last_seqno, edit._last_seqno).value();
     auto m = manifest{
       .version = v,
       .next_file_id = _next_file_id,

@@ -161,7 +161,9 @@ public:
     ss::future<> recover();
 
     // The latest seqno applied to the LSM tree.
-    internal::sequence_number last_seqno() const { return _last_seqno; }
+    std::optional<internal::sequence_number> last_seqno() const {
+        return _last_seqno;
+    }
 
     // Returns true iff some level needs compaction.
     bool needs_compaction() const;
@@ -199,7 +201,7 @@ private:
     ss::lw_shared_ptr<version> _current;
     internal::file_id _next_file_id = internal::file_id{2};
     internal::file_id _current_manifest_id;
-    internal::sequence_number _last_seqno;
+    std::optional<internal::sequence_number> _last_seqno;
     absl::FixedArray<std::optional<internal::key>> _compact_pointer;
 };
 

@@ -163,12 +163,14 @@ ss::future<database> database::open(options opts, io::persistence p) {
 
 ss::future<> database::close() { return _impl->close(); }
 
-model::offset database::max_persisted_offset() const {
-    return seqno_cast(_impl->max_persisted_seqno());
+std::optional<model::offset> database::max_persisted_offset() const {
+    return _impl->max_persisted_seqno().transform(
+      [](auto seqno) { return seqno_cast(seqno); });
 }
 
-model::offset database::max_applied_offset() const {
-    return seqno_cast(_impl->max_applied_seqno());
+std::optional<model::offset> database::max_applied_offset() const {
+    return _impl->max_applied_seqno().transform(
+      [](auto seqno) { return seqno_cast(seqno); });
 }
 
 ss::future<> database::flush() { return _impl->flush(); }

@@ -42,10 +42,10 @@ public:
 
     // the maximum sequence number that has been applied to in memory state or
     // durable storage.
-    internal::sequence_number max_applied_seqno() const;
+    std::optional<internal::sequence_number> max_applied_seqno() const;
 
     // The maximum sequence number that has been persisted to durable storage.
-    internal::sequence_number max_persisted_seqno() const;
+    std::optional<internal::sequence_number> max_persisted_seqno() const;
 
     // Open the database
     static ss::future<std::unique_ptr<impl>>

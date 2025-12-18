@@ -153,11 +153,11 @@ public:
     ss::future<> close();
 
     // The maximum offset that has been persisted to durable storage.
-    model::offset max_persisted_offset() const;
+    std::optional<model::offset> max_persisted_offset() const;
 
     // The maximum offset that has been applied to the database (persisted or
     // not).
-    model::offset max_applied_offset() const;
+    std::optional<model::offset> max_applied_offset() const;
 
     // Flush existing buffered data such that that `max_persisted_offset()`
     // becomes >= the current `max_applied_offset()`.

@@ -92,6 +92,7 @@ public:
           .smallest = spec.keys.front(),
           .largest = spec.keys.back(),
         });
+        edit.set_last_seqno(0_seqno);
         _version_set->log_and_apply(std::move(edit)).get();
     }
 
@@ -156,6 +157,7 @@ public:
           .oldest_seqno = 0_seqno,
           .newest_seqno = 0_seqno,
         });
+        edit.set_last_seqno(0_seqno);
         _version_set->log_and_apply(std::move(edit)).get();
     }
 
@@ -216,6 +218,7 @@ TEST_F(VersionSetTest, ApplyEdit) {
       .smallest = "a"_key,
       .largest = "z"_key,
     });
+    edit.set_last_seqno(0_seqno);
     vset.log_and_apply(std::move(edit)).get();
     EXPECT_EQ(vset.current()->num_files(0_level), 1);
     EXPECT_EQ(vset.current()->num_files(1_level), 0);
@@ -232,6 +235,7 @@ TEST_F(VersionSetTest, ApplyEditWithDelete) {
           .smallest = "a"_key,
           .largest = "z"_key,
         });
+        edit.set_last_seqno(0_seqno);
         vset.log_and_apply(std::move(edit)).get();
         EXPECT_EQ(vset.current()->num_files(0_level), 1);
         EXPECT_EQ(vset.current()->num_files(1_level), 0);
@@ -276,6 +280,7 @@ TEST_F(VersionSetTest, Recovery) {
           .smallest = "c"_key,
           .largest = "d"_key,
         });
+        edit.set_last_seqno(0_seqno);
         vset.log_and_apply(std::move(edit)).get();
         EXPECT_EQ(vset.current()->num_files(0_level), 2);
         EXPECT_EQ(vset.current()->num_files(1_level), 0);
@@ -310,6 +315,7 @@ TEST_F(VersionSetTest, OverlapInLevel0) {
       .smallest = "b"_key,
       .largest = "e"_key,
     });
+    edit.set_last_seqno(0_seqno);
     vset.log_and_apply(std::move(edit)).get();
     auto current = vset.current();
     EXPECT_TRUE(current->overlap_in_level(0_level, "a"_user_key, "z"_user_key));
@@ -352,6 +358,7 @@ TEST_F(VersionSetTest, OverlapInLevel1) {
       .smallest = "i"_key,
       .largest = "k"_key,
     });
+    edit.set_last_seqno(0_seqno);
     vset.log_and_apply(std::move(edit)).get();
     auto current = vset.current();
     EXPECT_TRUE(current->overlap_in_level(1_level, "a"_user_key, "z"_user_key));
