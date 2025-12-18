@@ -356,51 +356,56 @@ controller_api::get_partitions_leader_reconfiguration_state(
   const chunked_vector<model::ntp>& partitions,
   model::timeout_clock::time_point timeout) {
     auto& updates_in_progress = _topics.local().updates_in_progress();
-
     absl::node_hash_map<model::ntp, partition_reconfiguration_state> states;
-    for (auto& ntp : partitions) {
-        auto progress_it = updates_in_progress.find(ntp);
-        if (progress_it == updates_in_progress.end()) {
-            continue;
-        }
-        auto p_as = _topics.local().get_partition_assignment(ntp);
-        if (!p_as) {
-            continue;
-        }
-        partition_reconfiguration_state state;
-        state.ntp = ntp;
+    co_await ss::max_concurrent_for_each(
+      partitions,
+      16,
+      [this, &updates_in_progress, &states, timeout](
+        const model::ntp& ntp) -> ss::future<> {
+          auto progress_it = updates_in_progress.find(ntp);
+          if (progress_it == updates_in_progress.end()) {
+              return ss::now();
+          }
+          auto p_as = _topics.local().get_partition_assignment(ntp);
+          if (!p_as) {
+              return ss::now();
+          }
+          partition_reconfiguration_state state;
+          state.ntp = ntp;
 
-        state.current_assignment = std::move(p_as->replicas);
-        state.previous_assignment = progress_it->second.get_previous_replicas();
-        state.state = progress_it->second.get_state();
-        state.policy = progress_it->second.get_reconfiguration_policy();
+          state.current_assignment = std::move(p_as->replicas);
+          state.previous_assignment
+            = progress_it->second.get_previous_replicas();
+          state.state = progress_it->second.get_state();
+          state.policy = progress_it->second.get_reconfiguration_policy();
 
-        auto reconciliation_state
-          = co_await get_partition_leader_reconciliation_state(ntp, timeout);
-        if (reconciliation_state.has_value()) {
-            for (auto& operation :
-                 reconciliation_state.value().pending_operations()) {
-                if (operation.recovery_state) {
-                    state.current_partition_size
-                      = operation.recovery_state->local_size;
-                    for (auto& [id, recovery_state] :
-                         operation.recovery_state->replicas) {
-                        state.replicas.push_back(
-                          replica_bytes{
-                            .node = id,
-                            .bytes_left = recovery_state.bytes_left,
-                            .bytes_transferred = state.current_partition_size
-                                                 - recovery_state.bytes_left,
-                            .offset = recovery_state.last_offset,
-                          });
+          return get_partition_leader_reconciliation_state(ntp, timeout)
+            .then([&states, &ntp, state = std::move(state)](
+                    result<ntp_reconciliation_state> r) mutable {
+                if (r.has_value()) {
+                    for (auto& operation : r.value().pending_operations()) {
+                        if (operation.recovery_state) {
+                            state.current_partition_size
+                              = operation.recovery_state->local_size;
+                            for (auto& [id, recovery_state] :
+                                 operation.recovery_state->replicas) {
+                                state.replicas.push_back(
+                                  replica_bytes{
+                                    .node = id,
+                                    .bytes_left = recovery_state.bytes_left,
+                                    .bytes_transferred
+                                    = state.current_partition_size
+                                      - recovery_state.bytes_left,
+                                    .offset = recovery_state.last_offset,
+                                  });
+                            }
+                        }
                     }
                 }
-            }
-        }
-
-        states.emplace(ntp, std::move(state));
-    }
-
+                states.emplace(ntp, std::move(state));
+                return ss::now();
+            });
+      });
     chunked_vector<partition_reconfiguration_state> ret;
     ret.reserve(states.size());
     for (auto& [_, state] : states) {
