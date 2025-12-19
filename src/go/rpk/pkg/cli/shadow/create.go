@@ -19,6 +19,7 @@ import (
 	"buf.build/gen/go/redpandadata/cloud/connectrpc/go/redpanda/api/controlplane/v1/controlplanev1connect"
 	controlplanev1 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1"
 	adminv2 "buf.build/gen/go/redpandadata/core/protocolbuffers/go/redpanda/core/admin/v2"
+	dataplanev1 "buf.build/gen/go/redpandadata/dataplane/protocolbuffers/go/redpanda/api/dataplane/v1"
 	"connectrpc.com/connect"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/adminapi"
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/config"
@@ -27,6 +28,7 @@ import (
 	"github.com/redpanda-data/redpanda/src/go/rpk/pkg/publicapi"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
 
@@ -101,6 +103,9 @@ Create a Shadow Link without confirmation prompt:
 					[]string{prof.CurrentAuth().ClientID},
 				)
 				out.MaybeDieErr(err)
+
+				err = validateCloudSecrets(cmd.Context(), prof, slCfg)
+				out.MaybeDie(err, "unable to validate cloud secrets: %v", err)
 
 				op, err := cloudClient.ShadowLink.CreateShadowLink(cmd.Context(), connect.NewRequest(&controlplanev1.CreateShadowLinkRequest{
 					ShadowLink: shadowLinkConfigToCloudCreate(slCfg),
@@ -274,4 +279,48 @@ func tryShadowLinkErrReason(ctx context.Context, cl controlplanev1connect.Shadow
 		return errMsg
 	}
 	return fmt.Sprintf("%v. Reason: %v", errMsg, link.Msg.GetShadowLink().GetReason())
+}
+
+func validateCloudSecrets(ctx context.Context, prof *config.RpkProfile, slCfg *ShadowLinkConfig) error {
+	// We should only try to validate if pass or key are present in the config.
+	pass, key := authPassword(slCfg.ClientOptions), tlsKey(slCfg.ClientOptions)
+	if pass == "" && key == "" {
+		return nil
+	}
+	// We can't validate the presence of secrets if the Shadow Link is not for
+	// this cluster. In this case we default to the server validation.
+	if slCfg.CloudOptions != nil && slCfg.CloudOptions.ShadowRedpandaID != prof.CloudCluster.ClusterID {
+		zap.L().Sugar().Warn("Shadow Link cluster is different from the current selected cluster in your profile; skipping secrets validation")
+		return nil
+	}
+	dpClient, err := publicapi.DataplaneClientFromRpkProfile(prof)
+	if err != nil {
+		return err
+	}
+	secrets, err := dpClient.Secret.ListSecrets(ctx, connect.NewRequest(&dataplanev1.ListSecretsRequest{
+		PageSize: 500, // 500 is a reasonable upper limit for now.
+		Filter: &dataplanev1.ListSecretsFilter{
+			Scopes: []dataplanev1.Scope{dataplanev1.Scope_SCOPE_REDPANDA_CLUSTER},
+		},
+	}))
+	if err != nil {
+		return fmt.Errorf("unable to list secrets at REDPANDA_CLUSTER scope: %v", err)
+	}
+
+	secretRefs := make(map[string]struct{})
+	for _, secret := range secrets.Msg.GetSecrets() {
+		secretRefs[fmt.Sprintf("%s%s}", secretsPrefix, secret.Id)] = struct{}{}
+	}
+
+	if pass != "" {
+		if _, ok := secretRefs[pass]; !ok {
+			return fmt.Errorf("unable to find authentication password secret %q in the shadow cluster secrets store (REDPANDA_CLUSTER scope)", pass)
+		}
+	}
+	if key != "" {
+		if _, ok := secretRefs[key]; !ok {
+			return fmt.Errorf("unable to find TLS key secret %q in the shadow cluster secrets store (REDPANDA_CLUSTER scope)", key)
+		}
+	}
+	return nil
 }
