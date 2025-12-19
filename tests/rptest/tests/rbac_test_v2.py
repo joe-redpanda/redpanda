@@ -8,6 +8,7 @@
 # by the Apache License, Version 2.0
 
 import json
+import random
 from collections.abc import Iterable
 
 from connectrpc.errors import ConnectError, ConnectErrorCode
@@ -751,3 +752,118 @@ class RBACEndToEndTest(RBACTestBase):
         roles = self.superuser_admin.list_roles()
 
         assert len(roles) == 1, f"Wrong number of roles {str(roles)}"
+
+
+class RolePersistenceTest(RBACTestBase):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.admin_v1 = Admin(
+            self.redpanda, auth=(self.superuser.username, self.superuser.password)
+        )
+
+    def _wait_for_everything_snapshotted(self, nodes: list):
+        controller_max_offset = max(
+            self.admin_v1.get_controller_status(n)["committed_index"] for n in nodes
+        )
+        self.logger.debug(f"controller max offset is {controller_max_offset}")
+
+        for n in nodes:
+            self.redpanda.wait_for_controller_snapshot(
+                node=n, prev_start_offset=(controller_max_offset - 1)
+            )
+
+        return controller_max_offset
+
+    @cluster(num_nodes=3)
+    def test_role_survives_restart(self):
+        self.redpanda.set_feature_active("controller_snapshots", True, timeout_sec=10)
+
+        self.redpanda.set_cluster_config({"controller_snapshot_max_age_sec": 1})
+
+        self.redpanda.restart_nodes(self.redpanda.nodes)
+
+        # Wait for the cluster to elect a controller leader after the restart
+        self.redpanda.wait_until(self.redpanda.healthy, timeout_sec=30, backoff_sec=1)
+        self.admin_v1.await_stable_leader(
+            topic="controller",
+            partition=0,
+            namespace="redpanda",
+            timeout_s=30,
+            backoff_s=1,
+        )
+
+        admin = self.superuser_admin
+
+        names = [
+            "a",
+            "b",
+            "c",
+            "d",
+            "e",
+            "f",
+        ]
+
+        for n in names:
+            admin.create_role(role=n)
+
+        rand_role = random.choice(names)
+
+        users = [
+            "u1",
+            "u2",
+            "u3",
+            "u4",
+            "u5",
+            "u6",
+        ]
+
+        self.logger.debug("Submit several updates, each of which is destructive.")
+
+        for u in users:
+            admin.add_role_members(
+                role=rand_role,
+                members=[security_pb2.RoleMember(user=security_pb2.RoleUser(name=u))],
+            )
+
+        partition = len(users) // 2
+
+        to_remove = [
+            security_pb2.RoleMember(user=security_pb2.RoleUser(name=u))
+            for u in users[partition:]
+        ]
+
+        admin.remove_role_members(role=rand_role, members=to_remove)
+
+        self._wait_for_everything_snapshotted(self.redpanda.nodes)
+
+        r = wait_until_result(
+            lambda: admin.get_role(role=rand_role),
+            timeout_sec=10,
+            backoff_sec=1,
+            retry_on_exc=True,
+        )
+
+        assert r.name == rand_role
+
+        self.redpanda.restart_nodes(self.redpanda.nodes)
+
+        for n in names:
+            r = wait_until_result(
+                lambda: admin.get_role(role=n),
+                timeout_sec=10,
+                backoff_sec=1,
+                retry_on_exc=True,
+            )
+            assert r.name == n
+
+        expected = set(users[:partition])
+
+        wait_until(
+            lambda: set(
+                member.user.name for member in admin.list_role_members(role=rand_role)
+            )
+            == expected,
+            timeout_sec=10,
+            backoff_sec=1,
+            retry_on_exc=True,
+        )
