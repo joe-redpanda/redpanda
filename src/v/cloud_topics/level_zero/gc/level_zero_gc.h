@@ -13,6 +13,7 @@
 #include "cloud_storage_clients/client.h"
 #include "cloud_topics/level_zero/gc/level_zero_gc_probe.h"
 #include "cloud_topics/types.h"
+#include "config/property.h"
 #include "container/chunked_hash_map.h"
 
 #include <seastar/core/condition-variable.hh>
