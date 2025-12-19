@@ -438,6 +438,61 @@ class NodesDecommissioningTest(PreallocNodesTest):
         if not delete_topic:
             self.verify()
 
+    @cluster(num_nodes=6)
+    def test_decommission_status(self):
+        self.start_redpanda()
+        self._create_topics(replication_factors=[3])
+        self.start_producer()
+        to_decommission = random.choice(self.redpanda.nodes)
+        to_decommission_id = self.redpanda.node_id(to_decommission)
+        self.logger.info(
+            f"decommissioning node: {to_decommission_id}",
+        )
+        # Block recovery to ensure decommissioning takes some time
+        # and we see some status in the middle of decommissioning
+        self._set_recovery_rate(0)
+        self._decommission(to_decommission_id)
+
+        def validate_decommission_status():
+            def check_decommission_status(rpc_node: ClusterNode):
+                status = self.admin.get_decommission_status(
+                    id=to_decommission_id, node=rpc_node
+                )
+                finished = status["finished"]
+                replicas_left = status["replicas_left"]
+                partition_meta = []
+                for p in status.get("partitions", []):
+                    if p["topic"] != self._topic:
+                        # We are only producing data to self._topic
+                        continue
+                    has_valid_meta = (
+                        p["partition_size"] > 0 and p["bytes_left_to_move"] > 0
+                    )
+                    if not has_valid_meta:
+                        self.logger.debug(
+                            f"partition {p} is not reporting valid metadata"
+                        )
+                    partition_meta.append(has_valid_meta)
+                return (
+                    not finished
+                    and replicas_left > 0
+                    and partition_meta
+                    and all(partition_meta)
+                )
+
+            return all(check_decommission_status(n) for n in self.redpanda.nodes)
+
+        self.redpanda.wait_until(
+            validate_decommission_status,
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg="Decommission status not reported as in_progress on all nodes",
+            retry_on_exc=True,
+        )
+        self._set_recovery_rate(2 << 30)
+
+        self._wait_for_node_removed(to_decommission_id)
+
     @cluster(num_nodes=6, log_allow_list=CHAOS_LOG_ALLOW_LIST)
     def test_decommissioning_node_rf_1_replica(self):
         self.start_redpanda()
