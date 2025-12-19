@@ -30,6 +30,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// secretsPrefix is the prefix that denotes that a field is referencing a secret
+// in the secrets store. (used in password and TLS key).
+const secretsPrefix = "${secrets."
+
 func newCreateCommand(fs afero.Fs, p *config.Params) *cobra.Command {
 	var (
 		noConfirm   bool
@@ -223,8 +227,11 @@ func validateParsedShadowLinkConfig(slCfg *ShadowLinkConfig) error {
 	if co.TLSSettings != nil && co.TLSSettings.TLSFileSettings != nil {
 		return errors.New("TLS file settings are not supported when using cloud options; use tls_pem_settings instead")
 	}
-	if pw := authPassword(co); pw != "" && !strings.HasPrefix(pw, "${secrets.") {
+	if pw := authPassword(co); pw != "" && !strings.HasPrefix(pw, secretsPrefix) {
 		return errors.New("cloud shadow links don't support plain passwords, you must use secrets from the secrets store. See 'rpk security secret --help' for more details")
+	}
+	if key := tlsKey(slCfg.ClientOptions); key != "" && !strings.HasPrefix(key, secretsPrefix) {
+		return errors.New("cloud shadow links don't support plain TLS keys, you must use secrets from the secrets store. See 'rpk security secret --help' for more details")
 	}
 	return nil
 }
@@ -240,6 +247,17 @@ func authPassword(co *ShadowLinkClientOptions) string {
 	}
 	if auth.PlainConfiguration != nil {
 		return auth.PlainConfiguration.Password
+	}
+	return ""
+}
+
+func tlsKey(co *ShadowLinkClientOptions) string {
+	if co == nil || co.TLSSettings == nil {
+		return ""
+	}
+	tls := co.TLSSettings
+	if pem := tls.TLSPEMSettings; pem != nil {
+		return pem.Key
 	}
 	return ""
 }
