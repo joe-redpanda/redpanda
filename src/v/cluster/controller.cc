@@ -682,6 +682,7 @@ ss::future<> controller::start(
       std::ref(_members_table),
       std::ref(_partition_balancer),
       std::ref(_partition_manager),
+      std::ref(_partition_leaders),
       std::ref(_as));
 
     co_await set_raft_manager_remake_cb();
@@ -775,6 +776,7 @@ ss::future<> controller::start(
       std::addressof(_plugin_table),
       std::addressof(_feature_manager),
       std::addressof(_storage),
+      std::addressof(_cluster_link_frontend),
       std::ref(_as));
     co_await _metrics_reporter.invoke_on(0, &metrics_reporter::start);
 

@@ -282,6 +282,7 @@ void consensus::shutdown_input() {
         _commit_index_updated.broken();
         _follower_reply.broken();
         _consumable_offset_monitor.stop();
+        _leadership_changed.broken();
     }
 }
 
@@ -3320,6 +3321,7 @@ void consensus::trigger_leadership_notification() {
         _follower_recovery_state->yield();
     }
     _compaction_coordinator.on_leadership_change(_leader_id);
+    _leadership_changed.broadcast();
 }
 
 std::ostream& operator<<(std::ostream& o, const consensus& c) {

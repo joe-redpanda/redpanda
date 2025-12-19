@@ -247,7 +247,9 @@ partition_produce_stages produce_topic_partition(
        .message_timestamp_before_max_ms
        = cfg_ctx.message_timestamp_before_max_ms,
        .message_timestamp_after_max_ms = cfg_ctx.message_timestamp_after_max_ms,
-       .probe = octx.rctx.probe()});
+       .probe = octx.rctx.probe(),
+       .ntp = ntp,
+       .client_id = octx.rctx.header().client_id});
 
     if (validate_batch_res.has_value()) {
         auto dispatch_f = ss::now();

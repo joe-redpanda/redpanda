@@ -11,7 +11,9 @@
 
 #include "cloud_io/io_result.h"
 #include "cloud_storage_clients/client.h"
+#include "cloud_topics/level_zero/gc/level_zero_gc_probe.h"
 #include "cloud_topics/types.h"
+#include "container/chunked_hash_map.h"
 
 #include <seastar/core/condition-variable.hh>
 #include <seastar/core/future.hh>
@@ -26,8 +28,10 @@ class remote;
 }
 
 namespace cluster {
+class controller_stm;
 class health_monitor_frontend;
-}
+class topic_table;
+} // namespace cluster
 
 namespace cloud_topics {
 
@@ -55,9 +59,9 @@ namespace cloud_topics {
  *
  * The `level_zero_gc` class implements L0 garbage collection as described
  * above. It uses two service provider interfaces defined in the class. The
- * `epoch_source` interface provides access to the safe-to-delete epoch, and the
- * `object_storage` interface provides access to listing and deleting objects
- * from the configured storage service.
+ * `epoch_source` interface provides access to the safe-to-delete epoch, and
+ * the `object_storage` interface provides access to listing and deleting
+ * objects from the configured storage service.
  *
  * Incremental collection
  * ======================
@@ -179,6 +183,23 @@ public:
      */
     class epoch_source {
     public:
+        struct partitions_snapshot {
+            using partition_map = chunked_hash_map<
+              model::topic_namespace,
+              chunked_vector<model::partition_id>,
+              model::topic_namespace_hash,
+              model::topic_namespace_eq>;
+
+            partition_map partitions;
+            cluster_epoch snap_revision;
+        };
+
+        using partitions_max_gc_epoch = chunked_hash_map<
+          model::topic_namespace,
+          chunked_hash_map<model::partition_id, cluster_epoch>,
+          model::topic_namespace_hash,
+          model::topic_namespace_eq>;
+
         epoch_source() = default;
         epoch_source(const epoch_source&) = default;
         epoch_source(epoch_source&&) = delete;
@@ -193,7 +214,21 @@ public:
          */
         virtual seastar::future<
           std::expected<std::optional<cluster_epoch>, std::string>>
-        max_gc_eligible_epoch(seastar::abort_source*) = 0;
+        max_gc_eligible_epoch(seastar::abort_source*);
+
+        /*
+         * Snapshot of existing cloud topic partition identifiers along with the
+         * maximum possible GC eligible epoch for the set of partitions.
+         */
+        virtual seastar::future<std::expected<partitions_snapshot, std::string>>
+        get_partitions(seastar::abort_source*) = 0;
+
+        /*
+         * Reported max GC eligible epochs for cloud topic partitions.
+         */
+        virtual seastar::future<
+          std::expected<partitions_max_gc_epoch, std::string>>
+        get_partitions_max_gc_epoch(seastar::abort_source*) = 0;
     };
 
 public:
@@ -213,6 +248,8 @@ public:
       cloud_io::remote*,
       cloud_storage_clients::bucket_name,
       seastar::sharded<cluster::health_monitor_frontend>*,
+      seastar::sharded<cluster::controller_stm>*,
+      seastar::sharded<cluster::topic_table>*,
       level_zero_gc_config = {});
 
     /*
@@ -242,6 +279,8 @@ private:
     seastar::future<> worker();
     enum class collection_error : int8_t;
     seastar::future<std::expected<size_t, collection_error>> try_to_collect();
+
+    level_zero_gc_probe probe_;
 };
 
 } // namespace cloud_topics

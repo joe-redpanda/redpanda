@@ -422,20 +422,37 @@ message SecuritySettingsSyncOptions {
     // ACL filters
     repeated ACLFilter acl_filters = 4;
 }
-// Authentication config.  Currently only supporting SASL/SCRAM,
-// however made as a oneof for expansion
+// Authentication config.  Supports:
+// * SASL/SCRAM
+// * SASL/PLAIN
 message AuthenticationConfiguration {
     oneof authentication {
         // SASL/SCRAM configuration
         ScramConfig scram_configuration = 1;
+        // SASL/PLAIN configuration
+        PlainConfig plain_configuration = 2;
     }
+}
+// PLAIN settings
+message PlainConfig {
+    // PLAIN username
+    string username = 1;
+    // Password
+    string password = 2 [(google.api.field_behavior) = INPUT_ONLY];
+    // Indicates that the password has been set
+    bool password_set = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+    // Timestamp of when the password was last set - only valid if password_set
+    // is true
+    google.protobuf.Timestamp password_set_at = 4
+        [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 // SCRAM settings
 message ScramConfig {
     // SCRAM username
     string username = 1;
     // Password
-    string password = 2 [(google.api.field_behavior) = INPUT_ONLY];
+    string password = 2
+        [(google.api.field_behavior) = INPUT_ONLY, debug_redact = true];
     // Indicates that the password has been set
     bool password_set = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
     // Timestamp of when the password was last set - only valid if password_set
@@ -552,11 +569,14 @@ enum ScramMechanism {
 }
 // The matching pattern type
 enum PatternType {
+    option allow_alias = true;
     PATTERN_TYPE_UNSPECIFIED = 0;
     // Must match the filter exactly
     PATTERN_TYPE_LITERAL = 1;
     // Will match anything that starts with filter
     PATTERN_TYPE_PREFIX = 2;
+    // Will match anything that starts with filter
+    PATTERN_TYPE_PREFIXED = 2;
 }
 // What type of filter this is, include or exclude
 enum FilterType {

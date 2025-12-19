@@ -346,6 +346,12 @@ admin_server::admin_server(
       ss::engine().get_blocked_reactor_notify_ms())
   , _memory_semaphore(_cfg.max_memory_usage_bytes, "admin/server-mem") {
     _server.set_content_streaming(true);
+    _server.set_keepalive_parameters(
+      ss::net::tcp_keepalive_params{
+        .idle = std::chrono::seconds{120},
+        .interval = std::chrono::seconds{60},
+        .count = 3,
+      });
 }
 
 namespace {
