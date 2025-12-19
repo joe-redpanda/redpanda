@@ -28,6 +28,7 @@
 #include "model/metadata.h"
 #include "model/timestamp.h"
 #include "pandaproxy/schema_registry/schema_id_validation.h"
+#include "security/config.h"
 #include "utils/unresolved_address.h"
 
 #include <seastar/core/sstring.hh>
@@ -722,6 +723,9 @@ struct configuration final : public config_store {
     property<std::chrono::seconds> oidc_clock_skew_tolerance;
     property<ss::sstring> oidc_principal_mapping;
     property<std::chrono::seconds> oidc_keys_refresh_interval;
+    property<ss::sstring> oidc_group_claim_path;
+
+    enum_property<security::oidc::nested_group_behavior> nested_group_behavior;
 
     // HTTP Authentication
     enterprise<property<std::vector<ss::sstring>>> http_authentication;

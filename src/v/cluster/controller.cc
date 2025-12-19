@@ -215,6 +215,12 @@ ss::future<> controller::wire_up() {
             ss::sharded_parameter([] {
                 return config::shard_local_cfg()
                   .oidc_keys_refresh_interval.bind();
+            }),
+            ss::sharded_parameter([] {
+                return config::shard_local_cfg().oidc_group_claim_path.bind();
+            }),
+            ss::sharded_parameter([] {
+                return config::shard_local_cfg().nested_group_behavior.bind();
             }));
       })
       .then([this] {
