@@ -151,15 +151,12 @@ compaction_coordinator::get_local_max_transaction_free_offset() const {
 
 compaction_coordinator::clock_t::duration
 compaction_coordinator::base_interval() const {
-    constexpr auto max = std::chrono::milliseconds::max();
-    auto retention = std::min(
-      _log->config().tombstone_retention_ms().value_or(max),
-      _log->config().tx_retention_ms().value_or(max));
+    auto retention = _log->config().delete_retention_ms();
     // Typically retention is 24h, set update interval to 1h
     // (up to 1.5h due to jitter).
     // Using half-max for disabled to avoid overflow in jitter.
-    auto base_interval = retention == max ? clock_t::duration::max() / 2
-                                          : clock_t::duration(retention / 24);
+    auto base_interval = retention ? clock_t::duration(*retention / 24)
+                                   : clock_t::duration::max() / 2;
     vlog(_logger.debug, "calculated base_interval as {}", base_interval);
     return base_interval;
 }

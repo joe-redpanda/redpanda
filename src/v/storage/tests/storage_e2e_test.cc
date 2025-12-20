@@ -6567,13 +6567,8 @@ TEST_F(storage_test_fixture, delete_retention_ms_with_ts) {
 
     auto log = mgr.manage(std::move(ntp_cfg)).get();
 
-    // tombstone_retention_ms should be nullopt
-    ASSERT_EQ(log->config().tombstone_retention_ms(), std::nullopt);
-
-    // tx_retention_ms should have value
-    auto tx_retention_ms = log->config().tx_retention_ms();
-    ASSERT_TRUE(tx_retention_ms.has_value());
-    ASSERT_EQ(tx_retention_ms.value(), delete_retention_ms);
+    // delete_retention_ms() should be nullopt
+    ASSERT_EQ(log->config().delete_retention_ms(), std::nullopt);
 };
 
 TEST_F(storage_test_fixture, delete_retention_ms_without_ts) {
@@ -6593,15 +6588,10 @@ TEST_F(storage_test_fixture, delete_retention_ms_without_ts) {
       ntp, mgr.config().base_dir, std::make_unique<overrides_t>(ov));
     auto log = mgr.manage(std::move(ntp_cfg)).get();
 
-    // tombstone_retention_ms should have value
-    auto tombstone_retention_ms = log->config().tombstone_retention_ms();
-    ASSERT_TRUE(tombstone_retention_ms.has_value());
-    ASSERT_EQ(tombstone_retention_ms.value(), delete_retention_ms);
-
-    // tx_retention_ms should have value
-    auto tx_retention_ms = log->config().tx_retention_ms();
-    ASSERT_TRUE(tx_retention_ms.has_value());
-    ASSERT_EQ(tx_retention_ms.value(), delete_retention_ms);
+    // delete_retention_ms() should have value
+    ASSERT_EQ(
+      log->config().delete_retention_ms(),
+      std::make_optional(delete_retention_ms));
 };
 
 TEST_F(storage_test_fixture, test_get_file_offset_lock_precheck) {
