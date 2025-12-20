@@ -763,6 +763,17 @@ configuration::configuration()
         model::fetch_read_strategy::non_polling_with_debounce,
         model::fetch_read_strategy::non_polling_with_pid,
       })
+  , fetch_max_read_concurrency(
+      *this,
+      "fetch_max_read_concurrency",
+      "The maximum number of concurrent partition reads per fetch request on "
+      "each shard. Setting this higher than the default can lead to partition "
+      "starvation and unneeded memory usage.",
+      {.needs_restart = needs_restart::no,
+       .example = "1",
+       .visibility = visibility::tunable},
+      1,
+      {.min = 1, .max = 100})
   , fetch_pid_p_coeff(
       *this,
       "fetch_pid_p_coeff",
@@ -4563,6 +4574,27 @@ configuration::configuration()
       *this,
       "cloud_topics_epoch_service_local_epoch_cache_duration",
       "The local cache duration of a cluster wide epoch.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      1min)
+  , cloud_topics_short_term_gc_minimum_object_age(
+      *this,
+      "cloud_topics_short_term_gc_minimum_object_age",
+      "The minimum age of an L0 object before it becomes eligible for garbage "
+      "collection.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      12h)
+  , cloud_topics_short_term_gc_interval(
+      *this,
+      "cloud_topics_short_term_gc_interval",
+      "The interval between invocations of the L0 garbage collection work loop "
+      "when progress is being made.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      10s)
+  , cloud_topics_short_term_gc_backoff_interval(
+      *this,
+      "cloud_topics_short_term_gc_backoff_interval",
+      "The interval between invocations of the L0 garbage collection work loop "
+      "when no progress is being made or errors are occurring.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       1min)
   , development_feature_property_testing_only(

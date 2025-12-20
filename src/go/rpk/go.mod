@@ -20,6 +20,7 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/aws/aws-sdk-go v1.55.6
 	github.com/beevik/ntp v1.5.0
+	github.com/briandowns/spinner v1.23.2
 	github.com/bufbuild/protocompile v0.14.1
 	github.com/cespare/xxhash v1.1.0
 	github.com/containerd/errdefs v1.0.0

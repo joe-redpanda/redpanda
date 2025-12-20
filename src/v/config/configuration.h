@@ -221,6 +221,7 @@ struct configuration final : public config_store {
     deprecated_property rm_violation_recovery_policy;
     property<std::chrono::milliseconds> fetch_reads_debounce_timeout;
     enum_property<model::fetch_read_strategy> fetch_read_strategy;
+    bounded_property<size_t> fetch_max_read_concurrency;
     bounded_property<double, numeric_bounds> fetch_pid_p_coeff;
     bounded_property<double, numeric_bounds> fetch_pid_i_coeff;
     bounded_property<double, numeric_bounds> fetch_pid_d_coeff;
@@ -821,6 +822,12 @@ public:
       cloud_topics_epoch_service_epoch_increment_interval;
     property<std::chrono::milliseconds>
       cloud_topics_epoch_service_local_epoch_cache_duration;
+
+    property<std::chrono::milliseconds>
+      cloud_topics_short_term_gc_minimum_object_age;
+    property<std::chrono::milliseconds> cloud_topics_short_term_gc_interval;
+    property<std::chrono::milliseconds>
+      cloud_topics_short_term_gc_backoff_interval;
 
     development_feature_property<int> development_feature_property_testing_only;
 
