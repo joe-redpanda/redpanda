@@ -13,6 +13,7 @@
 #include "cloud_storage_clients/client.h"
 #include "cloud_topics/level_zero/gc/level_zero_gc_probe.h"
 #include "cloud_topics/types.h"
+#include "config/property.h"
 #include "container/chunked_hash_map.h"
 
 #include <seastar/core/condition-variable.hh>
@@ -136,16 +137,9 @@ namespace cloud_topics {
  * epochs starting at 0.
  */
 struct level_zero_gc_config {
-    /*
-     * TODO(noah): the grace period controls the minimum age of objects before
-     * they are eligible for removal, and likely deserves to be a proper
-     * configuration tunable. The throttling parameters are for preventing the
-     * polling worker from spinning. The throttling policy is very crude, and
-     * will need to be revisited, but should keep things in check for now.
-     */
-    std::chrono::milliseconds deletion_grace_period{10s};
-    std::chrono::milliseconds throttle_progress{2s};
-    std::chrono::milliseconds throttle_no_progress{10s};
+    config::binding<std::chrono::milliseconds> deletion_grace_period;
+    config::binding<std::chrono::milliseconds> throttle_progress;
+    config::binding<std::chrono::milliseconds> throttle_no_progress;
 };
 
 class level_zero_gc {
@@ -249,8 +243,7 @@ public:
       cloud_storage_clients::bucket_name,
       seastar::sharded<cluster::health_monitor_frontend>*,
       seastar::sharded<cluster::controller_stm>*,
-      seastar::sharded<cluster::topic_table>*,
-      level_zero_gc_config = {});
+      seastar::sharded<cluster::topic_table>*);
 
     /*
      * Request that GC be started or paused. These can be called multiple times

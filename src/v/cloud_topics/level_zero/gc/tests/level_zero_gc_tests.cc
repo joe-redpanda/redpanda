@@ -110,9 +110,12 @@ public:
     LevelZeroGCTest()
       : gc(
           cloud_topics::level_zero_gc_config{
-            .deletion_grace_period = 12h,
-            .throttle_progress = 10ms,
-            .throttle_no_progress = 10ms,
+            .deletion_grace_period
+            = config::mock_binding<std::chrono::milliseconds>(12h),
+            .throttle_progress
+            = config::mock_binding<std::chrono::milliseconds>(10ms),
+            .throttle_no_progress
+            = config::mock_binding<std::chrono::milliseconds>(10ms),
           },
           std::make_unique<object_storage_test_impl>(&listed, &deleted),
           std::make_unique<epoch_source_test_impl>(&max_epoch)) {}
