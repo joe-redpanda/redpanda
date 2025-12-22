@@ -81,6 +81,7 @@ public:
           : client(std::move(other.client))
           , deleter(std::move(other.deleter))
           , as_sub(std::move(other.as_sub))
+          , _track_duration(std::move(other._track_duration))
           , _wd(std::move(other._wd)) {
             _hook.swap_nodes(other._hook);
         }
@@ -90,6 +91,7 @@ public:
             deleter = std::move(other.deleter);
             as_sub = std::move(other.as_sub);
             _hook.swap_nodes(other._hook);
+            _track_duration = std::move(other._track_duration);
             _wd = std::move(other._wd);
             return *this;
         }
