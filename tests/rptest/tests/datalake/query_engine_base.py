@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from enum import Enum
 
+from rptest.tests.datalake.iceberg import Identifier
+
 from ducktape.services.service import Service
 
 
@@ -70,7 +72,10 @@ class QueryEngineBase(Service, ABC):
         with self.run_query(query) as cursor:
             return cursor.fetchone()
 
-    def count_table(self, namespace, table) -> int:
+    def count_table(self, namespace: str | Identifier, table) -> int:
+        if isinstance(namespace, tuple):
+            namespace = ".".join(namespace)
+
         query = f"select count(*) from {namespace}.{self.escape_identifier(table)}"
         with self.run_query(query) as cursor:
             return cursor.fetchone()[0]
