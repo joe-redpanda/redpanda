@@ -217,7 +217,7 @@ ss::future<> write_request_scheduler<Clock>::pull_and_roundtrip(
             _stage.process(
               [this, &signaled](const write_request<Clock>& r) noexcept {
                   signaled = true;
-                  _probe.register_time_fallback(r.size_bytes());
+                  _probe.register_request(r.size_bytes());
                   return request_processing_result::advance_and_continue;
               });
             break;
