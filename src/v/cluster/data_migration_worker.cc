@@ -110,7 +110,7 @@ worker::perform_partition_work(model::ntp&& ntp, partition_work&& work) {
         if (auto& r = ntp_state.running) {
             if (
               r->work->migration_id != work.migration_id
-              && r->work->sought_state != work.sought_state) {
+              || r->work->sought_state != work.sought_state) {
                 r->as.request_abort();
             }
         }
