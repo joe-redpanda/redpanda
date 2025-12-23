@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from enum import Enum
 
+from ducktape.services.service import Service
+
 
 class QueryEngineType(str, Enum):
     SPARK = "spark"
@@ -19,7 +21,7 @@ class QueryEngineType(str, Enum):
     DUCKDB_PY = "duckdb_py"
 
 
-class QueryEngineBase(ABC):
+class QueryEngineBase(Service, ABC):
     """Captures all the common operations across registered query engines"""
 
     @staticmethod

@@ -60,7 +60,7 @@ class DatalakeServices:
         self.warehouse_name = warehouse_name
         self.included_query_engines = include_query_engines
 
-        self.query_engines = []
+        self.query_engines: list[QueryEngineBase] = []
 
         self._catalog_type = catalog_type
         self._cloud_storage_bucket = self.redpanda.si_settings.cloud_storage_bucket
@@ -184,12 +184,12 @@ class DatalakeServices:
 
     def trino(self) -> TrinoService:
         trino = self.service(QueryEngineType.TRINO)
-        assert trino, "Missing Trino service"
+        assert isinstance(trino, TrinoService), "Missing Trino service"
         return trino
 
     def spark(self) -> SparkService:
         spark = self.service(QueryEngineType.SPARK)
-        assert spark, "Missing Spark service"
+        assert isinstance(spark, SparkService), "Missing Spark service"
         return spark
 
     def start_counter_stream(
