@@ -888,7 +888,7 @@ class LogCompactionTxRemovalTestBase(
         # Run with small segments and a very frequent compaction interval.
         self.segment_size = 2 * 1024**2  # 2 MiB
         raft_max_recovery_memory = 32 * 1024**2  # 32 MiB
-        self.raft_learner_recovery_rate = 2 * self.segment_size  # 2 segments per second
+        self.raft_learner_recovery_rate = self.segment_size  # segment per sec
 
         self.extra_rp_conf = {
             "log_compaction_interval_ms": 1000,
@@ -1214,7 +1214,7 @@ class LogCompactionTxRemovalUpgradeTestBase(LogCompactionTxRemovalTestBase):
         wait_until(
             lambda: self.nth_segment_recovered(2, leader_node),
             timeout_sec=60,
-            backoff_sec=1,
+            backoff_sec=0.5,
             err_msg="timed out waiting for partial recovery",
         )
 
