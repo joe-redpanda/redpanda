@@ -77,7 +77,7 @@ public:
     // compaction jobs to be ran. This function is ideally used when e.g. a
     // partition is removed or the `cleanup.policy` for a topic is changed and a
     // single compaction job must be stopped.
-    ss::future<> request_stop_compaction(log_compaction_meta_ptr);
+    void request_stop_compaction(log_compaction_meta_ptr);
 
     // Alert all workers that new jobs have become available in the
     // `_work_queue`.
@@ -112,6 +112,8 @@ private:
 
     // A sharded pool of compaction workers.
     ss::sharded<compaction_worker> _workers;
+
+    ss::gate _gate;
 };
 
 } // namespace cloud_topics::l1

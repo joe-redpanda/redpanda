@@ -34,8 +34,8 @@ compaction_scheduler::compaction_scheduler(
         const model::ntp& ntp,
         const model::topic_id_partition& tidp,
         std::string_view ctx) { manage_partition(ntp, tidp, ctx); },
-      [this](model::ntp ntp, std::string_view ctx) {
-          return unmanage_partition(std::move(ntp), ctx);
+      [this](const model::ntp& ntp, std::string_view ctx) {
+          unmanage_partition(ntp, ctx);
       },
       [this](const model::ntp& ntp) { return is_managed(ntp); },
       state))
@@ -96,8 +96,8 @@ void compaction_scheduler::manage_partition(
     _probe.set_log_count(_logs.size());
 }
 
-ss::future<>
-compaction_scheduler::unmanage_partition(model::ntp ntp, std::string_view ctx) {
+void compaction_scheduler::unmanage_partition(
+  const model::ntp& ntp, std::string_view ctx) {
     auto tidp_entry = _ntp_to_tidp.extract(ntp);
     if (!tidp_entry.has_value()) {
         vassert(
@@ -132,7 +132,7 @@ compaction_scheduler::unmanage_partition(model::ntp ntp, std::string_view ctx) {
     // Request that compaction of this CTP be stopped, if in flight. `handle` is
     // a `lw_shared_ptr`- we can allow it to go out of scope here without fear
     // of UAF elsewhere.
-    co_await _worker_manager.request_stop_compaction(handle);
+    _worker_manager.request_stop_compaction(std::move(handle));
     _probe.set_log_count(_logs.size());
 }
 

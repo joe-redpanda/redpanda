@@ -73,9 +73,9 @@ public:
 
     // Removes the `tidp` from the list of managed partitions. No-ops if the
     // provided `tidp` is not managed by this scheduler. Because the `tidp`
-    // may be undergoing an inflight compaction, this function will block until
-    // it is complete (an early stop is requested by this function).
-    ss::future<> unmanage_partition(model::ntp, std::string_view);
+    // may be undergoing an inflight compaction, an early stop is requested by
+    // the `_worker_manager`.
+    void unmanage_partition(const model::ntp&, std::string_view);
 
 private:
     // Starts the backgrounded scheduling loop.
