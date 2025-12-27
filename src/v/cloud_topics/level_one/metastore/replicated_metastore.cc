@@ -696,8 +696,8 @@ replicated_metastore::get_compaction_info(const compaction_info_spec& log) {
     resp.earliest_dirty_ts = reply.earliest_dirty_ts;
     resp.offsets_response = {
       .dirty_ranges = std::move(reply.dirty_ranges),
-      .removable_tombstone_ranges = std::move(reply.removable_tombstone_ranges),
-      .extents = rpc_to_meta_extent_metadata(std::move(reply.extents))};
+      .removable_tombstone_ranges = std::move(
+        reply.removable_tombstone_ranges)};
     resp.compaction_epoch = metastore::compaction_epoch{
       reply.compaction_epoch()};
     resp.start_offset = reply.start_offset;
@@ -755,8 +755,7 @@ replicated_metastore::get_compaction_infos(
                         .earliest_dirty_ts = log_reply.earliest_dirty_ts,
                         .offsets_response = {
                           .dirty_ranges = std::move(log_reply.dirty_ranges),
-                          .removable_tombstone_ranges = std::move(log_reply.removable_tombstone_ranges),
-                          .extents = rpc_to_meta_extent_metadata(std::move(log_reply.extents))},
+                          .removable_tombstone_ranges = std::move(log_reply.removable_tombstone_ranges)},
                         .compaction_epoch = metastore::compaction_epoch{log_reply.compaction_epoch()},
                         .start_offset = log_reply.start_offset};
                       resp.insert_or_assign(log, std::move(log_resp));
