@@ -12,8 +12,10 @@
 
 #include "base/vlog.h"
 #include "bytes/streambuf.h"
+#include "container/chunked_vector.h"
 #include "http/utils.h"
 #include "net/connection.h"
+#include "strings/string_switch.h"
 #include "utils/retry_chain_node.h"
 
 #include <seastar/core/future.hh>
@@ -245,6 +247,125 @@ get_response_content_type(const http::client::response_header& headers) {
     }
 
     return response_content_type::unknown;
+}
+
+namespace {
+
+/// \brief Helper struct for tracking CRLF sequences in raw HTTP response data.
+struct crlf_stack {
+    crlf_stack() { stk.reserve(4); }
+    /// \brief Try to push a character onto the stack
+    ///
+    /// \return Whether the character is a carriage return or line feed, AND
+    ///         whether the character might be part of a CRLF sequence
+    std::pair<bool, bool> try_put(char c) {
+        if (
+          (c == '\r' && stk.size() % 2 == 0)
+          || (c == '\n' && stk.size() % 2 == 1)) {
+            stk.push_back(c);
+        } else {
+            stk.clear();
+        }
+        return std::make_pair(c == '\r' || c == '\n', stk.size() > 0);
+    }
+    /// \brief Return the number of complete CRLF sequences on the stack
+    ///
+    /// If the top of the stack is a carriage return, return 0. In general, only
+    /// complete CRLFs have any meaning in parsing logic.
+    size_t count() const {
+        if (stk.size() % 2) {
+            return 0;
+        }
+        return stk.size() / 2;
+    }
+
+private:
+    chunked_vector<char> stk;
+};
+} // namespace
+
+mime_header mime_header::from(iobuf_parser& in) {
+    mime_header result;
+    crlf_stack line_feed;
+    chunked_vector<std::pair<std::string, ssize_t>> raw_headers;
+    static constexpr size_t max_buf = 1024;
+    std::string buf;
+    // track whether we reached the name/value separator (':')
+    std::optional<ssize_t> sep_pos{};
+    // read the buffer, char by char, splitting lines on CRLF and break when we
+    // reach CRLF CRLF or run out of bytes
+    while (in.bytes_left()) {
+        auto c = in.consume_type<char>();
+        auto [is_nl, is_crlf_part] = line_feed.try_put(c);
+        if (is_nl && !is_crlf_part) {
+            // For our limited use case, we expect to see newline chars ONLY as
+            // part of a CRLF sequence
+            throw std::runtime_error(
+              "Failed to parse MIME header: Misplaced newline");
+        } else if (buf.size() >= max_buf) {
+            throw std::runtime_error(
+              fmt::format(
+                "Failed to parse MIME header: Exceeded max header size {}",
+                max_buf));
+        }
+        // only the first colon separates name from value, and every character
+        // up to that point (i.e. the header name) is case insensitive per
+        // RFC 5234
+        if (!sep_pos.has_value()) {
+            if (c == ':') {
+                sep_pos = buf.size();
+            }
+            c = static_cast<char>(std::tolower(c));
+        }
+        buf.push_back(c);
+        if (line_feed.count() == 1) {
+            if (buf.size() <= 2) {
+                throw std::runtime_error(
+                  "Failed to parse MIME header: Unexpected leading CRLF");
+            } else if (!sep_pos.has_value()) {
+                throw std::runtime_error(
+                  "Failed to parse MIME header: Missing name/value separator");
+            } else {
+                raw_headers.emplace_back(
+                  std::make_pair(std::move(buf), sep_pos.value() + 2));
+                buf = {};
+                sep_pos.reset();
+            }
+        } else if (line_feed.count() == 2) {
+            break;
+        }
+    }
+    if (line_feed.count() != 2 && !raw_headers.empty()) {
+        throw std::runtime_error(
+          "Failed to parse MIME header: missing trailing 'CRLF CRLF'");
+    }
+    for (const auto& [hdr, val_start] : raw_headers) {
+        std::optional<field> f{};
+        if (hdr.starts_with("content-type: ")) {
+            f = field::content_type;
+        } else if (hdr.starts_with("content-id: ")) {
+            f = field::content_id;
+        } else if (hdr.starts_with("content-length: ")) {
+            f = field::content_length;
+        } else if (hdr.starts_with("content-transfer-encoding: ")) {
+            f = field::content_transfer_encoding;
+        }
+        if (f.has_value()) {
+            // assume trailing CRLF is always present and strip it off
+            auto n = hdr.size() - val_start - 2;
+            std::ignore = result._fields.try_emplace(
+              f.value(), hdr.substr(val_start, n));
+        }
+        // quietly ignore anything we don't match for and/or anything malformed
+    }
+    return result;
+}
+
+std::optional<ss::sstring> mime_header::get(field f) const {
+    if (auto it = _fields.find(f); it != _fields.end()) {
+        return std::make_optional(it->second);
+    }
+    return std::nullopt;
 }
 
 } // namespace cloud_storage_clients::util

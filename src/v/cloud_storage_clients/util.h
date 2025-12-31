@@ -11,6 +11,7 @@
 #pragma once
 
 #include "bytes/iobuf.h"
+#include "bytes/iobuf_parser.h"
 #include "cloud_storage_clients/types.h"
 #include "http/client.h"
 
@@ -50,5 +51,64 @@ void url_encode_target(http::client::request_header& header);
 
 response_content_type
 get_response_content_type(const http::client::response_header& headers);
+
+/// \brief MIME header representation for multipart response parts
+///
+/// Represents MIME-style headers found in individual parts of a multipart
+/// HTTP response. Each part in a multipart response can have its own headers
+/// (Content-Type, Content-ID, etc.) that describe the part's metadata.
+/// This is commonly used in batch operations where cloud storage APIs return
+/// multiple subresponses in a single HTTP response.
+///
+/// NOTE: We need a special parser for this because those included w/
+/// boost::beast expect a status line at the front of response, no exceptions.
+/// In principle, we could stick the status line at the front buffer and hand
+/// off to beast, but we would still need to search forward for the first blank
+/// line, besides which just getting the resulting slice ready for beast would
+/// probably be even more code.
+struct mime_header {
+    using field = boost::beast::http::field;
+    using field_map_t = std::unordered_map<field, ss::sstring>;
+
+    /// \brief Retrieve and transform the Content-ID field
+    ///
+    /// Retrieves the Content-ID field value and applies the provided
+    /// transformation function to convert it to the desired type.
+    /// This is useful for parsing structured Content-IDs that may contain
+    /// object keys or other identifiers.
+    ///
+    /// \param f Transformation function to parse the Content-ID string
+    /// \return Transformed Content-ID value, or nullopt if field is missing
+    ///         or transformation fails
+    template<typename T>
+    std::optional<T> content_id(
+      const std::function<std::optional<T>(std::string_view)> f) const {
+        return get(field::content_id).and_then(f);
+    }
+
+    /// \brief Get the value of a MIME header field
+    ///
+    /// \param f The header field to retrieve
+    /// \return The field value, or nullopt if not present
+    std::optional<ss::sstring> get(field f) const;
+
+    /// \brief Find a header field in the collection
+    field_map_t::const_iterator find(field f) const { return _fields.find(f); }
+
+    /// \brief Get iterator to end of header fields
+    field_map_t::const_iterator end() const { return _fields.end(); }
+
+    /// \brief Parse MIME headers from an iobuf
+    ///
+    /// Reads MIME-style headers from the parser until an empty line is
+    /// encountered. Headers are expected in "Field-Name: value" format.
+    ///
+    /// \param in Parser positioned at the start of MIME headers
+    /// \return Parsed MIME header structure
+    static mime_header from(iobuf_parser& in);
+
+private:
+    field_map_t _fields;
+};
 
 } // namespace cloud_storage_clients::util
