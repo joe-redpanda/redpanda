@@ -2804,30 +2804,29 @@ admin_server::get_broker_handler(std::unique_ptr<ss::http::request> req) {
           fmt::format("broker with id: {} not found", id));
     }
 
-    auto maybe_drain_status = co_await _controller->get_health_monitor()
-                                .local()
-                                .get_node_drain_status(
-                                  id, model::time_from_now(5s));
+    cluster::node_report_filter filter;
+    filter.include_partitions = cluster::include_partitions_info::no;
 
-    ss::httpd::broker_json::broker ret;
-    ret.node_id = node_meta->broker.id();
-    ret.internal_rpc_address = node_meta->broker.rpc_address().host();
-    ret.internal_rpc_port = node_meta->broker.rpc_address().port();
-    ret.num_cores = node_meta->broker.properties().cores;
-    if (node_meta->broker.rack()) {
-        ret.rack = node_meta->broker.rack().value();
-    }
-    ret.membership_status = fmt::format(
-      "{}", node_meta->state.get_membership_state());
-    ret.maintenance_status = fill_maintenance_status(node_meta->state);
-    if (
-      !maybe_drain_status.has_error()
-      && maybe_drain_status.value().has_value()) {
-        ret.maintenance_status = fill_maintenance_status(
-          node_meta->state, *maybe_drain_status.value());
+    auto h_report
+      = co_await _controller->get_health_monitor().local().get_cluster_health(
+        cluster::cluster_report_filter{
+          .node_report_filter = std::move(filter),
+        },
+        cluster::force_refresh::no,
+        model::time_from_now(5s));
+
+    if (h_report.has_error()) {
+        throw ss::httpd::base_exception(
+          fmt::format(
+            "Unable to get cluster health: {}", h_report.error().message()),
+          ss::http::reply::status_type::internal_server_error);
     }
 
-    co_return ret;
+    const auto& members_table = _controller->get_members_table().local();
+    const auto& health_monitor = _controller->get_health_monitor().local();
+
+    co_return get_broker_info(
+      id, *node_meta, health_monitor, members_table, h_report.value());
 }
 
 ss::future<ss::json::json_return_type>
