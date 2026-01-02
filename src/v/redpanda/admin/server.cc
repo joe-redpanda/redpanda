@@ -1186,6 +1186,63 @@ fill_maintenance_status(const cluster::broker_state& b_state) {
     return ret;
 }
 
+ss::httpd::broker_json::broker get_broker_info(
+  model::node_id node_id,
+  const cluster::node_metadata& node_metadata,
+  const cluster::health_monitor_frontend& health_monitor,
+  const cluster::members_table& members_table,
+  const cluster::cluster_health_report& health_report) {
+    ss::httpd::broker_json::broker b;
+
+    // Populate basic fields from node metadata
+    b.node_id = node_id;
+    b.num_cores = node_metadata.broker.properties().cores;
+    if (node_metadata.broker.rack()) {
+        b.rack = *node_metadata.broker.rack();
+    }
+    b.membership_status = fmt::format(
+      "{}", node_metadata.state.get_membership_state());
+    b.is_alive = health_monitor.is_alive(node_id) == cluster::alive::yes;
+    b.maintenance_status = fill_maintenance_status(node_metadata.state);
+    b.internal_rpc_address = node_metadata.broker.rpc_address().host();
+    b.internal_rpc_port = node_metadata.broker.rpc_address().port();
+    b.in_fips_mode = fmt::format(
+      "{}", node_metadata.broker.properties().in_fips_mode);
+
+    // Enrich with data from health report
+    auto node_report_it = std::ranges::find_if(
+      health_report.node_reports.begin(),
+      health_report.node_reports.end(),
+      [node_id](const auto& report) { return report->id == node_id; });
+
+    if (node_report_it != health_report.node_reports.end()) {
+        const auto& node_report = *node_report_it;
+        b.version = node_report->local_state.redpanda_version;
+        b.recovery_mode_enabled
+          = node_report->local_state.recovery_mode_enabled;
+
+        auto nm = members_table.get_node_metadata_ref(node_id);
+        if (nm && node_report->drain_status) {
+            b.maintenance_status = fill_maintenance_status(
+              nm.value().get().state, node_report->drain_status.value());
+        }
+
+        auto add_disk = [&ds_list = b.disk_space](const storage::disk& ds) {
+            ss::httpd::broker_json::disk_space_info dsi;
+            dsi.path = ds.path;
+            dsi.free = ds.free;
+            dsi.total = ds.total;
+            ds_list.push(dsi);
+        };
+        add_disk(node_report->local_state.data_disk);
+        if (!node_report->local_state.shared_disk()) {
+            add_disk(node_report->local_state.get_cache_disk());
+        }
+    }
+
+    return b;
+}
+
 // Fetch brokers from the members table and enrich with
 // metadata from the health monitor.
 ss::future<std::vector<ss::httpd::broker_json::broker>>
@@ -1210,71 +1267,18 @@ get_brokers(cluster::controller* const controller) {
                 ss::http::reply::status_type::service_unavailable);
           }
 
-          std::map<model::node_id, ss::httpd::broker_json::broker> broker_map;
-
-          // Collect broker information from the members table.
-          auto& members_table = controller->get_members_table().local();
-          for (auto& [id, nm] : members_table.nodes()) {
-              ss::httpd::broker_json::broker b;
-              b.node_id = id;
-              b.num_cores = nm.broker.properties().cores;
-              if (nm.broker.rack()) {
-                  b.rack = *nm.broker.rack();
-              }
-              b.membership_status = fmt::format(
-                "{}", nm.state.get_membership_state());
-              b.is_alive = controller->get_health_monitor().local().is_alive(id)
-                           == cluster::alive::yes;
-
-              // These fields are defaults that will be overwritten with
-              // data from the health report.
-              b.maintenance_status = fill_maintenance_status(nm.state);
-              b.internal_rpc_address = nm.broker.rpc_address().host();
-              b.internal_rpc_port = nm.broker.rpc_address().port();
-              b.in_fips_mode = fmt::format(
-                "{}", nm.broker.properties().in_fips_mode);
-
-              broker_map[id] = b;
-          }
-
-          // Enrich the broker information with data from the health report.
-          for (auto& node_report : h_report.value().node_reports) {
-              auto it = broker_map.find(node_report->id);
-              if (it == broker_map.end()) {
-                  continue;
-              }
-
-              it->second.version = node_report->local_state.redpanda_version;
-              it->second.recovery_mode_enabled
-                = node_report->local_state.recovery_mode_enabled;
-              auto nm = members_table.get_node_metadata_ref(node_report->id);
-              if (nm && node_report->drain_status) {
-                  it->second.maintenance_status = fill_maintenance_status(
-                    nm.value().get().state, node_report->drain_status.value());
-              }
-
-              auto add_disk =
-                [&ds_list = it->second.disk_space](const storage::disk& ds) {
-                    ss::httpd::broker_json::disk_space_info dsi;
-                    dsi.path = ds.path;
-                    dsi.free = ds.free;
-                    dsi.total = ds.total;
-                    ds_list.push(dsi);
-                };
-              add_disk(node_report->local_state.data_disk);
-              if (!node_report->local_state.shared_disk()) {
-                  add_disk(node_report->local_state.get_cache_disk());
-              }
-          }
-
           std::vector<ss::httpd::broker_json::broker> brokers;
-          brokers.reserve(broker_map.size());
+          auto& members_table = controller->get_members_table().local();
+          auto& health_monitor = controller->get_health_monitor().local();
 
-          for (auto&& broker : broker_map) {
-              brokers.push_back(std::move(broker.second));
+          brokers.reserve(members_table.nodes().size());
+
+          for (auto& [id, nm] : members_table.nodes()) {
+              brokers.push_back(get_broker_info(
+                id, nm, health_monitor, members_table, h_report.value()));
           }
 
-          return ss::make_ready_future<decltype(brokers)>(std::move(brokers));
+          return ssx::now(std::move(brokers));
       });
 };
 
