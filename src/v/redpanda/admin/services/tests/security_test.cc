@@ -239,6 +239,58 @@ TEST_F(SecurityServiceTest, ValidatePbScramCredentialUnspecifiedMechanism) {
 }
 
 // =============================================
+// Tests for convert_to_security_scram_credential
+// =============================================
+
+TEST_F(SecurityServiceTest, ConvertToSecurityScramCredentialSha256) {
+    proto::admin::scram_credential pb_cred;
+    pb_cred.set_name("test_user");
+    pb_cred.set_mechanism(proto::common::scram_mechanism::scram_sha_256);
+    pb_cred.set_password("test_password");
+
+    auto security_cred = convert_to_security_scram_credential(pb_cred);
+
+    // Verify the credential was created with correct properties
+    EXPECT_EQ(
+      security_cred.iterations(), security::scram_sha256::min_iterations);
+    EXPECT_FALSE(security_cred.salt().empty());
+    EXPECT_FALSE(security_cred.stored_key().empty());
+    EXPECT_FALSE(security_cred.server_key().empty());
+
+    EXPECT_TRUE(match_scram_credential(pb_cred, security_cred));
+}
+
+TEST_F(SecurityServiceTest, ConvertToSecurityScramCredentialSha512) {
+    proto::admin::scram_credential pb_cred;
+    pb_cred.set_name("test_user");
+    pb_cred.set_mechanism(proto::common::scram_mechanism::scram_sha_512);
+    pb_cred.set_password("test_password");
+
+    auto security_cred = convert_to_security_scram_credential(pb_cred);
+
+    // Verify the credential was created with correct properties
+    EXPECT_EQ(
+      security_cred.iterations(), security::scram_sha512::min_iterations);
+    EXPECT_FALSE(security_cred.salt().empty());
+    EXPECT_FALSE(security_cred.stored_key().empty());
+    EXPECT_FALSE(security_cred.server_key().empty());
+
+    EXPECT_TRUE(match_scram_credential(pb_cred, security_cred));
+}
+
+TEST_F(SecurityServiceTest, ConvertToSecurityScramCredentialUnknownMechanism) {
+    proto::admin::scram_credential pb_cred;
+    pb_cred.set_name("test_user");
+    pb_cred.set_mechanism(proto::common::scram_mechanism::unspecified);
+    pb_cred.set_password("test_password");
+
+    // Should throw due to unknown mechanism
+    EXPECT_THROW(
+      convert_to_security_scram_credential(pb_cred),
+      serde::pb::rpc::invalid_argument_exception);
+}
+
+// =============================================
 // Tests for validate_role_name
 // =============================================
 
