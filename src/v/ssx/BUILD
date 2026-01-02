@@ -299,3 +299,16 @@ redpanda_cc_library(
         "//src/v/base",
     ],
 )
+
+redpanda_cc_library(
+    name = "actor",
+    hdrs = [
+        "actor.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":future_util",
+        "//src/v/base",
+        "@seastar",
+    ],
+)

@@ -214,6 +214,22 @@ redpanda_cc_gtest(
 )
 
 redpanda_cc_gtest(
+    name = "actor_test",
+    timeout = "short",
+    srcs = [
+        "actor_test.cc",
+    ],
+    deps = [
+        "//src/v/base",
+        "//src/v/ssx:actor",
+        "//src/v/test_utils:async",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_gtest(
     name = "event_test",
     timeout = "short",
     srcs = [
