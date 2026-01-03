@@ -43,6 +43,14 @@ struct write_pipeline_accessor {
         return pipeline->get_pending().size() == n;
     }
 
+    // Manually add a write request to the pending list with a specific stage
+    void add_request_with_stage(
+      write_request<ss::manual_clock>& req, pipeline_stage stage) {
+        req.stage = stage;
+        pipeline->get_pending().push_back(req);
+        pipeline->signal(stage);
+    }
+
     write_pipeline<ss::manual_clock>* pipeline;
 };
 } // namespace cloud_topics::l0
@@ -201,4 +209,87 @@ TEST_CORO(write_pipeline_test, stage_bytes_accounting_on_timeout) {
     auto write_res = co_await std::move(fut);
     ASSERT_FALSE_CORO(write_res.has_value());
     ASSERT_EQ_CORO(pipeline.stage_bytes(stage.id()), 0);
+}
+
+TEST_CORO(write_pipeline_test, interleaving_stages_bug) {
+    // This test demonstrates a bug where get_write_requests can return
+    // requests that belong to the wrong pipeline stage when requests
+    // with different stages are interleaved.
+    cloud_topics::l0::write_pipeline<ss::manual_clock> pipeline;
+    cloud_topics::l0::write_pipeline_accessor accessor{
+      .pipeline = &pipeline,
+    };
+
+    auto stage1 = pipeline.register_write_pipeline_stage();
+    auto stage2 = pipeline.register_write_pipeline_stage();
+
+    const auto timeout = ss::manual_clock::now() + 10s;
+
+    auto test_data = co_await model::test::make_random_batches(
+      {.count = 1, .records = 5});
+
+    // Helper to create a serialized chunk from test data
+    auto make_chunk = [&]() -> ss::future<cloud_topics::l0::serialized_chunk> {
+        chunked_vector<model::record_batch> batches;
+        auto data = co_await model::test::make_random_batches(
+          {.count = 1, .records = 5});
+        std::ranges::move(std::move(data), std::back_inserter(batches));
+        co_return co_await cloud_topics::l0::serialize_batches(
+          std::move(batches));
+    };
+
+    // Create 6 write requests with interleaved stages:
+    // stage1, stage2, stage1, stage2, stage1, stage2
+    std::vector<
+      std::unique_ptr<cloud_topics::l0::write_request<ss::manual_clock>>>
+      requests;
+
+    for (int i = 0; i < 6; i++) {
+        auto chunk = co_await make_chunk();
+        auto req
+          = std::make_unique<cloud_topics::l0::write_request<ss::manual_clock>>(
+            model::controller_ntp, min_epoch, std::move(chunk), timeout);
+        requests.push_back(std::move(req));
+    }
+
+    // Add requests with interleaved stages
+    accessor.add_request_with_stage(*requests[0], stage1.id());
+    accessor.add_request_with_stage(*requests[1], stage2.id());
+    accessor.add_request_with_stage(*requests[2], stage1.id());
+    accessor.add_request_with_stage(*requests[3], stage2.id());
+    accessor.add_request_with_stage(*requests[4], stage1.id());
+    accessor.add_request_with_stage(*requests[5], stage2.id());
+
+    co_await ss::yield();
+
+    ASSERT_EQ_CORO(accessor.write_requests_pending(6), true);
+
+    // Try to get requests for stage1 only - should get exactly 3 requests
+    auto result = stage1.pull_write_requests(
+      std::numeric_limits<size_t>::max());
+
+    ASSERT_EQ_CORO(result.requests.size(), 3);
+
+    for (auto& req : result.requests) {
+        // Stage should be unassigned after extraction
+        ASSERT_TRUE_CORO(
+          req.stage == cloud_topics::l0::unassigned_pipeline_stage);
+        req.set_value(chunked_vector<cloud_topics::extent_meta>{});
+    }
+
+    // The remaining 3 requests should still be in the pending queue
+    ASSERT_TRUE_CORO(accessor.write_requests_pending(3));
+
+    // Get stage2 requests - should get exactly 3 requests
+    auto result2 = stage2.pull_write_requests(
+      std::numeric_limits<size_t>::max());
+    ASSERT_EQ_CORO(result2.requests.size(), 3);
+
+    for (auto& req : result2.requests) {
+        ASSERT_TRUE_CORO(
+          req.stage == cloud_topics::l0::unassigned_pipeline_stage);
+        req.set_value(chunked_vector<cloud_topics::extent_meta>{});
+    }
+
+    ASSERT_EQ_CORO(accessor.write_requests_pending(0), true);
 }
