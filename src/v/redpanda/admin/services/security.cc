@@ -437,8 +437,102 @@ security_service_impl::list_scram_credentials(
 
 seastar::future<proto::admin::update_scram_credential_response>
 security_service_impl::update_scram_credential(
-  serde::pb::rpc::context, proto::admin::update_scram_credential_request) {
-    throw serde::pb::rpc::unimplemented_exception("Not implemented");
+  serde::pb::rpc::context ctx,
+  proto::admin::update_scram_credential_request req) {
+    vlog(securitylog.trace, "update_scram_credential: {}", req);
+
+    const auto redirect_node = utils::redirect_to_leader(
+      _md_cache.local(), model::controller_ntp, _proxy_client.self_node_id());
+
+    if (redirect_node) {
+        vlog(
+          securitylog.debug,
+          "Redirecting to leader of {}: {}",
+          model::controller_ntp,
+          *redirect_node);
+        co_return co_await _proxy_client
+          .make_client_for_node<proto::admin::security_service_client>(
+            *redirect_node)
+          .update_scram_credential(ctx, std::move(req));
+    }
+
+    auto& pb_cred_update = req.get_scram_credential();
+
+    auto& update_mask = req.get_update_mask();
+    if (!update_mask.is_valid_for_message<proto::admin::scram_credential>()) {
+        throw serde::pb::rpc::invalid_argument_exception(
+          ssx::sformat(
+            "Invalid update mask for scram_credential: {}", update_mask));
+    }
+
+    validate_scram_credential_name(pb_cred_update.get_name());
+    const security::credential_user name{pb_cred_update.get_name()};
+
+    const auto& cred_store = _controller->get_credential_store().local();
+    const auto& cred_opt = cred_store.get<security::scram_credential>(name);
+    if (!cred_opt.has_value()) {
+        throw serde::pb::rpc::not_found_exception(
+          ssx::sformat("SCRAM credential '{}' does not exist", name));
+    }
+
+    auto pb_cred = convert_to_pb_scram_credential(name(), cred_opt.value());
+    update_mask.merge_into(std::move(pb_cred_update), &pb_cred);
+
+    // Require password to be provided in update (otherwise, it would set
+    // password to empty)
+    if (pb_cred.get_password().empty()) {
+        throw serde::pb::rpc::invalid_argument_exception(
+          "Password must be provided in update");
+    }
+
+    validate_pb_scram_credential(pb_cred);
+
+    const auto security_cred = convert_to_security_scram_credential(pb_cred);
+
+    auto err
+      = co_await _controller->get_security_frontend().local().update_user(
+        name,
+        security_cred,
+        model::timeout_clock::now() + security_operation_timeout);
+
+    vlog(
+      securitylog.debug, "Updating SCRAM credential {}:{}", err, err.message());
+
+    if (err == cluster::errc::user_does_not_exist) {
+        vlog(
+          securitylog.warn,
+          "SCRAM credential '{}' should exist but was not found during update",
+          name);
+        throw serde::pb::rpc::not_found_exception(
+          ssx::sformat("SCRAM credential '{}' does not exist", name));
+    } else if (err != cluster::errc::success) {
+        vlog(
+          securitylog.error,
+          "Failed to update SCRAM credential '{}': {}",
+          name,
+          err);
+        throw serde::pb::rpc::unknown_exception(
+          ssx::sformat("Failed to update SCRAM credential '{}'", name));
+    }
+
+    const auto& updated_cred = cred_store.get<security::scram_credential>(name);
+    if (!updated_cred.has_value()) {
+        vlog(
+          securitylog.error,
+          "Unable to find updated SCRAM credential for '{}'",
+          name);
+        throw serde::pb::rpc::internal_exception(
+          ssx::sformat(
+            "Unable to find updated SCRAM credential for '{}'", name));
+    }
+
+    proto::admin::update_scram_credential_response res;
+    // Don't send the original protobuf scram credential, as it contains the
+    // password in plaintext. Instead, retrieve the created scram credential and
+    // convert that to protobuf form (which omits the password).
+    res.set_scram_credential(
+      convert_to_pb_scram_credential(name(), updated_cred.value()));
+    co_return res;
 }
 
 seastar::future<proto::admin::delete_scram_credential_response>
