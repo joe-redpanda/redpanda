@@ -386,8 +386,27 @@ security_service_impl::create_scram_credential(
 
 seastar::future<proto::admin::get_scram_credential_response>
 security_service_impl::get_scram_credential(
-  serde::pb::rpc::context, proto::admin::get_scram_credential_request) {
-    throw serde::pb::rpc::unimplemented_exception("Not implemented");
+  serde::pb::rpc::context, proto::admin::get_scram_credential_request req) {
+    vlog(securitylog.trace, "get_scram_credential: {}", req);
+
+    const auto& req_name = req.get_name();
+    validate_scram_credential_name(req_name);
+
+    const security::credential_user name{req_name};
+    auto cred_opt = _controller->get_credential_store()
+                      .local()
+                      .get<security::scram_credential>(name);
+    if (!cred_opt) {
+        vlog(securitylog.debug, "SCRAM credential '{}' does not exist", name);
+        throw serde::pb::rpc::not_found_exception(
+          ssx::sformat("SCRAM credential '{}' does not exist", name));
+    }
+
+    const auto& cred = cred_opt.value();
+
+    proto::admin::get_scram_credential_response res;
+    res.set_scram_credential(convert_to_pb_scram_credential(req_name, cred));
+    co_return res;
 }
 
 seastar::future<proto::admin::list_scram_credentials_response>
