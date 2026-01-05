@@ -119,7 +119,7 @@ Follow the guidelines provided in `proto/redpanda/README.md` for basic Protobuf 
 - **Compiler Standard:** C++23 is required. Some SDK components (e.g., `src/transform-sdk/cpp/`) use C++23 and specific flags like `-Wall`, `-fno-exceptions`, and for some targets, `-stdlib=libc++`.
 - **Sanitizers:** Some components and test builds use sanitizers (address, leak, undefined) via `-fsanitize=address,leak,undefined` for both compile and link.
 - **Suppression Files:** Leak, undefined, and other sanitizer suppressions can be found in the root as `lsan_suppressions.txt`, `ubsan_suppressions.txt`.
-- **C++ Linting:** `.clang-format` and `.clang-tidy` in the root directory are enforced. Always run formatting tools before submitting a PR:
+- **C++ Linting:** `.clang-format` and `.clang-tidy` in the root directory are enforced. Always run `clang-format` before committing changes or submitting a PR:
   ```bash
   bazel run //tools:clang_format
   ```
