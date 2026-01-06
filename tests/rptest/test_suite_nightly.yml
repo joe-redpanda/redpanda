@@ -13,3 +13,4 @@
 import:
   - test_suite_quick.yml
   - test_suite_chaos.yml
+  - test_suite_fuzz.yml
