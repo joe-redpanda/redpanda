@@ -4412,6 +4412,18 @@ configuration::configuration()
       {.needs_restart = needs_restart::no, .visibility = visibility::user},
       "~dlq",
       &validate_non_empty_string_opt)
+  , iceberg_default_catalog_namespace(
+      *this,
+      "iceberg_default_catalog_namespace",
+      "The default namespace (database name) for Iceberg tables. All tables "
+      "created by Redpanda will be placed in this namespace within the Iceberg "
+      "catalog. Supports nested namespaces as an array of strings. IMPORTANT: "
+      "This value must be configured before enabling Iceberg and must not be "
+      "changed afterward. Changing it will cause Redpanda to lose track of "
+      "existing tables.",
+      {.needs_restart = needs_restart::yes, .visibility = visibility::user},
+      {"redpanda"},
+      &validate_iceberg_default_catalog_namespace)
   , enable_host_metrics(
       *this,
       "enable_host_metrics",

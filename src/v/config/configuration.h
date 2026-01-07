@@ -787,6 +787,7 @@ struct configuration final : public config_store {
     property<bool> iceberg_disable_automatic_snapshot_expiry;
     property<std::optional<ss::sstring>> iceberg_topic_name_dot_replacement;
     property<ss::sstring> iceberg_dlq_table_suffix;
+    property<std::vector<ss::sstring>> iceberg_default_catalog_namespace;
 
     property<bool> enable_host_metrics;
 
