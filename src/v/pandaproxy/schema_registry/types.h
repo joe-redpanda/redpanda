@@ -16,7 +16,7 @@
 #include "base/seastarx.h"
 #include "container/chunked_vector.h"
 #include "kafka/protocol/errors.h"
-#include "model/metadata.h"
+#include "model/fundamental.h"
 #include "strings/string_switch.h"
 #include "utils/named_type.h"
 
