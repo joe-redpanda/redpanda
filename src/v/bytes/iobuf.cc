@@ -155,55 +155,63 @@ bool iobuf::operator<(const iobuf& o) const {
 }
 
 std::strong_ordering iobuf::operator<=>(const iobuf& o) const {
+    const auto next_view_fn = [](const iobuf& c) {
+        return [c_it = c.cbegin(), end_it = c.cend()] mutable {
+            while (c_it != end_it && c_it->is_empty()) {
+                ++c_it;
+            }
+            if (c_it == end_it) {
+                return std::string_view{};
+            }
+            std::string_view s{*c_it};
+            ++c_it;
+            return s;
+        };
+    };
+    auto this_next_view{next_view_fn(*this)};
+    auto other_next_view{next_view_fn(o)};
+
+    std::string_view lhs{this_next_view()};
+    std::string_view rhs{other_next_view()};
+
+    if (lhs.empty() || rhs.empty()) {
+        return _size <=> o._size;
+    }
+
     // Always check the first few bytes using byte for byte comparison,
     // this allows the case of relatively randomized data to be done quickly
     // but we still preserve the chunked checks that are faster if there is
     // a matching prefix.
-    if (!_frags.empty() && !o._frags.empty()) {
-        std::string_view lhs{_frags.front()};
-        std::string_view rhs{o._frags.front()};
-        constexpr static size_t max_byte_for_byte_cmp = 4;
-        auto n = std::min({lhs.size(), rhs.size(), max_byte_for_byte_cmp});
-        for (size_t i = 0; i < n; ++i) {
-            auto cmp = lhs[i] <=> rhs[i];
-            if (cmp != std::strong_ordering::equal) {
-                return cmp;
-            }
+    constexpr static size_t max_byte_for_byte_cmp = 4;
+    const auto n = std::min({lhs.size(), rhs.size(), max_byte_for_byte_cmp});
+    for (size_t i = 0; i < n; ++i) {
+        const auto cmp = lhs[i] <=> rhs[i];
+        if (cmp != std::strong_ordering::equal) {
+            return cmp;
         }
     }
-    auto o_it = o.cbegin();
-    auto other_next_view = [&o, &o_it] -> std::string_view {
-        while (o_it != o.cend() && o_it->is_empty()) {
-            ++o_it;
+
+    for (;;) {
+        const auto n = std::min(lhs.size(), rhs.size());
+        if (n == 0) {
+            break;
         }
-        if (o_it == o.cend()) {
-            return {};
+
+        const auto cmp = std::memcmp(lhs.data(), rhs.data(), n) <=> 0;
+        if (cmp != std::strong_ordering::equal) {
+            return cmp;
         }
-        std::string_view s{*o_it};
-        ++o_it;
-        return s;
-    };
-    std::string_view rhs = other_next_view();
-    if (!rhs.empty()) { // This prevents UB by using memcmp with nullptr
-        for (const auto& frag : *this) {
-            std::string_view lhs{frag};
-            while (!lhs.empty()) {
-                auto n = std::min(lhs.size(), rhs.size());
-                auto cmp = std::memcmp(lhs.data(), rhs.data(), n) <=> 0;
-                if (cmp != std::strong_ordering::equal) {
-                    return cmp;
-                }
-                lhs.remove_prefix(n);
-                rhs.remove_prefix(n);
-                if (rhs.empty()) {
-                    rhs = other_next_view();
-                    if (rhs.empty()) {
-                        return _size <=> o._size;
-                    }
-                }
-            }
+
+        lhs.remove_prefix(n);
+        if (lhs.empty()) {
+            lhs = this_next_view();
+        }
+        rhs.remove_prefix(n);
+        if (rhs.empty()) {
+            rhs = other_next_view();
         }
     }
+
     return _size <=> o._size;
 }
 
