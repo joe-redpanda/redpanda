@@ -32,7 +32,12 @@ level_zero_log_reader_impl::level_zero_log_reader_impl(
   : _config(cfg)
   , _ctp(std::move(ctp))
   , _ct_api(ct_api)
-  , _log(cd_log, fmt::format("[{}/{}]", fmt::ptr(this), _ctp->ntp())) {}
+  , _log(cd_log, fmt::format("[{}/{}]", fmt::ptr(this), _ctp->ntp())) {
+    // Cap the reader's max_bytes at the read pipeline's memory quota to prevent
+    // a single materialize call from exceeding what the pipeline can handle.
+    _config.max_bytes = std::min(
+      _config.max_bytes, _ct_api->materialize_max_bytes());
+}
 
 ss::future<model::record_batch_reader::storage_t>
 level_zero_log_reader_impl::do_load_slice(
