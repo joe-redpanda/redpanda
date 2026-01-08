@@ -557,6 +557,7 @@ iceberg_file_committer::commit_topic_files_to_catalog(
         co_return chunked_vector<mark_files_committed_update>{};
     }
     chunked_vector<mark_files_committed_update> updates;
+    updates.reserve(pending_commits.size());
     for (const auto& [pid, entry] : pending_commits) {
         auto tp = model::topic_partition(topic, pid);
         auto update_res = mark_files_committed_update::build(
