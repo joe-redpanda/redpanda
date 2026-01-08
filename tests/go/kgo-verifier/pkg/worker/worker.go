@@ -244,8 +244,6 @@ func (wc *WorkerConfig) MakeKgoOpts() []kgo.Opt {
 		kgo.ProducerBatchMaxBytes(int32(wc.BatchMaxbytes)),
 		kgo.MaxBufferedRecords(int(wc.MaxBufferedRecords)),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
-
-		kgo.AlwaysRetryEOF(), // workaround for CORE-14849
 	}
 
 	if wc.CompressionType != "" {

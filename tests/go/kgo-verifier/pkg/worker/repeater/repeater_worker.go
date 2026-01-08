@@ -274,7 +274,6 @@ func (v *Worker) Init() {
 			kgo.ProducerBatchMaxBytes(1024 * 1024),
 			kgo.RecordPartitioner(kgo.StickyKeyPartitioner(nil)),
 			kgo.ConsumerGroup(v.config.Group),
-			kgo.AlwaysRetryEOF(), // workaround for CORE-14849
 		}...)
 
 		client, err := kgo.NewClient(opts...)
@@ -291,7 +290,6 @@ func (v *Worker) Init() {
 		opts = append(opts, []kgo.Opt{
 			kgo.ProducerBatchMaxBytes(1024 * 1024),
 			kgo.RecordPartitioner(kgo.StickyKeyPartitioner(nil)),
-			kgo.ProducerLinger(0),
 		}...)
 
 		if v.transactionsEnabled {
