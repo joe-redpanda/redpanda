@@ -39,7 +39,7 @@ bool check_compatible(
   std::string_view reader,
   std::string_view writer) {
     ppstu::store_fixture store;
-    store.store().set_compatibility(lvl).get();
+    store.store().set_compatibility(pps::default_context, lvl).get();
     store.insert(
       pandaproxy::schema_registry::subject_schema{
         pps::subject{"sub"},

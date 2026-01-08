@@ -125,7 +125,7 @@ ss::future<> seq_writer::read_sync() {
 
 ss::future<> seq_writer::check_mutable(const std::optional<subject>& sub) {
     auto mode = sub ? co_await _store.get_mode(*sub, default_to_global::yes)
-                    : co_await _store.get_mode();
+                    : co_await _store.get_mode(default_context);
     if (mode == mode::read_only) {
         throw as_exception(mode_is_readonly(default_context, sub));
     }
@@ -307,7 +307,7 @@ ss::future<std::optional<bool>> seq_writer::do_write_config(
             existing = co_await _store.get_compatibility(
               sub.value(), default_to_global::no);
         } else {
-            existing = co_await _store.get_compatibility();
+            existing = co_await _store.get_compatibility(default_context);
         }
         if (existing == compat) {
             co_return false;
@@ -383,7 +383,7 @@ ss::future<std::optional<bool>> seq_writer::do_write_mode(
         // Check for no-op case
         mode existing = sub ? co_await _store.get_mode(
                                 sub.value(), default_to_global::no)
-                            : co_await _store.get_mode();
+                            : co_await _store.get_mode(default_context);
         if (existing == m) {
             co_return false;
         }
@@ -400,7 +400,10 @@ ss::future<std::optional<bool>> seq_writer::do_write_mode(
                 error_code::subject_version_operation_not_permitted,
                 "Schema Registry can only move to import mode if empty"});
         };
-        if (!sub && co_await _store.has_subjects(include_deleted::yes)) {
+        if (
+          !sub
+          && co_await _store.has_subjects(
+            default_context, include_deleted::yes)) {
             throw make_exception();
         }
         if (sub) {
@@ -478,7 +481,7 @@ ss::future<std::optional<bool>> seq_writer::do_delete_subject_version(
         throw as_exception(has_references(sub, version));
     }
 
-    schema_id s_id = co_await _store.get_id(sub, version);
+    auto s_id = co_await _store.get_id(sub, version);
     schema_definition schema = co_await _store.get_schema_definition(s_id);
 
     auto key = schema_key{
@@ -487,7 +490,8 @@ ss::future<std::optional<bool>> seq_writer::do_delete_subject_version(
     schema_value value{
       .schema{subject_schema{sub, std::move(schema)}},
       .version{version},
-      .id{s_id},
+      // TODO: use the full s_id here
+      .id{s_id.id},
       .deleted{is_deleted::yes}};
 
     batch_builder rb(write_at);
