@@ -418,8 +418,6 @@ public:
         return {raw(), type(), refs().copy(), meta()};
     }
 
-    ss::sstring name() const;
-
     // retrieve "title" property from the schema, used to form the record name
     std::optional<ss::sstring> title() const;
 
