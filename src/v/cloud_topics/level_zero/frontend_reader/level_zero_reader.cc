@@ -116,7 +116,7 @@ level_zero_log_reader_impl::maybe_read_batches_from_cache() {
         }
 
         ret.push_back(std::move(batch.value()));
-        _config.bytes_consumed += batch_size;
+        _bytes_consumed += batch_size;
         _next_offset = model::offset_cast(
           model::next_offset(ret.back().last_offset()));
     }
@@ -312,7 +312,7 @@ ss::future<> level_zero_log_reader_impl::materialize_batches(
                   hydrated_batch_size);
                 break;
             }
-            _config.bytes_consumed += hydrated_batch_size;
+            _bytes_consumed += hydrated_batch_size;
             if (
               auto* meta = std::get_if<cloud_topics::extent_meta>(
                 &unhydrated_it->data)) {
@@ -454,7 +454,7 @@ bool level_zero_log_reader_impl::is_end_of_stream() const {
 }
 
 bool level_zero_log_reader_impl::is_over_limit(size_t size) const {
-    return (_config.strict_max_bytes || _config.bytes_consumed > 0)
-           && (_config.bytes_consumed + size) > _config.max_bytes;
+    return (_config.strict_max_bytes || _bytes_consumed > 0)
+           && (_bytes_consumed + size) > _config.max_bytes;
 }
 } // namespace cloud_topics

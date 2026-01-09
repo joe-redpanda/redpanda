@@ -140,6 +140,7 @@ private:
     ss::lw_shared_ptr<cluster::partition> _ctp;
     data_plane_api* _ct_api;
     prefix_logger _log;
+    size_t _bytes_consumed{0};
 };
 
 } // namespace cloud_topics
