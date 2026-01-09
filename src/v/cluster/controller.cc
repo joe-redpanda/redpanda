@@ -27,6 +27,7 @@
 #include "cluster/cluster_link/table.h"
 #include "cluster/cluster_recovery_table.h"
 #include "cluster/cluster_utils.h"
+#include "cluster/config/cluster_config.h"
 #include "cluster/config_frontend.h"
 #include "cluster/controller_api.h"
 #include "cluster/controller_backend.h"
@@ -233,7 +234,10 @@ ss::future<> controller::wire_up() {
             std::ref(_tp_state),
             std::ref(_members_table),
             std::ref(_partition_allocator),
-            std::ref(_node_status_table));
+            std::ref(_node_status_table),
+            ss::sharded_parameter([this] {
+                return std::make_unique<cluster_config>(_config_manager);
+            }));
       })
       .then([this] {
           return _shard_placement.start(
@@ -733,7 +737,11 @@ ss::future<> controller::start(
       std::ref(_drain_manager),
       std::ref(_feature_table),
       std::ref(_partition_leaders),
-      std::ref(_tp_state));
+      std::ref(_tp_state),
+      std::ref(_node_status_table),
+      ss::sharded_parameter([this]() {
+          return std::make_unique<cluster_config>(_config_manager);
+      }));
 
     _leader_balancer = std::make_unique<leader_balancer>(
       _tp_state.local(),
@@ -804,6 +812,8 @@ ss::future<> controller::start(
       std::ref(_members_frontend),
       config::shard_local_cfg()
         .partition_autobalancing_node_availability_timeout_sec.bind(),
+      config::shard_local_cfg()
+        .partition_autobalancing_node_autodecommission_time.bind(),
       config::shard_local_cfg()
         .partition_autobalancing_max_disk_usage_percent.bind(),
       config::shard_local_cfg().partition_autobalancing_tick_interval_ms.bind(),

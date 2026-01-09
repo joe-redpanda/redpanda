@@ -11,11 +11,14 @@
  */
 #pragma once
 #include "absl/container/node_hash_map.h"
+#include "cluster/config/config_i.h"
 #include "cluster/fwd.h"
 #include "cluster/health_monitor_types.h"
 #include "cluster/node/local_monitor.h"
+#include "cluster/node_status_table.h"
 #include "cluster/notification.h"
 #include "features/feature_table.h"
+#include "model/fundamental.h"
 #include "model/metadata.h"
 #include "rpc/fwd.h"
 #include "ssx/mutex.h"
@@ -71,7 +74,9 @@ public:
       ss::sharded<drain_manager>&,
       ss::sharded<features::feature_table>&,
       ss::sharded<partition_leaders_table>&,
-      ss::sharded<topic_table>&);
+      ss::sharded<topic_table>&,
+      ss::sharded<node_status_table>&,
+      std::unique_ptr<config_i>);
 
     ss::future<> stop();
 
@@ -165,6 +170,22 @@ private:
 
     ss::future<chunked_vector<topic_status>> collect_topic_status();
 
+    // get the status info of all nodes which are past auto decommission timeout
+    std::optional<auto_decommission_status> collect_auto_decommission_status();
+    using get_node_status_t
+      = ss::noncopyable_function<std::optional<node_status>(model::node_id)>;
+    struct do_collect_auto_decommission_status_params {
+        std::chrono::seconds timeout_duration;
+        rpc::clock_type::time_point now;
+        rpc::clock_type::time_point default_last_seen;
+        std::vector<model::node_id> nodes;
+        get_node_status_t node_status_getter;
+        config_version current_config_version;
+    };
+    static std::optional<auto_decommission_status>
+    do_collect_auto_decommission_status(
+      const do_collect_auto_decommission_status_params& params);
+
     result<node_health_report>
       process_node_reply(model::node_id, result<get_node_health_reply>);
 
@@ -232,6 +253,8 @@ private:
     ss::sharded<features::feature_table>& _feature_table;
     ss::sharded<partition_leaders_table>& _partition_leaders_table;
     ss::sharded<topic_table>& _topic_table;
+    ss::sharded<node_status_table>& _node_status_table;
+    std::unique_ptr<config_i> _config;
 
     ss::lowres_clock::time_point _last_refresh;
     ss::lw_shared_ptr<abortable_refresh_request> _refresh_request;

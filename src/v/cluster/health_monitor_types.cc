@@ -75,14 +75,32 @@ std::ostream& operator<<(std::ostream& o, const node_state& s) {
     return o;
 }
 
+std::ostream& operator<<(std::ostream& o, const auto_decommission_status& ads) {
+    fmt::print(
+      o,
+      "{{config_version: {}, nodes_past_auto_decom_timeout: {}}}",
+      ads.configuration_version,
+      ads.nodes_past_auto_decom_timeout);
+    return o;
+}
+
+bool operator==(
+  const auto_decommission_status& a, const auto_decommission_status& b) {
+    return a.configuration_version == b.configuration_version
+           && std::ranges::equal(
+             a.nodes_past_auto_decom_timeout, b.nodes_past_auto_decom_timeout);
+}
+
 node_health_report::node_health_report(
   model::node_id id,
   node::local_state local_state,
   chunked_vector<topic_status> topics_vec,
-  std::optional<drain_manager::drain_status> drain_status)
+  std::optional<drain_manager::drain_status> drain_status,
+  std::optional<auto_decommission_status> maybe_auto_decommission_status)
   : id(id)
   , local_state(std::move(local_state))
-  , drain_status(drain_status) {
+  , drain_status(drain_status)
+  , maybe_auto_decommission_status(std::move(maybe_auto_decommission_status)) {
     topics.reserve(topics_vec.size());
     for (auto& topic : topics_vec) {
         topics.emplace(
@@ -91,7 +109,8 @@ node_health_report::node_health_report(
 }
 
 node_health_report node_health_report::copy() const {
-    node_health_report ret{id, local_state, {}, drain_status};
+    node_health_report ret{
+      id, local_state, {}, drain_status, maybe_auto_decommission_status};
     ret.topics.reserve(topics.bucket_count());
     for (const auto& [tp_ns, partitions] : topics) {
         ret.topics.emplace(tp_ns, copy_partition_statuses(partitions));
@@ -104,7 +123,12 @@ std::ostream& operator<<(std::ostream& o, const node_health_report& r) {
 }
 
 node_health_report_serde::node_health_report_serde(const node_health_report& hr)
-  : node_health_report_serde(hr.id, hr.local_state, {}, hr.drain_status) {
+  : node_health_report_serde(
+      hr.id,
+      hr.local_state,
+      /* topics */ {},
+      hr.drain_status,
+      hr.maybe_auto_decommission_status) {
     topics.reserve(hr.topics.size());
     for (const auto& [tp_ns, partitions] : hr.topics) {
         topics.emplace_back(tp_ns, copy_to_vector(partitions));
@@ -154,11 +178,13 @@ partition_statuses_map_t copy_to_map(const partition_statuses_t& ps_vec) {
 std::ostream& operator<<(std::ostream& o, const node_health_report_serde& r) {
     fmt::print(
       o,
-      "{{id: {}, topics: {}, local_state: {}, drain_status: {}}}",
+      "{{id: {}, topics: {}, local_state: {}, drain_status: {}, "
+      "maybe_auto_decommission_status {}}}",
       r.id,
       r.topics,
       r.local_state,
-      r.drain_status);
+      r.drain_status,
+      r.maybe_auto_decommission_status);
     return o;
 }
 
@@ -171,7 +197,9 @@ bool operator==(
              a.topics.cbegin(),
              a.topics.cend(),
              b.topics.cbegin(),
-             b.topics.cend());
+             b.topics.cend())
+           && a.maybe_auto_decommission_status
+                == b.maybe_auto_decommission_status;
 }
 
 std::ostream& operator<<(std::ostream& o, const cluster_health_report& r) {

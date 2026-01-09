@@ -12,6 +12,7 @@
 #pragma once
 
 #include "base/units.h"
+#include "cluster/config/test/test_config.h"
 #include "cluster/data_migrated_resources.h"
 #include "cluster/members_table.h"
 #include "cluster/node_status_table.h"
@@ -76,7 +77,8 @@ struct topic_table_fixture {
             std::ref(table),
             std::ref(members),
             std::ref(allocator),
-            std::ref(node_status))
+            std::ref(node_status),
+            ss::sharded_parameter(cluster::test::test_config::make_default))
           .get();
     }
 

@@ -29,11 +29,13 @@ partition_balancer_state::partition_balancer_state(
   ss::sharded<topic_table>& topic_table,
   ss::sharded<members_table>& members_table,
   ss::sharded<partition_allocator>& pa,
-  ss::sharded<node_status_table>& nst)
+  ss::sharded<node_status_table>& nst,
+  std::unique_ptr<config_i> config)
   : _topic_table(topic_table.local())
   , _members_table(members_table.local())
   , _partition_allocator(pa.local())
   , _node_status(nst.local())
+  , _config(std::move(config))
   , _probe(*this) {}
 
 void partition_balancer_state::handle_ntp_move_begin_or_cancel(
@@ -161,6 +163,18 @@ void partition_balancer_state::probe::setup_metrics(
             "awareness constraint"))
           .aggregate({sm::shard_label}),
       });
+}
+
+config_version partition_balancer_state::get_config_version() const {
+    auto maybe_config = _config->get_config();
+    if (!maybe_config) {
+        vlog(
+          clusterlog.error,
+          "failed to get config version with error: {}",
+          maybe_config.error());
+    }
+    vassert(maybe_config, "config version should not return an error");
+    return *maybe_config;
 }
 
 } // namespace cluster

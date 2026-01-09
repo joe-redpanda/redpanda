@@ -63,7 +63,12 @@ make_node_health_report(size_t num_topics, size_t partitions_per_topic) {
         topics.push_back(make_topic_status(i, partitions_per_topic));
     }
 
-    return {id, local_state, std::move(topics), std::nullopt};
+    return {
+      id,
+      local_state,
+      std::move(topics),
+      /* drain status */ std::nullopt,
+      /* auto_decommission_status */ std::nullopt};
 }
 
 template<typename T>

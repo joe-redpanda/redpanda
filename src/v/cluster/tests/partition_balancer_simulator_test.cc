@@ -740,7 +740,11 @@ private:
 
             return ss::make_foreign(
               ss::make_lw_shared<const cluster::node_health_report>(
-                id, local_state, std::move(topics), std::nullopt));
+                id,
+                local_state,
+                std::move(topics),
+                /* drain_status */ std::nullopt,
+                /*maybe_auto_decommission_status */ std::nullopt));
         }
     };
 

@@ -22,6 +22,7 @@
 #include <chrono>
 
 namespace cluster {
+class partition_balancer_planner_accessor;
 
 enum ntp_reassignment_type : int8_t { regular, force };
 
@@ -42,7 +43,12 @@ struct planner_config {
     double max_disk_usage_ratio;
     // Max number of actions that can be scheduled in one planning iteration
     size_t max_concurrent_actions;
+    // If a node is unresponsive for more than node_availability_timeout_sec,
+    // begin moving partitions off of that node
     std::chrono::seconds node_availability_timeout_sec;
+    // If a node is unresponsive for more than decommission timeout, launch a
+    // decommission operation against it
+    std::chrono::seconds decommission_timeout;
     // If the user manually requested a rebalance (not connected to node
     // addition)
     bool ondemand_rebalance_requested = false;
@@ -86,6 +92,7 @@ public:
         chunked_vector<model::ntp> cancellations;
         chunked_hash_map<model::ntp, reallocation_failure_details>
           reallocation_failures;
+        chunked_vector<model::node_id> decommissions;
         bool counts_rebalancing_finished = false;
         size_t failed_actions_count = 0;
         status status = status::empty;
@@ -123,13 +130,31 @@ private:
     static ss::future<> get_full_node_actions(request_context&);
     static ss::future<> get_counts_rebalancing_actions(request_context&);
     static ss::future<> get_force_repair_actions(request_context&);
+    static void get_auto_decommission_actions(
+      request_context&, const cluster_health_report& health_report);
 
     static size_t calculate_full_disk_partition_move_priority(
       model::node_id, const reassignable_partition&, const request_context&);
 
+    using auto_decom_ref
+      = std::reference_wrapper<const std::optional<auto_decommission_status>>;
+    using auto_decom_ref_map
+      = absl::flat_hash_map<model::node_id, auto_decom_ref>;
+    struct do_get_auto_decommission_actions_params {
+        auto_decom_ref_map node_to_decom;
+        absl::flat_hash_set<model::node_id> cluster_members;
+        absl::flat_hash_set<model::node_id> decommissioning_nodes;
+        absl::flat_hash_set<model::node_id> maintenance_mode_nodes;
+        config_version current_config;
+    };
+    static absl::flat_hash_set<model::node_id> do_get_auto_decommission_actions(
+      const do_get_auto_decommission_actions_params& params) noexcept;
+
     planner_config _config;
     partition_balancer_state& _state;
     partition_allocator& _partition_allocator;
+
+    friend class ::cluster::partition_balancer_planner_accessor;
 };
 
 } // namespace cluster

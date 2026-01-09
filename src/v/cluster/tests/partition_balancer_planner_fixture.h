@@ -13,6 +13,7 @@
 
 #include "base/units.h"
 #include "cluster/commands.h"
+#include "cluster/config/test/test_config.h"
 #include "cluster/data_migrated_resources.h"
 #include "cluster/health_monitor_types.h"
 #include "cluster/members_table.h"
@@ -109,7 +110,8 @@ public:
             std::ref(table),
             std::ref(members),
             std::ref(allocator),
-            std::ref(node_status_table))
+            std::ref(node_status_table),
+            ss::sharded_parameter(cluster::test::test_config::make_default))
           .get();
     }
 
@@ -410,7 +412,8 @@ struct partition_balancer_planner_fixture {
                 model::node_id(i),
                 local_state,
                 std::move(node_topics),
-                std::nullopt));
+                /* drain status */ std::nullopt,
+                /* maybe_auto_decommission_status */ std::nullopt));
         }
 
         return health_report;

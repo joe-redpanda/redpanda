@@ -68,6 +68,7 @@ redpanda_test_cc_library(
         ":utils",
         "//src/v/base",
         "//src/v/cluster",
+        "//src/v/cluster/config/test:test_config",
         "//src/v/config",
         "//src/v/features",
         "//src/v/model",
@@ -149,6 +150,7 @@ redpanda_test_cc_library(
         ":utils",
         "//src/v/base",
         "//src/v/cluster",
+        "//src/v/cluster/config/test:test_config",
         "@boost//:test",
     ],
 )
@@ -1312,5 +1314,42 @@ redpanda_cc_gtest(
         "//src/v/security",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
+    ],
+)
+
+redpanda_cc_gtest(
+    name = "partition_balancer_autodecom_test",
+    timeout = "short",
+    srcs = [
+        "partition_balancer_autodecom_test.cc",
+    ],
+    deps = [
+        "//src/v/cluster",
+        "//src/v/config",
+        "//src/v/container:chunked_vector",
+        "//src/v/model",
+        "//src/v/random:generators",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_gtest(
+    name = "health_monitor_autodecom_test",
+    timeout = "short",
+    srcs = [
+        "health_monitor_autodecom_test.cc",
+    ],
+    deps = [
+        "//src/v/cluster",
+        "//src/v/config",
+        "//src/v/container:chunked_vector",
+        "//src/v/model",
+        "//src/v/random:generators",
+        "//src/v/rpc",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+        "@seastar",
     ],
 )
