@@ -51,10 +51,8 @@ level_zero_log_reader_impl::do_load_slice(
     // the 'empty' state. It doesn't make any difference if the reader is in
     // the 'materialized' state. If we're in 'ready' state we risk to go out
     // of sync with cached metadata so it's safer to hydrate.
-    if (cache_enabled()) {
-        if (auto cached = maybe_load_slices_from_cache()) {
-            co_return std::move(cached.value());
-        }
+    if (auto cached = maybe_load_slices_from_cache(); !cached.empty()) {
+        co_return cached;
     }
 
     chunked_circular_buffer<model::record_batch> res;
@@ -87,13 +85,17 @@ level_zero_log_reader_impl::do_load_slice(
     co_return res;
 }
 
-std::optional<chunked_circular_buffer<model::record_batch>>
+chunked_circular_buffer<model::record_batch>
 level_zero_log_reader_impl::maybe_load_slices_from_cache() {
+    chunked_circular_buffer<model::record_batch> ret;
+    if (!cache_enabled()) {
+        return ret;
+    }
+
     /*
      * Fetch batches from the cache starting at `_next_offset` until we hit a
      * gap or a control batch and must then fetch the data from object storage.
      */
-    chunked_circular_buffer<model::record_batch> ret;
     while (_next_offset <= _config.max_offset) {
         auto batch = _ct_api->cache_get(
           _ctp->ntp(), kafka::offset_cast(_next_offset));
@@ -144,10 +146,7 @@ level_zero_log_reader_impl::maybe_load_slices_from_cache() {
         _current = state::end_of_stream_state;
     }
 
-    if (!ret.empty()) {
-        return ret;
-    }
-    return std::nullopt;
+    return ret;
 }
 
 storage::local_log_reader_config level_zero_log_reader_impl::ctp_read_config() {

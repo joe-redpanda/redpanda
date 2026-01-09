@@ -101,8 +101,7 @@ private:
     // Return data from the record batch cache.
     // This method could change state of the reader to end_of_stream_state
     // when it reaches committed offset.
-    std::optional<chunked_circular_buffer<model::record_batch>>
-    maybe_load_slices_from_cache();
+    chunked_circular_buffer<model::record_batch> maybe_load_slices_from_cache();
 
     // If adding a batch of `size` would cause this to go over the bytes limit.
     bool is_over_limit(size_t size) const;
