@@ -12,6 +12,7 @@
 
 #include "base/vlog.h"
 #include "bytes/streambuf.h"
+#include "cloud_roles/types.h"
 #include "cloud_storage_clients/abs_error.h"
 #include "cloud_storage_clients/client_pool.h"
 #include "cloud_storage_clients/configuration.h"
@@ -215,7 +216,7 @@ result<http::client::request_header> abs_request_creator::make_get_blob_request(
             byte_range.value().first,
             byte_range.value().second));
     }
-    auto error_code = _apply_credentials->add_auth(header);
+    auto error_code = add_auth(header);
     if (error_code) {
         return error_code;
     }
@@ -247,7 +248,7 @@ result<http::client::request_header> abs_request_creator::make_put_blob_request(
       std::to_string(payload_size_bytes));
     header.insert(blob_type_name, blob_type_value);
 
-    auto error_code = _apply_credentials->add_auth(header);
+    auto error_code = add_auth(header);
     if (error_code) {
         return error_code;
     }
@@ -272,7 +273,7 @@ abs_request_creator::make_get_blob_metadata_request(
     header.target(target);
     header.insert(boost::beast::http::field::host, host);
 
-    auto error_code = _apply_credentials->add_auth(header);
+    auto error_code = add_auth(header);
     if (error_code) {
         return error_code;
     }
@@ -298,7 +299,7 @@ abs_request_creator::make_delete_blob_request(
     header.insert(boost::beast::http::field::host, host);
     header.insert(delete_snapshot_name, delete_snapshot_value);
 
-    auto error_code = _apply_credentials->add_auth(header);
+    auto error_code = add_auth(header);
     if (error_code) {
         return error_code;
     }
@@ -356,7 +357,7 @@ abs_request_creator::make_list_blobs_request(
     header.target(target);
     header.insert(boost::beast::http::field::host, host);
 
-    auto error_code = _apply_credentials->add_auth(header);
+    auto error_code = add_auth(header);
     if (error_code) {
         return error_code;
     }
@@ -375,7 +376,7 @@ abs_request_creator::make_get_account_info_request() {
     header.target(target);
     header.insert(boost::beast::http::field::host, host);
 
-    auto error_code = _apply_credentials->add_auth(header);
+    auto error_code = add_auth(header);
     if (error_code) {
         return error_code;
     }
@@ -409,8 +410,7 @@ abs_request_creator::make_set_expiry_to_blob_request(
         std::chrono::duration_cast<std::chrono::milliseconds>(expires_in)
           .count()));
     header.set(boost::beast::http::field::content_length, "0");
-    if (auto error_code = _apply_credentials->add_auth(header);
-        error_code != std::error_code{}) {
+    if (auto error_code = add_auth(header); error_code != std::error_code{}) {
         return error_code;
     }
     util::url_encode_target(header);
@@ -436,12 +436,20 @@ abs_request_creator::make_delete_file_request(
     header.target(target);
     header.insert(boost::beast::http::field::host, host);
 
-    auto error_code = _apply_credentials->add_auth(header);
+    auto error_code = add_auth(header);
     if (error_code) {
         return error_code;
     }
     util::url_encode_target(header);
     return header;
+}
+
+std::error_code abs_request_creator::add_auth(
+  http::client::request_header& header, bool omit_version) const {
+    if (!omit_version) {
+        header.set("x-ms-version", cloud_roles::azure_storage_api_version);
+    }
+    return _apply_credentials->add_auth(header);
 }
 
 abs_client::abs_client(
