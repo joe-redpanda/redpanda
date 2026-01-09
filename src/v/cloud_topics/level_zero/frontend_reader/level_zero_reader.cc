@@ -51,7 +51,7 @@ level_zero_log_reader_impl::do_load_slice(
     // the 'empty' state. It doesn't make any difference if the reader is in
     // the 'materialized' state. If we're in 'ready' state we risk to go out
     // of sync with cached metadata so it's safer to hydrate.
-    if (auto cached = maybe_load_slices_from_cache(); !cached.empty()) {
+    if (auto cached = maybe_read_batches_from_cache(); !cached.empty()) {
         co_return cached;
     }
 
@@ -86,7 +86,7 @@ level_zero_log_reader_impl::do_load_slice(
 }
 
 chunked_circular_buffer<model::record_batch>
-level_zero_log_reader_impl::maybe_load_slices_from_cache() {
+level_zero_log_reader_impl::maybe_read_batches_from_cache() {
     chunked_circular_buffer<model::record_batch> ret;
     if (!cache_enabled()) {
         return ret;
