@@ -23,6 +23,7 @@
 #include <cstddef>
 #include <iostream>
 #include <limits>
+#include <string_view>
 
 std::ostream& operator<<(std::ostream& o, const iobuf& io) {
     return o << "{bytes=" << io.size_bytes()
@@ -116,6 +117,25 @@ bool iobuf::operator<(const iobuf& o) const {
 }
 
 std::strong_ordering iobuf::operator<=>(const iobuf& o) const {
+    if (empty() || o.empty()) {
+        return _size <=> o._size;
+    }
+
+    // Always check the first few bytes using byte for byte comparison,
+    // this allows the case of relatively randomized data to be done quickly
+    // but we still preserve the chunked checks that are faster if there is
+    // a matching prefix.
+    std::string_view lhs{_frags.front()};
+    std::string_view rhs{o._frags.front()};
+    constexpr static size_t max_byte_for_byte_cmp = 4;
+    const auto n = std::min({lhs.size(), rhs.size(), max_byte_for_byte_cmp});
+    for (size_t i = 0; i < n; ++i) {
+        const auto cmp = lhs[i] <=> rhs[i];
+        if (cmp != std::strong_ordering::equal) {
+            return cmp;
+        }
+    }
+
     const auto next_view_fn = [](const iobuf& c) {
         return [c_it = c.cbegin(), end_it = c.cend()] mutable {
             while (c_it != end_it && c_it->is_empty()) {
@@ -132,32 +152,10 @@ std::strong_ordering iobuf::operator<=>(const iobuf& o) const {
     auto this_next_view{next_view_fn(*this)};
     auto other_next_view{next_view_fn(o)};
 
-    std::string_view lhs{this_next_view()};
-    std::string_view rhs{other_next_view()};
-
-    if (lhs.empty() || rhs.empty()) {
-        return _size <=> o._size;
-    }
-
-    // Always check the first few bytes using byte for byte comparison,
-    // this allows the case of relatively randomized data to be done quickly
-    // but we still preserve the chunked checks that are faster if there is
-    // a matching prefix.
-    constexpr static size_t max_byte_for_byte_cmp = 4;
-    const auto n = std::min({lhs.size(), rhs.size(), max_byte_for_byte_cmp});
-    for (size_t i = 0; i < n; ++i) {
-        const auto cmp = lhs[i] <=> rhs[i];
-        if (cmp != std::strong_ordering::equal) {
-            return cmp;
-        }
-    }
-
+    lhs = this_next_view();
+    rhs = other_next_view();
     for (;;) {
         const auto n = std::min(lhs.size(), rhs.size());
-        if (n == 0) {
-            break;
-        }
-
         const auto cmp = std::memcmp(lhs.data(), rhs.data(), n) <=> 0;
         if (cmp != std::strong_ordering::equal) {
             return cmp;
@@ -166,10 +164,16 @@ std::strong_ordering iobuf::operator<=>(const iobuf& o) const {
         lhs.remove_prefix(n);
         if (lhs.empty()) {
             lhs = this_next_view();
+            if (lhs.empty()) {
+                break;
+            }
         }
         rhs.remove_prefix(n);
         if (rhs.empty()) {
             rhs = other_next_view();
+            if (rhs.empty()) {
+                break;
+            }
         }
     }
 
