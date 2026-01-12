@@ -522,7 +522,7 @@ json_compatibility_result is_superset(
   context ctx,
   const json::Value& older,
   const json::Value& newer,
-  std::filesystem::path p);
+  const std::filesystem::path& p);
 
 // close the implementation in a namespace to keep it contained
 namespace is_superset_impl {
@@ -1044,7 +1044,7 @@ json_compatibility_result is_additional_superset(
   const json::Value& older,
   const json::Value& newer,
   additional_field_for field_type,
-  std::filesystem::path p) {
+  const std::filesystem::path& p) {
     // "additional___" can be either true (if omitted it's true), false
     // or a schema. The check is performed with this table.
     // older ap | newer ap | compatible
@@ -1146,14 +1146,16 @@ json_compatibility_result is_additional_superset(
         [&ctx,
          &additional_path](const json::Value* older, const json::Value* newer) {
             // check subschemas for compatibility
-            return is_superset(ctx, *older, *newer, std::move(additional_path));
+            return is_superset(ctx, *older, *newer, additional_path);
         }),
       get_additional_props(ctx.older.dialect(), older),
       get_additional_props(ctx.newer.dialect(), newer));
 }
 
 json_compatibility_result is_string_superset(
-  const json::Value& older, const json::Value& newer, std::filesystem::path p) {
+  const json::Value& older,
+  const json::Value& newer,
+  const std::filesystem::path& p) {
     json_compatibility_result res;
 
     // note: "format" is not part of the checks
@@ -1195,7 +1197,9 @@ json_compatibility_result is_string_superset(
 }
 
 json_compatibility_result is_numeric_superset(
-  const json::Value& older, const json::Value& newer, std::filesystem::path p) {
+  const json::Value& older,
+  const json::Value& newer,
+  const std::filesystem::path& p) {
     json_compatibility_result res;
 
     // preconditions:
@@ -1359,7 +1363,7 @@ json_compatibility_result is_array_superset(
   const context& ctx,
   const json::Value& older,
   const json::Value& newer,
-  std::filesystem::path p) {
+  const std::filesystem::path& p) {
     json_compatibility_result res;
 
     // "type": "array" is used to model an array or a tuple.
@@ -1546,7 +1550,7 @@ json_compatibility_result is_object_properties_superset(
   const context& ctx,
   const json::Value& older,
   const json::Value& newer,
-  std::filesystem::path p) {
+  const std::filesystem::path& p) {
     json_compatibility_result res;
     // check that every property in newer["properties"]
     // if it appears in older["properties"],
@@ -1644,7 +1648,9 @@ json_compatibility_result is_object_properties_superset(
 }
 
 json_compatibility_result is_object_required_superset(
-  const json::Value& older, const json::Value& newer, std::filesystem::path p) {
+  const json::Value& older,
+  const json::Value& newer,
+  const std::filesystem::path& p) {
     json_compatibility_result res;
     // to pass the check, a required property from newer has to be present in
     // older, or if new it needs to have a default value.
@@ -1688,7 +1694,7 @@ json_compatibility_result is_object_dependencies_superset(
   const context& ctx,
   const json::Value& older,
   const json::Value& newer,
-  std::filesystem::path p) {
+  const std::filesystem::path& p) {
     json_compatibility_result res;
     // "dependencies", if present, is a dict of <property, string_array |
     // schema>. To be compatible, each key in older has to be in newer and the
@@ -1726,7 +1732,7 @@ json_compatibility_result is_object_dependencies_superset(
             }
 
             // schemas: o and n needs to be compatible
-            res.merge(is_superset(ctx, o, n, std::move(path_dep)));
+            res.merge(is_superset(ctx, o, n, path_dep));
         } else if (o.IsArray()) {
             if (n_it == newer_p.MemberEnd()) {
                 res.emplace<json_incompatibility>(
@@ -1781,7 +1787,7 @@ json_compatibility_result is_object_superset(
   const context& ctx,
   const json::Value& older,
   const json::Value& newer,
-  std::filesystem::path p) {
+  const std::filesystem::path& p) {
     json_compatibility_result res;
 
     // newer requires less properties to be set
@@ -1828,13 +1834,15 @@ json_compatibility_result is_object_superset(
     res.merge(is_object_required_superset(older, newer, p));
 
     // Check if dependencies are compatible
-    res.merge(is_object_dependencies_superset(ctx, older, newer, std::move(p)));
+    res.merge(is_object_dependencies_superset(ctx, older, newer, p));
 
     return res;
 }
 
 json_compatibility_result is_enum_superset(
-  const json::Value& older, const json::Value& newer, std::filesystem::path p) {
+  const json::Value& older,
+  const json::Value& newer,
+  const std::filesystem::path& p) {
     json_compatibility_result res;
     auto enum_p = p / "enum";
 
@@ -1888,7 +1896,7 @@ json_compatibility_result is_not_combinator_superset(
   const context& ctx,
   const json::Value& older,
   const json::Value& newer,
-  std::filesystem::path p) {
+  const std::filesystem::path& p) {
     json_compatibility_result res;
 
     auto older_it = older.FindMember("not");
@@ -1939,7 +1947,7 @@ json_compatibility_result is_positive_combinator_superset(
   const context& ctx,
   const json::Value& older,
   const json::Value& newer,
-  std::filesystem::path p) {
+  const std::filesystem::path& p) {
     json_compatibility_result res;
 
     auto get_combinator = [](const json::Value& v) {
@@ -1972,7 +1980,7 @@ json_compatibility_result is_positive_combinator_superset(
     if (!maybe_newer_comb.has_value()) {
         // older has a combinator but newer does not. not compatible
         res.emplace<json_incompatibility>(
-          std::move(p), json_incompatibility_type::combined_type_changed);
+          p, json_incompatibility_type::combined_type_changed);
         return res;
     }
     // newer has a combinator
@@ -1998,7 +2006,7 @@ json_compatibility_result is_positive_combinator_superset(
               ignored_path);
             if (is_combinator_superset.has_error()) {
                 res.emplace<json_incompatibility>(
-                  std::move(p),
+                  p,
                   json_incompatibility_type::combined_type_subschemas_changed);
             }
             return res;
@@ -2017,7 +2025,7 @@ json_compatibility_result is_positive_combinator_superset(
               });
             if (!any_superset) {
                 res.emplace<json_incompatibility>(
-                  std::move(p),
+                  p,
                   json_incompatibility_type::combined_type_subschemas_changed);
             }
             return res;
@@ -2035,7 +2043,7 @@ json_compatibility_result is_positive_combinator_superset(
               });
             if (!any_superset) {
                 res.emplace<json_incompatibility>(
-                  std::move(p),
+                  p,
                   json_incompatibility_type::combined_type_subschemas_changed);
             }
             return res;
@@ -2043,7 +2051,7 @@ json_compatibility_result is_positive_combinator_superset(
 
         // different combinators, not a special case. not compatible
         res.emplace<json_incompatibility>(
-          std::move(p), json_incompatibility_type::combined_type_changed);
+          p, json_incompatibility_type::combined_type_changed);
         return res;
     }
 
@@ -2056,7 +2064,7 @@ json_compatibility_result is_positive_combinator_superset(
         if (older_comb == p_combinator::allOf) {
             // older has more restrictions than newer, not compatible
             res.emplace<json_incompatibility>(
-              std::move(p), json_incompatibility_type::product_type_extended);
+              p, json_incompatibility_type::product_type_extended);
             return res;
         }
     } else if (older_schemas.Size() < newer_schemas.Size()) {
@@ -2065,7 +2073,7 @@ json_compatibility_result is_positive_combinator_superset(
           || newer_comb == p_combinator::oneOf) {
             // newer has more degrees of freedom than older, not compatible
             res.emplace<json_incompatibility>(
-              std::move(p), json_incompatibility_type::sum_type_narrowed);
+              p, json_incompatibility_type::sum_type_narrowed);
             return res;
         }
     }
@@ -2111,8 +2119,7 @@ json_compatibility_result is_positive_combinator_superset(
         // is_superset() relation with the other schema array, or that the
         // algorithm couldn't find a unique compatible pattern.
         res.emplace<json_incompatibility>(
-          std::move(p),
-          json_incompatibility_type::combined_type_subschemas_changed);
+          p, json_incompatibility_type::combined_type_subschemas_changed);
         return res;
     }
 
@@ -2130,7 +2137,7 @@ json_compatibility_result is_superset(
   context ctx,
   const json::Value& older_schema,
   const json::Value& newer_schema,
-  std::filesystem::path p) {
+  const std::filesystem::path& p) {
     json_compatibility_result res;
 
     // break recursion if parameters are atoms:
@@ -2167,11 +2174,11 @@ json_compatibility_result is_superset(
             // type_narrowed is reported when older has fewer elements or the
             // same but with integer in older instead of number in newer
             res.emplace<json_incompatibility>(
-              std::move(p), json_incompatibility_type::type_narrowed);
+              p, json_incompatibility_type::type_narrowed);
         } else {
             // Otherwise report the more general type_changed
             res.emplace<json_incompatibility>(
-              std::move(p), json_incompatibility_type::type_changed);
+              p, json_incompatibility_type::type_changed);
         }
         return res;
     }
