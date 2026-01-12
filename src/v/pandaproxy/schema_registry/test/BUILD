@@ -113,8 +113,8 @@ redpanda_cc_btest(
     ],
 )
 
-redpanda_cc_btest(
-    name = "storage",
+redpanda_cc_gtest(
+    name = "storage_test",
     timeout = "short",
     srcs = [
         "storage.cc",
@@ -122,10 +122,9 @@ redpanda_cc_btest(
     deps = [
         "//src/v/pandaproxy:json",
         "//src/v/pandaproxy/schema_registry:core",
-        "//src/v/test_utils:seastar_boost",
-        "@boost//:test",
+        "//src/v/test_utils:gtest",
         "@fmt",
-        "@seastar//:testing",
+        "@googletest//:gtest",
     ],
 )
 
