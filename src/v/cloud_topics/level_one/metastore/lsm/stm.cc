@@ -56,10 +56,11 @@ stm::stm(
     snapshot_timer_.set_callback([this] { write_snapshot_async(); });
 }
 
-ss::future<std::expected<model::term_id, stm::errc>>
-stm::sync(model::timeout_clock::duration timeout) {
+ss::future<std::expected<model::term_id, stm::errc>> stm::sync(
+  model::timeout_clock::duration timeout,
+  std::optional<std::reference_wrapper<ss::abort_source>> as) {
     auto sync_res = co_await ss::coroutine::as_future(
-      metastore_stm_base::sync(timeout));
+      metastore_stm_base::sync(timeout, as));
     if (sync_res.failed()) {
         auto eptr = sync_res.get_exception();
         auto msg = fmt::format("Exception caught while syncing: {}", eptr);
