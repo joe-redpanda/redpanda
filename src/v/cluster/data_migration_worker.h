@@ -145,8 +145,10 @@ private:
       mntp_state_t::running_t& running_work,
       const outbound_partition_work_info& otwi);
 
-    ss::future<result<model::offset, errc>>
-    block_partition(ss::lw_shared_ptr<partition> partition, bool block);
+    ss::future<result<model::offset, errc>> block_partition(
+      ss::lw_shared_ptr<partition> partition,
+      bool block,
+      model::revision_id revision_id);
 
     ss::future<result<model::offset, errc>> block_groups(
       const model::ntp& ntp,

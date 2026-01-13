@@ -321,7 +321,8 @@ ss::future<errc> worker::do_work(
               ntp, otwi.groups, true, running_work.work->revision_id);
             co_return res.has_value() ? errc::success : res.error();
         } else {
-            auto block_res = co_await block_partition(partition, true);
+            auto block_res = co_await block_partition(
+              partition, true, running_work.work->revision_id);
             if (!block_res.has_value()) {
                 co_return block_res.error();
             }
@@ -339,8 +340,7 @@ ss::future<errc> worker::do_work(
         // todo: shift to a new "cleanup" stage?
         auto del_res = co_await _group_proxy.delete_groups(
           ntp, otwi.groups, running_work.work->revision_id);
-        // invalid_data_migration_state indicates group already deleted and
-        // unblocked
+        // invalid_data_migration_state may indicate group already deleted
         if (
           del_res != std::error_code{}
           && del_res != errc::invalid_data_migration_state) {
@@ -348,9 +348,7 @@ ss::future<errc> worker::do_work(
         }
         auto block_res = co_await block_groups(
           ntp, otwi.groups, false, running_work.work->revision_id);
-        if (
-          !block_res.has_value()
-          && block_res.error() != errc::invalid_data_migration_state) {
+        if (!block_res.has_value()) {
             co_return block_res.error();
         }
         co_return errc::success;
@@ -360,7 +358,8 @@ ss::future<errc> worker::do_work(
           !otwi.groups.empty()
             ? block_groups(
                 ntp, otwi.groups, false, running_work.work->revision_id)
-            : block_partition(partition, false));
+            : block_partition(
+                partition, false, running_work.work->revision_id));
         // invalid_data_migration_state indicates partition/group already
         // unblocked
         co_return res.has_value()
@@ -377,11 +376,14 @@ ss::future<errc> worker::do_work(
     }
 }
 
-ss::future<result<model::offset, errc>>
-worker::block_partition(ss::lw_shared_ptr<partition> partition, bool block) {
+ss::future<result<model::offset, errc>> worker::block_partition(
+  ss::lw_shared_ptr<partition> partition,
+  bool block,
+  model::revision_id revision_id) {
     auto res = co_await partition->set_writes_disabled(
       partition_properties_stm::writes_disabled{block},
-      model::timeout_clock::now() + 5s);
+      model::timeout_clock::now() + 5s,
+      revision_id);
     if (res.has_value()) {
         co_return res.value();
     }

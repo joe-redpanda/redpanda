@@ -1746,7 +1746,8 @@ consensus_ptr partition::raft() const { return _raft; }
 
 ss::future<result<model::offset>> partition::set_writes_disabled(
   partition_properties_stm::writes_disabled disable,
-  model::timeout_clock::time_point deadline) {
+  model::timeout_clock::time_point deadline,
+  model::revision_id revision_id) {
     ss::rwlock::holder holder;
     auto lock_deadline = ss::semaphore::clock::now()
                          + ss::semaphore::clock::duration(
@@ -1774,7 +1775,7 @@ ss::future<result<model::offset>> partition::set_writes_disabled(
 
     auto method = disable ? &partition_properties_stm::disable_writes
                           : &partition_properties_stm::enable_writes;
-    co_return co_await (*_partition_properties_stm.*method)();
+    co_return co_await (*_partition_properties_stm.*method)(revision_id);
 }
 
 partition_flush_hook_id partition::register_flush_hook(flush_hook&& cb) {
