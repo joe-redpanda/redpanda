@@ -143,6 +143,34 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "replicated_persistence",
+    srcs = [
+        "replicated_persistence.cc",
+    ],
+    hdrs = [
+        "replicated_persistence.h",
+    ],
+    implementation_deps = [
+        "//src/v/lsm",
+        "//src/v/lsm/io:cloud_persistence",
+        "//src/v/model:batch_builder",
+        "//src/v/serde",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lsm_update",
+        ":stm",
+        "//src/v/cloud_io:remote",
+        "//src/v/cloud_storage_clients",
+        "//src/v/lsm/core:exceptions",
+        "//src/v/lsm/io:persistence",
+        "//src/v/lsm/proto:manifest_redpanda_proto",
+        "//src/v/model",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "values",
     hdrs = [
         "values.h",
