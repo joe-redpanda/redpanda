@@ -49,8 +49,14 @@ get_entity_data(const entity_key::part_t& p) {
       [](const entity_key::part::client_id_default_match&) -> entity_data {
           return {.entity_type = "client-id", .entity_name = std::nullopt};
       },
+      [](const entity_key::part::user_default_match&) -> entity_data {
+          return {.entity_type = "user", .entity_name = std::nullopt};
+      },
       [](const entity_key::part::client_id_match& m) -> entity_data {
           return {.entity_type = "client-id", .entity_name = m.value};
+      },
+      [](const entity_key::part::user_match& m) -> entity_data {
+          return {.entity_type = "user", .entity_name = m.value};
       },
       [](const entity_key::part::client_id_prefix_match& m) -> entity_data {
           return {.entity_type = "client-id-prefix", .entity_name = m.value};
