@@ -188,8 +188,9 @@ public:
     ss::future<std::error_code>
     empty_and_delete_groups(const model::ntp&, const chunked_vector<group_id>&);
 
-    ss::future<chunked_vector<deletable_group_result>>
-      delete_groups(chunked_vector<std::pair<model::ntp, group_id>>);
+    ss::future<chunked_vector<deletable_group_result>> delete_groups(
+      chunked_vector<std::pair<model::ntp, group_id>>,
+      bool allow_blocked = false);
 
     ss::future<> reload_groups();
 

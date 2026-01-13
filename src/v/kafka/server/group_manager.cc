@@ -1978,7 +1978,8 @@ ss::future<std::error_code> group_manager::empty_and_delete_groups(
       groups | std::views::transform([&ntp](const group_id& group_id) {
           return std::make_pair(ntp, group_id);
       })};
-    auto delete_results = co_await delete_groups(std::move(groups_with_ntps));
+    auto delete_results = co_await delete_groups(
+      std::move(groups_with_ntps), true);
     auto codes = std::views::transform(
       delete_results, &deletable_group_result::error_code);
     auto first_bad_code = std::ranges::find_if(codes, [](const auto& ec) {
@@ -1992,12 +1993,16 @@ ss::future<std::error_code> group_manager::empty_and_delete_groups(
 }
 
 ss::future<chunked_vector<deletable_group_result>> group_manager::delete_groups(
-  chunked_vector<std::pair<model::ntp, group_id>> groups) {
+  chunked_vector<std::pair<model::ntp, group_id>> groups, bool allow_blocked) {
     chunked_vector<deletable_group_result> results;
+    vlog(cg_klog.trace, "Deleting {} groups", groups.size());
 
     for (auto& group_info : groups) {
         auto error = validate_group_status(
-          group_info.first, group_info.second, delete_groups_api::key, false);
+          group_info.first,
+          group_info.second,
+          delete_groups_api::key,
+          allow_blocked);
         if (error != error_code::none) {
             results.push_back(
               deletable_group_result{
