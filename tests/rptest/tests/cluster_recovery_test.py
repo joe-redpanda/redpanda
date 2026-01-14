@@ -202,6 +202,227 @@ class ClusterRecoveryTest(RedpandaTest):
             assert found_role_acl, f"Couldn't find {role_name} in {acls_lines}"
 
     @cluster(num_nodes=4)
+    def test_group_acl_restore(self):
+        """
+        Tests that Group ACLs (ACLs with Group: principal prefix) are properly
+        backed up and restored by cluster recovery.
+        """
+        rpk = RpkTool(self.redpanda)
+
+        for t in self.topics:
+            KgoVerifierProducer.oneshot(
+                self.test_context,
+                self.redpanda,
+                t.name,
+                self.message_size,
+                100,
+                batch_max_bytes=self.message_size * 8,
+                timeout_sec=60,
+            )
+        quiesce_uploads(self.redpanda, [t.name for t in self.topics], timeout_sec=60)
+
+        # Create Group ACLs with different operations and resource types
+        group_acls = []
+        for i in range(3):
+            group_name = f"test_group_{random_string(6)}"
+
+            # Create a Group ACL on the cluster resource
+            cluster_acl = RPKACLInput()
+            cluster_acl.allow_principal = [f"Group:{group_name}"]
+            cluster_acl.allow_host = ["*"]
+            cluster_acl.operation = ["describe"]
+            cluster_acl.cluster = True
+            rpk.acl_create(cluster_acl)
+
+            # Create a Group ACL on a topic resource
+            topic_acl = RPKACLInput()
+            topic_acl.allow_principal = [f"Group:{group_name}"]
+            topic_acl.allow_host = ["*"]
+            topic_acl.operation = ["read", "describe"]
+            topic_acl.topic = [self.topics[i].name]
+            rpk.acl_create(topic_acl)
+
+            group_acls.append(group_name)
+
+        self.logger.info(f"Created Group ACLs for groups: {group_acls}")
+
+        # Verify ACLs were created
+        acls_before = rpk.acl_list(format="json")
+        for group_name in group_acls:
+            group_acl_found = any(
+                acl.get("principal") == f"Group:{group_name}"
+                for acl in acls_before.get("matches", [])
+            )
+            assert group_acl_found, f"Group:{group_name} ACL not found before recovery"
+
+        time.sleep(5)
+
+        # Stop and wipe the cluster
+        self.redpanda.stop()
+        for n in self.redpanda.nodes:
+            self.redpanda.remove_local_data(n)
+        self.redpanda.restart_nodes(
+            self.redpanda.nodes, auto_assign_node_id=True, omit_seeds_on_idx_one=False
+        )
+        self.redpanda._admin.await_stable_leader(
+            "controller", partition=0, namespace="redpanda", timeout_s=60, backoff_s=2
+        )
+
+        self.logger.info("Verifying that no ACLs are present before recovery")
+        assert len(rpk.acl_list().splitlines()) == 1, "Expected no ACLs before recovery"
+
+        self.logger.info("Initializing cluster recovery")
+        self.redpanda._admin.initialize_cluster_recovery()
+
+        def cluster_recovery_complete():
+            return (
+                "inactive"
+                in self.redpanda._admin.get_cluster_recovery_status().json()["state"]
+            )
+
+        wait_until(cluster_recovery_complete, timeout_sec=30, backoff_sec=1)
+
+        self.logger.info("Verifying Group ACLs are restored")
+
+        acls_after = rpk.acl_list(format="json")
+        for group_name in group_acls:
+            # Check for cluster ACL
+            cluster_acl_found = any(
+                acl.get("principal") == f"Group:{group_name}"
+                and acl.get("resource_type") == "CLUSTER"
+                for acl in acls_after.get("matches", [])
+            )
+            assert cluster_acl_found, f"Group:{group_name} cluster ACL not restored"
+
+            # Check for topic ACL
+            topic_acl_found = any(
+                acl.get("principal") == f"Group:{group_name}"
+                and acl.get("resource_type") == "TOPIC"
+                for acl in acls_after.get("matches", [])
+            )
+            assert topic_acl_found, f"Group:{group_name} topic ACL not restored"
+
+        self.logger.info("All Group ACLs successfully restored")
+
+    @cluster(num_nodes=4)
+    def test_mixed_principal_acl_restore(self):
+        """
+        Tests that a mix of User, Role, and Group ACLs are all properly
+        backed up and restored by cluster recovery.
+        """
+        rpk = RpkTool(self.redpanda)
+
+        for t in self.topics:
+            KgoVerifierProducer.oneshot(
+                self.test_context,
+                self.redpanda,
+                t.name,
+                self.message_size,
+                100,
+                batch_max_bytes=self.message_size * 8,
+                timeout_sec=60,
+            )
+        quiesce_uploads(self.redpanda, [t.name for t in self.topics], timeout_sec=60)
+
+        algorithm = "SCRAM-SHA-256"
+
+        # Create a user with ACL
+        user_name = f"user-{random_string(6)}"
+        user_password = f"pass-{random_string(9)}"
+        self.redpanda._admin.create_user(user_name, user_password, algorithm)
+        rpk.acl_create_allow_cluster(user_name, op="describe")
+
+        # Create a role with ACL
+        role_name = f"role-{random_string(6)}"
+        self.redpanda._admin.create_role(role_name)
+        self.redpanda._admin.update_role_members(
+            role_name, add=[RoleMember.User(user_name)]
+        )
+        role_acl = RPKACLInput()
+        role_acl.allow_role = [role_name]
+        role_acl.cluster = True
+        role_acl.operation = ["ALL"]
+        rpk.acl_create(role_acl)
+
+        # Create a group ACL
+        group_name = f"group-{random_string(6)}"
+        group_acl = RPKACLInput()
+        group_acl.allow_principal = [f"Group:{group_name}"]
+        group_acl.allow_host = ["*"]
+        group_acl.operation = ["describe", "read"]
+        group_acl.cluster = True
+        rpk.acl_create(group_acl)
+
+        self.logger.info(
+            f"Created mixed ACLs - User: {user_name}, Role: {role_name}, Group: {group_name}"
+        )
+
+        time.sleep(5)
+
+        # Stop and wipe the cluster
+        self.redpanda.stop()
+        for n in self.redpanda.nodes:
+            self.redpanda.remove_local_data(n)
+        self.redpanda.restart_nodes(
+            self.redpanda.nodes, auto_assign_node_id=True, omit_seeds_on_idx_one=False
+        )
+        self.redpanda._admin.await_stable_leader(
+            "controller", partition=0, namespace="redpanda", timeout_s=60, backoff_s=2
+        )
+
+        self.logger.info("Initializing cluster recovery")
+        self.redpanda._admin.initialize_cluster_recovery()
+
+        def cluster_recovery_complete():
+            return (
+                "inactive"
+                in self.redpanda._admin.get_cluster_recovery_status().json()["state"]
+            )
+
+        wait_until(cluster_recovery_complete, timeout_sec=30, backoff_sec=1)
+
+        self.logger.info("Verifying all ACL types are restored")
+
+        acls = rpk.acl_list()
+        acls_lines = acls.splitlines()
+
+        # Check user ACL
+        user_acl_found = any(
+            user_name in line and "ALLOW" in line and "DESCRIBE" in line
+            for line in acls_lines
+        )
+        assert user_acl_found, f"User ACL for {user_name} not restored"
+
+        # Check role ACL
+        role_acl_found = any(
+            role_name in line and "ALLOW" in line and "ALL" in line
+            for line in acls_lines
+        )
+        assert role_acl_found, f"Role ACL for {role_name} not restored"
+
+        # Check group ACL
+        group_acl_found = any(
+            f"Group:{group_name}" in line and "ALLOW" in line for line in acls_lines
+        )
+        assert group_acl_found, f"Group ACL for {group_name} not restored"
+
+        # Verify role membership is also restored
+        restored_roles = rpk.list_roles().get("roles", [])
+        assert role_name in restored_roles, f"Role {role_name} not restored"
+
+        role_details = rpk.describe_role(role_name)
+        restored_members = [
+            m["name"]
+            for m in role_details.get("members", [])
+            if m["principal_type"] == RoleMember.PrincipalType.USER.value
+        ]
+        assert user_name in restored_members, (
+            f"User {user_name} not in role {role_name} members after restore"
+        )
+
+        self.logger.info("All mixed principal ACLs successfully restored")
+
+    @cluster(num_nodes=4)
     def test_bootstrap_with_recovery(self):
         """
         Smoke test that configuring automated recovery at bootstrap will kick

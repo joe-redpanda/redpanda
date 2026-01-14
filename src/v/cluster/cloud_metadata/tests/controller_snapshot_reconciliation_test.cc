@@ -296,3 +296,79 @@ TEST_F(
     actions = reconciler.get_actions(snap);
     ASSERT_TRUE(actions.empty());
 }
+
+TEST_F(controller_snapshot_reconciliation_fixture, test_reconciler_group_acls) {
+    cluster::controller_snapshot snap;
+    auto binding = binding_for_group("test_group");
+    snap.security.acls.emplace_back(binding);
+
+    // When the snapshot contains Group ACLs, we should see actions.
+    auto actions = reconciler.get_actions(snap);
+    ASSERT_TRUE(
+      actions_contain(actions, cluster::recovery_stage::recovered_acls));
+    validate_actions(actions);
+
+    // Verify the Group ACL is included in the actions.
+    ASSERT_EQ(actions.acls.size(), 1);
+    ASSERT_EQ(
+      actions.acls[0].entry().principal().type(),
+      security::principal_type::group);
+    ASSERT_EQ(actions.acls[0].entry().principal().name_view(), "test_group");
+
+    // The current implementation doesn't dedupe.
+    app.controller->get_security_frontend()
+      .local()
+      .create_acls({binding}, 5s)
+      .get();
+    actions = reconciler.get_actions(snap);
+    ASSERT_TRUE(
+      actions_contain(actions, cluster::recovery_stage::recovered_acls));
+    validate_actions(actions);
+}
+
+TEST_F(
+  controller_snapshot_reconciliation_fixture,
+  test_reconciler_mixed_principal_acls) {
+    // Test that recovery handles a mix of user, role, and group ACLs.
+    cluster::controller_snapshot snap;
+
+    auto user_binding = binding_for_user("test_user");
+    auto role_binding = binding_for_role("test_role");
+    auto group_binding = binding_for_group("test_group");
+
+    snap.security.acls.emplace_back(user_binding);
+    snap.security.acls.emplace_back(role_binding);
+    snap.security.acls.emplace_back(group_binding);
+
+    auto actions = reconciler.get_actions(snap);
+    ASSERT_TRUE(
+      actions_contain(actions, cluster::recovery_stage::recovered_acls));
+    validate_actions(actions);
+
+    // Verify all three ACL types are included in the actions.
+    ASSERT_EQ(actions.acls.size(), 3);
+
+    bool found_user = false, found_role = false, found_group = false;
+    for (const auto& acl : actions.acls) {
+        switch (acl.entry().principal().type()) {
+        case security::principal_type::ephemeral_user:
+            found_user = true;
+            ASSERT_EQ(acl.entry().principal().name_view(), "test_user");
+            break;
+        case security::principal_type::role:
+            found_role = true;
+            ASSERT_EQ(acl.entry().principal().name_view(), "test_role");
+            break;
+        case security::principal_type::group:
+            found_group = true;
+            ASSERT_EQ(acl.entry().principal().name_view(), "test_group");
+            break;
+        default:
+            break;
+        }
+    }
+
+    ASSERT_TRUE(found_user) << "User ACL not found in actions";
+    ASSERT_TRUE(found_role) << "Role ACL not found in actions";
+    ASSERT_TRUE(found_group) << "Group ACL not found in actions";
+}
