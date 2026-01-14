@@ -52,6 +52,19 @@ struct term_spec {
     std::vector<std::pair<int64_t, int64_t>> start_offset_term;
 };
 
+struct compact_spec {
+    model::topic_id_partition tidp;
+    int64_t cleaned_at{1000};
+    int64_t epoch{0};
+
+    // (base_offset, last_offset, has_tombstones).
+    std::vector<std::tuple<int64_t, int64_t, bool>> cleaned;
+
+    // Pairs of (base_offset, last_offset).
+    std::vector<std::pair<int64_t, int64_t>> rm_tombstones;
+};
+using compact_specs = std::vector<compact_spec>;
+
 extent_spec tp(model::topic_id_partition tidp, int64_t base, int64_t last) {
     return extent_spec{
       .tidp = tidp,
@@ -129,6 +142,39 @@ make_add_objects_update(const term_specs& terms, Objects... objects) {
     return add_objects_db_update{
       .new_objects = std::move(new_objects),
       .new_terms = std::move(new_terms),
+    };
+}
+
+template<typename... Objects>
+replace_objects_db_update
+make_replace_objects_update(const compact_specs& cs, Objects... objects) {
+    chunked_hash_map<
+      model::topic_id,
+      chunked_hash_map<model::partition_id, compaction_state_update>>
+      compaction_updates;
+    for (const auto& c : cs) {
+        auto& tp = compaction_updates[c.tidp.topic_id][c.tidp.partition];
+        tp.cleaned_at = model::timestamp(c.cleaned_at);
+        tp.expected_compaction_epoch = partition_state::compaction_epoch_t(
+          c.epoch);
+        for (const auto& [base, last, has_tombstones] : c.cleaned) {
+            tp.new_cleaned_ranges.emplace_back(
+              cloud_topics::l1::compaction_state_update::cleaned_range{
+                .base_offset = kafka::offset(base),
+                .last_offset = kafka::offset(last),
+                .has_tombstones = has_tombstones,
+              });
+        }
+        for (const auto& [base, last] : c.rm_tombstones) {
+            tp.removed_tombstones_ranges.insert(
+              kafka::offset(base), kafka::offset(last));
+        }
+    }
+
+    auto new_objects = make_new_objects(objects...);
+    return replace_objects_db_update{
+      .new_objects = std::move(new_objects),
+      .compaction_updates = std::move(compaction_updates),
     };
 }
 
@@ -493,4 +539,216 @@ TEST_F(StateUpdateTest, TestAddObjectsWithCorrections) {
 
     // The misaligned object should be in the metastore as empty.
     verify_object_exists(new_oid, 0, 0);
+}
+
+TEST_F(StateUpdateTest, TestReplaceObjectsBasic) {
+    auto old_oid = make_oid();
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(old_oid, tp(tidp0, 0, 99).pos(0, 1023)));
+    add_objects(
+      {terms(tidp0, {{100, 1}})},
+      make_object(make_oid(), tp(tidp0, 100, 199).pos(0, 1023)));
+    add_objects(
+      {terms(tidp0, {{200, 1}})},
+      make_object(make_oid(), tp(tidp0, 200, 299).pos(0, 1023)));
+
+    // Create a new object that replaces the first two extents [0-199].
+    auto new_oid = make_oid();
+    replace_objects(
+      compact_specs{}, make_object(new_oid, tp(tidp0, 0, 199).pos(0, 2047)));
+
+    // Metadata should be unchanged.
+    verify_metadata(tidp0, kafka::offset(0), kafka::offset(300));
+
+    // Old extents [0-99] and [100-199] should be gone. New extent [0-199]
+    // should exist.
+    verify_extent_exists(tidp0, kafka::offset(0), kafka::offset(199));
+    verify_extent_missing(tidp0, kafka::offset(100));
+    verify_extent_exists(tidp0, kafka::offset(200), kafka::offset(299));
+
+    verify_object_exists(new_oid, 2048);
+    verify_object_exists(old_oid, 1024, /*expected_removed_data_size*/ 1024);
+}
+
+TEST_F(StateUpdateTest, TestReplaceObjectsRejectsMissingPartition) {
+    auto db_update = make_replace_objects_update(
+      compact_specs{}, make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 1023)));
+    auto reader = make_reader();
+    chunked_vector<write_batch_row> rows;
+    auto result = db_update.build_rows(reader, rows).get();
+    ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(StateUpdateTest, TestReplaceObjectsRejectsEmptyObjects) {
+    replace_objects_db_update update{
+      .new_objects = {},
+      .compaction_updates = {},
+    };
+    auto validate_res = update.validate_inputs();
+    ASSERT_FALSE(validate_res.has_value());
+}
+
+TEST_F(
+  StateUpdateTest, TestReplaceObjectsRejectsCompactionUpdateWithoutExtents) {
+    auto tidp1 = make_tidp(1);
+
+    // Compaction update for tidp1, but extents only for tidp0.
+    auto db_update = make_replace_objects_update(
+      {{compact_spec{
+        .tidp = tidp1,
+        .cleaned = {{0, 99, false}},
+      }}},
+      make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 1023)));
+
+    auto validate_res = db_update.validate_inputs();
+    ASSERT_FALSE(validate_res.has_value());
+}
+
+TEST_F(
+  StateUpdateTest, TestReplaceObjectsRejectsCleanedRangeExceedsExtentsEnd) {
+    // Cleaned range [0-299], but extents only [0-199].
+    auto db_update = make_replace_objects_update(
+      {{compact_spec{
+        .tidp = tidp0,
+        .cleaned = {{0, 299, false}},
+      }}},
+      make_object(make_oid(), tp(tidp0, 0, 199).pos(0, 2047)));
+
+    auto validate_res = db_update.validate_inputs();
+    ASSERT_FALSE(validate_res.has_value());
+}
+
+TEST_F(
+  StateUpdateTest, TestReplaceObjectsRejectsCleanedRangeStartsBeforeExtents) {
+    // Extents start at 100, but cleaned range starts at 50.
+    auto db_update = make_replace_objects_update(
+      {{compact_spec{
+        .tidp = tidp0,
+        .cleaned = {{50, 199, false}},
+      }}},
+      make_object(make_oid(), tp(tidp0, 100, 199).pos(0, 1023)));
+
+    auto validate_res = db_update.validate_inputs();
+    ASSERT_FALSE(validate_res.has_value());
+}
+
+TEST_F(StateUpdateTest, TestReplaceObjectsRejectsDuplicateObject) {
+    auto oid = make_oid();
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(oid, tp(tidp0, 0, 99).pos(0, 1023)));
+
+    // Try to replace using an object ID that already exists.
+    auto db_update = make_replace_objects_update(
+      compact_specs{}, make_object(oid, tp(tidp0, 0, 99).pos(0, 1023)));
+    auto reader = make_reader();
+    chunked_vector<write_batch_row> rows;
+    auto result = db_update.build_rows(reader, rows).get();
+    ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(StateUpdateTest, TestReplaceObjectsRejectsOverlappingCleanedRanges) {
+    // Set up partition with existing cleaned range with tombstones.
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 1023)));
+
+    // Add a cleaned range [0-49].
+    replace_objects(
+      {{compact_spec{
+        .tidp = tidp0,
+        .cleaned = {{0, 49, true}},
+      }}},
+      make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 511)));
+    verify_compaction_state(
+      tidp0,
+      /*expected_cleaned_ranges=*/{{0, 49}},
+      /*expected_tombstone_ranges=*/{{0, 49, 1000}});
+
+    // Now try to add overlapping cleaned range [49-99].
+    // epoch=1 because the first compaction incremented it from 0 to 1.
+    auto db_update = make_replace_objects_update(
+      {{compact_spec{
+        .tidp = tidp0,
+        .cleaned_at = 2000,
+        .epoch = 1,
+        .cleaned = {{49, 99, true}},
+      }}},
+      make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 511)));
+
+    auto reader = make_reader();
+    chunked_vector<write_batch_row> rows;
+    auto result = db_update.build_rows(reader, rows).get();
+    ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(StateUpdateTest, TestReplaceObjectsRejectsRemovingUntrackedTombstones) {
+    // Set up partition without any tombstone tracking.
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 1023)));
+
+    // Try to remove tombstones from range [0-49] which doesn't have them.
+    auto db_update = make_replace_objects_update(
+      {{compact_spec{
+        .tidp = tidp0,
+        .rm_tombstones = {{0, 49}},
+      }}},
+      make_object(make_oid(), tp(tidp0, 0, 49).pos(0, 511)));
+
+    auto reader = make_reader();
+    chunked_vector<write_batch_row> rows;
+    auto result = db_update.build_rows(reader, rows).get();
+    ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(StateUpdateTest, TestReplaceObjectsWithCompactionAndTombstones) {
+    // Set up initial partition.
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 2047)),
+      make_object(make_oid(), tp(tidp0, 100, 199).pos(0, 2047)));
+
+    // First replace with cleaned range with tombstones [0-99].
+    auto new_oid1 = make_oid();
+    replace_objects(
+      {{compact_spec{
+        .tidp = tidp0,
+        .cleaned_at = 1000,
+        .cleaned = {{0, 99, true}},
+      }}},
+      make_object(new_oid1, tp(tidp0, 0, 99).pos(0, 1023)));
+
+    verify_metadata(tidp0, kafka::offset(0), kafka::offset(200));
+    verify_extent_exists(tidp0, kafka::offset(0), kafka::offset(99));
+    verify_extent_exists(tidp0, kafka::offset(100), kafka::offset(199));
+    verify_object_exists(new_oid1, 1024);
+    verify_compaction_state(
+      tidp0,
+      /*expected_cleaned_ranges=*/{{0, 99}},
+      /*expected_tombstone_ranges=*/{{0, 99, 1000}});
+
+    // Second replace: add non-overlapping cleaned range with tombstones
+    // [150-199], and remove tombstones from [0-49].
+    // epoch=1 because the first compaction incremented it from 0 to 1.
+    auto new_oid2 = make_oid();
+    replace_objects(
+      {{compact_spec{
+        .tidp = tidp0,
+        .cleaned_at = 2000,
+        .epoch = 1,
+        .cleaned = {{150, 199, true}},
+        .rm_tombstones = {{0, 49}},
+      }}},
+      make_object(new_oid2, tp(tidp0, 0, 199).pos(0, 1023)));
+
+    verify_metadata(tidp0, kafka::offset(0), kafka::offset(200));
+    verify_extent_exists(tidp0, kafka::offset(0), kafka::offset(199));
+    verify_extent_missing(tidp0, kafka::offset(100));
+    verify_object_exists(new_oid2, 1024);
+    verify_compaction_state(
+      tidp0,
+      /*expected_cleaned_ranges=*/{{0, 99}, {150, 199}},
+      /*expected_tombstone_ranges=*/{{50, 99, 1000}, {150, 199, 2000}});
 }

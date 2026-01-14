@@ -42,4 +42,21 @@ struct add_objects_db_update {
     term_state_update_t new_terms;
 };
 
+struct replace_objects_db_update {
+    ss::future<std::expected<void, db_update_error>>
+    build_rows(state_reader&, chunked_vector<write_batch_row>&) const;
+
+    // Validates the given update is well-formed:
+    // - There are new objects
+    // - Input extents are in order and form contiguous intervals
+    // - Compaction updates align with new extents
+    std::expected<void, db_update_error> validate_inputs() const;
+
+    chunked_vector<new_object> new_objects;
+    chunked_hash_map<
+      model::topic_id,
+      chunked_hash_map<model::partition_id, compaction_state_update>>
+      compaction_updates;
+};
+
 } // namespace cloud_topics::l1
