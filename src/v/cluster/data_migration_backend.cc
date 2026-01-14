@@ -24,7 +24,6 @@
 #include "fwd.h"
 #include "logger.h"
 #include "model/fundamental.h"
-#include "model/ktp.h"
 #include "model/metadata.h"
 #include "model/namespace.h"
 #include "model/timeout_clock.h"

@@ -128,7 +128,7 @@ private:
 
     struct replica_work_state {
         state sought_state;
-        // shard may only be assigned if replica_status is can_run
+        // shard may only be assigned if replica_status is `can_run`
         std::optional<seastar::shard_id> shard;
         migrated_replica_status status;
         // empty if status is `waiting_for_rpc`; otherwise it has a value

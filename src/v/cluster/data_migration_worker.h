@@ -59,6 +59,7 @@ private:
             requested_t& operator=(const requested_t&) = delete;
             requested_t(requested_t&&) = default;
             requested_t& operator=(requested_t&&) = default;
+            ~requested_t() = default;
         };
         struct running_t {
             ss::lw_shared_ptr<partition_work> work;
