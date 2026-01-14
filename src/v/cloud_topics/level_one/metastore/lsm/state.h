@@ -13,6 +13,7 @@
 #include "cloud_topics/level_one/metastore/domain_uuid.h"
 #include "cloud_topics/level_one/metastore/lsm/write_batch_row.h"
 #include "lsm/lsm.h"
+#include "model/fundamental.h"
 #include "serde/envelope.h"
 
 #include <deque>
@@ -57,6 +58,12 @@ struct lsm_state
           persisted_manifest);
     }
     lsm_state copy() const;
+
+    // Conversion between Redpanda space and LSM DB space.
+    model::term_id to_term(lsm::internal::database_epoch) const;
+    lsm::internal::database_epoch to_epoch(model::term_id) const;
+    kafka::offset to_offset(lsm::sequence_number) const;
+    lsm::sequence_number to_seqno(kafka::offset) const;
 
     // The unique identifier for this LSM state. This should be used as the
     // basis for where the database writes its data and metadata.

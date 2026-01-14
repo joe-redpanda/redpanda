@@ -57,4 +57,20 @@ lsm_state lsm_state::copy() const {
     };
 }
 
+model::term_id lsm_state::to_term(lsm::internal::database_epoch e) const {
+    return model::term_id(e() - db_epoch_delta);
+}
+
+lsm::internal::database_epoch lsm_state::to_epoch(model::term_id t) const {
+    return lsm::internal::database_epoch(t() + db_epoch_delta);
+}
+
+kafka::offset lsm_state::to_offset(lsm::sequence_number s) const {
+    return kafka::offset(s() - seqno_delta);
+}
+
+lsm::sequence_number lsm_state::to_seqno(kafka::offset o) const {
+    return lsm::sequence_number(o() + seqno_delta);
+}
+
 } // namespace cloud_topics::l1

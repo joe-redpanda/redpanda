@@ -41,8 +41,10 @@ public:
     // leaders that they are up-to-date.
     //
     // Returns the current term.
-    ss::future<std::expected<model::term_id, errc>>
-    sync(model::timeout_clock::duration timeout);
+    ss::future<std::expected<model::term_id, errc>> sync(
+      model::timeout_clock::duration timeout,
+      std::optional<std::reference_wrapper<ss::abort_source>> as
+      = std::nullopt);
 
     // Replicates the given batch and waits for it to finish replicating.
     // Success here does not guarantee that the replicated operation succeeded
