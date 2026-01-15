@@ -983,8 +983,9 @@ json_compatibility_result is_numeric_property_value_superset(
   const json::Value& newer,
   std::string_view prop_name,
   VPred&& value_predicate,
-  json_incompatibility changed_err,
-  json_incompatibility added_err,
+  json_incompatibility_type changed_err,
+  json_incompatibility_type added_err,
+  const std::filesystem::path& p,
   std::optional<double> default_value = std::nullopt) {
     // get value or default_value
     auto get_value = [&](const json::Value& v) -> std::optional<double> {
@@ -1023,13 +1024,13 @@ json_compatibility_result is_numeric_property_value_superset(
               *older_value,
               *newer_value)) {
             return json_compatibility_result::of<json_incompatibility>(
-              changed_err);
+              p / prop_name, changed_err);
         }
     } else if (older_value.has_value()) {
         if (!default_value.has_value() || *older_value != *default_value) {
             // Non-default value was removed
             return json_compatibility_result::of<json_incompatibility>(
-              added_err);
+              p / prop_name, added_err);
         }
     }
 
@@ -1165,8 +1166,9 @@ json_compatibility_result is_string_superset(
       newer,
       "minLength",
       std::less_equal<>{},
-      {p / "minLength", json_incompatibility_type::min_length_increased},
-      {p / "minLength", json_incompatibility_type::min_length_added},
+      json_incompatibility_type::min_length_increased,
+      json_incompatibility_type::min_length_added,
+      p,
       0));
 
     res.merge(is_numeric_property_value_superset(
@@ -1174,8 +1176,9 @@ json_compatibility_result is_string_superset(
       newer,
       "maxLength",
       std::greater_equal<>{},
-      {p / "maxLength", json_incompatibility_type::max_length_decreased},
-      {p / "maxLength", json_incompatibility_type::max_length_added}));
+      json_incompatibility_type::max_length_decreased,
+      json_incompatibility_type::max_length_added,
+      p));
 
     auto [maybe_gate_value, older_val_p, newer_val_p]
       = extract_property_and_gate_check(older, newer, "pattern");
@@ -1222,8 +1225,9 @@ json_compatibility_result is_numeric_superset(
       newer,
       "minimum",
       std::less_equal<>{},
-      {p / "minimum", json_incompatibility_type::minimum_increased},
-      {p / "minimum", json_incompatibility_type::minimum_added}));
+      json_incompatibility_type::minimum_increased,
+      json_incompatibility_type::minimum_added,
+      p));
 
     // older["maximum"] is not superset of newer["maximum"] because newer is
     // less strict
@@ -1232,8 +1236,9 @@ json_compatibility_result is_numeric_superset(
       newer,
       "maximum",
       std::greater_equal<>{},
-      {p / "maximum", json_incompatibility_type::maximum_decreased},
-      {p / "maximum", json_incompatibility_type::maximum_added}));
+      json_incompatibility_type::maximum_decreased,
+      json_incompatibility_type::maximum_added,
+      p));
 
     // TODO: return multiple_of_expanded instead of multiple_of_changed if older
     // is a multiple of newer
@@ -1241,7 +1246,7 @@ json_compatibility_result is_numeric_superset(
       older,
       newer,
       "multipleOf",
-      [](double older, double newer) {
+      [](double older_val, double newer_val) {
           // check that the reminder of newer/older is close enough to 0.
           // close enough is defined as being close to the Unit in the Last
           // Place of the bigger between the two.
@@ -1249,11 +1254,12 @@ json_compatibility_result is_numeric_superset(
           // representation it would be possible to perform an exact
           // reminder(newer, older)==0 check
           constexpr auto max_ulp_error = 3;
-          return std::abs(std::remainder(newer, older))
-                 <= (max_ulp_error * boost::math::ulp(newer));
+          return std::abs(std::remainder(newer_val, older_val))
+                 <= (max_ulp_error * boost::math::ulp(newer_val));
       },
-      {p / "multipleOf", json_incompatibility_type::multiple_of_changed},
-      {p / "multipleOf", json_incompatibility_type::multiple_of_added}));
+      json_incompatibility_type::multiple_of_changed,
+      json_incompatibility_type::multiple_of_added,
+      p));
 
     // exclusiveMinimum/exclusiveMaximum checks are mostly the same logic,
     // implemented in this helper
@@ -1382,8 +1388,9 @@ json_compatibility_result is_array_superset(
       newer,
       "minItems",
       std::less_equal<>{},
-      {p / "minItems", json_incompatibility_type::min_items_increased},
-      {p / "minItems", json_incompatibility_type::min_items_added},
+      json_incompatibility_type::min_items_increased,
+      json_incompatibility_type::min_items_added,
+      p,
       0));
 
     res.merge(is_numeric_property_value_superset(
@@ -1391,8 +1398,9 @@ json_compatibility_result is_array_superset(
       newer,
       "maxItems",
       std::greater_equal<>{},
-      {p / "maxItems", json_incompatibility_type::max_items_decreased},
-      {p / "maxItems", json_incompatibility_type::max_items_added}));
+      json_incompatibility_type::max_items_decreased,
+      json_incompatibility_type::max_items_added,
+      p));
 
     // uniqueItems makes sense mostly for arrays, but it's also allowed for
     // tuples, so the validation is done here
@@ -1796,9 +1804,9 @@ json_compatibility_result is_object_superset(
       newer,
       "minProperties",
       std::less_equal<>{},
-      {p / "minProperties",
-       json_incompatibility_type::min_properties_increased},
-      {p / "minProperties", json_incompatibility_type::min_properties_added},
+      json_incompatibility_type::min_properties_increased,
+      json_incompatibility_type::min_properties_added,
+      p,
       0));
 
     // newer requires more properties to be set
@@ -1807,9 +1815,9 @@ json_compatibility_result is_object_superset(
       newer,
       "maxProperties",
       std::greater_equal<>{},
-      {p / "maxProperties",
-       json_incompatibility_type::max_properties_decreased},
-      {p / "maxProperties", json_incompatibility_type::max_properties_added}));
+      json_incompatibility_type::max_properties_decreased,
+      json_incompatibility_type::max_properties_added,
+      p));
 
     // Check if additional properties are compatible
     res.merge(is_additional_superset(
