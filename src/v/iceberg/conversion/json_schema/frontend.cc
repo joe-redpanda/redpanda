@@ -10,6 +10,7 @@
 
 #include "iceberg/conversion/json_schema/frontend.h"
 
+#include "absl/container/btree_map.h"
 #include "container/chunked_vector.h"
 #include "iceberg/conversion/json_schema/details/string_switch_table.h"
 #include "iceberg/conversion/json_schema/ir.h"
@@ -118,13 +119,16 @@ public:
         friend class compile_context;
 
     public:
-        resource_context(const json::Uri& base_uri, dialect d)
+        resource_context(
+          const json::Uri& base_uri, dialect d, const json::Value& node)
           : base_uri_(base_uri)
-          , dialect_(d) {}
+          , dialect_(d)
+          , node_(&node) {}
 
     private:
         json::Uri base_uri_;
         dialect dialect_;
+        [[maybe_unused]] const json::Value* node_;
     };
 
 public:
@@ -153,6 +157,10 @@ public:
             throw std::runtime_error(
               fmt::format("Duplicate schema ID: {}", id));
         }
+
+        [[maybe_unused]] auto [it, inserted] = ctx_by_id_.emplace(
+          id, stack_.back());
+        dassert(inserted, "unique insertion should have succeeded");
     }
 
     bool empty() const { return stack_.empty(); }
@@ -182,6 +190,8 @@ public:
         vassert(!empty(), "Stack is empty");
         stack_.pop_back();
     }
+
+    absl::btree_map<std::string, resource_context> ctx_by_id_;
 
 private:
     json::Uri ctx_base_uri_;
@@ -219,13 +229,14 @@ bool maybe_push_context(compile_context& ctx, const json::Value& node) {
         // The $id keyword starts a new resource context.
         ctx.push(
           parse_base_uri(id_node->GetString()).Resolve(ctx.base_uri()),
-          dialect_at_node);
+          dialect_at_node,
+          node);
 
         return true;
     } else if (ctx.empty()) {
         // If the $id keyword is not present and the context is empty, we must
         // still push a new context with the base URI of the current context.
-        ctx.push(ctx.base_uri(), dialect_at_node);
+        ctx.push(ctx.base_uri(), dialect_at_node, node);
         return true;
     } else {
         return false;
