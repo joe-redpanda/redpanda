@@ -773,6 +773,22 @@ void verify_term_of(
     }
 }
 
+void verify_term_end(
+  state_reader& reader,
+  const model::topic_id_partition& tidp,
+  model::term_id t,
+  std::optional<kafka::offset> expected_end) {
+    SCOPED_TRACE(fmt::format("tidp={}, term={}", tidp, t));
+    auto res = reader.get_term_end(tidp, t).get();
+    ASSERT_TRUE(res.has_value());
+    if (expected_end.has_value()) {
+        ASSERT_TRUE(res.value().has_value());
+        EXPECT_EQ(res.value().value(), expected_end.value());
+    } else {
+        EXPECT_FALSE(res.value().has_value());
+    }
+}
+
 } // namespace
 
 TEST_F(StateReaderTestFixture, TestGetTermLe) {
@@ -802,4 +818,28 @@ TEST_F(StateReaderTestFixture, TestGetTermLe) {
     // Missing partition should return nullopt.
     auto missing_tidp = make_tidp(1);
     verify_term_of(reader, missing_tidp, kafka::offset(100), std::nullopt);
+}
+
+TEST_F(StateReaderTestFixture, TestGetTermEnd) {
+    auto tidp = make_tidp(0);
+
+    write_term_start(tidp, model::term_id(1), kafka::offset(0));
+    write_term_start(tidp, model::term_id(3), kafka::offset(100));
+    write_term_start(tidp, model::term_id(7), kafka::offset(250));
+    write_metadata(tidp, kafka::offset(0), kafka::offset(400));
+
+    auto reader = make_reader();
+    verify_term_end(reader, tidp, model::term_id(0), kafka::offset(0));
+    verify_term_end(reader, tidp, model::term_id(1), kafka::offset(100));
+    verify_term_end(reader, tidp, model::term_id(2), kafka::offset(100));
+    verify_term_end(reader, tidp, model::term_id(3), kafka::offset(250));
+    verify_term_end(reader, tidp, model::term_id(4), kafka::offset(250));
+    verify_term_end(reader, tidp, model::term_id(5), kafka::offset(250));
+    verify_term_end(reader, tidp, model::term_id(6), kafka::offset(250));
+    verify_term_end(reader, tidp, model::term_id(7), kafka::offset(400));
+    verify_term_end(reader, tidp, model::term_id(8), std::nullopt);
+
+    // Missing partition should return nullopt.
+    auto missing_tidp = make_tidp(1);
+    verify_term_end(reader, missing_tidp, model::term_id(1), std::nullopt);
 }

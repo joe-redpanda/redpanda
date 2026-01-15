@@ -111,6 +111,14 @@ public:
     ss::future<std::expected<std::optional<term_start>, errc>>
     get_term_le(const model::topic_id_partition&, kafka::offset);
 
+    // Returns the end offset (exclusive) for the given term:
+    // - If a higher term exists, returns the start_offset of the next term
+    // - If this is the highest term, the partition's next_offset
+    // Returns nullopt if all terms are below the given term or the term
+    // doesn't exist.
+    ss::future<std::expected<std::optional<kafka::offset>, errc>>
+    get_term_end(const model::topic_id_partition&, model::term_id);
+
 private:
     ss::future<
       std::expected<std::optional<std::pair<ss::sstring, ss::sstring>>, errc>>

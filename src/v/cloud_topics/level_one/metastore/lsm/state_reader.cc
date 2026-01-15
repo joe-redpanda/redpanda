@@ -544,6 +544,52 @@ state_reader::get_term_le(
     }
 }
 
+ss::future<std::expected<std::optional<kafka::offset>, state_reader::errc>>
+state_reader::get_term_end(
+  const model::topic_id_partition& tidp, model::term_id term) {
+    try {
+        auto iter = co_await snap_.create_iterator();
+
+        // Seek to the term key.
+        co_await iter.seek(term_row_key::encode(tidp, term));
+        if (!is_at_term(iter, tidp)) {
+            // All terms are below the requested term.
+            co_return std::nullopt;
+        }
+
+        auto key = term_row_key::decode(iter.key());
+        if (key->term > term) {
+            // Found a higher term; return its start offset as the exclusive
+            // end of the requested term.
+            auto val = serde::from_iobuf<term_row_value>(iter.value());
+            co_return val.term_start_offset;
+        }
+
+        // Otherwise, we found the exact term. Look for the next term so we can
+        // use it to get this term's end.
+        co_await iter.next();
+        if (is_at_term(iter, tidp)) {
+            auto val = serde::from_iobuf<term_row_value>(iter.value());
+            co_return val.term_start_offset;
+        }
+
+        // If there was no term above the requested term, return the
+        // partition's next offset.
+        auto metadata_res
+          = co_await get_val<metadata_row_key, metadata_row_value>(tidp);
+        if (!metadata_res.has_value()) {
+            co_return std::unexpected(metadata_res.error());
+        }
+        if (!metadata_res.value().has_value()) {
+            vlog(cd_log.error, "Missing partition metadata for {}", tidp);
+            co_return std::unexpected(errc::corruption);
+        }
+        co_return metadata_res.value()->next_offset;
+    } catch (...) {
+        co_return std::unexpected(to_errc(std::current_exception()));
+    }
+}
+
 template<typename KeyT, typename ValT, typename... KeyEncodeArgs>
 ss::future<std::expected<std::optional<ValT>, state_reader::errc>>
 state_reader::get_val(KeyEncodeArgs... args) {
