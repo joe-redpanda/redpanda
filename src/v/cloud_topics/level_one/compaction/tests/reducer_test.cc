@@ -105,6 +105,7 @@ ss::future<> do_compact(
     auto state = l1::compaction_job_state::running;
     auto map = compaction::simple_key_offset_map();
     auto dirty_range_intervals = offsets_response.dirty_ranges.to_vec();
+    auto max_compactible_offset = kafka::offset::max();
     l1::compaction_worker_probe probe;
     auto src = std::make_unique<l1::compaction_source>(
       ntp,
@@ -112,6 +113,7 @@ ss::future<> do_compact(
       dirty_range_intervals,
       offsets_response.removable_tombstone_ranges,
       start_offset,
+      max_compactible_offset,
       &map,
       min_compaction_lag_ms,
       metastore,
