@@ -2241,12 +2241,18 @@ constexpr const char* id_keyword(json_schema_dialect jsd) {
     return "$id";
 }
 
-void collect_bundled_schemas_and_fix_refs(
+// Work item for iterative schema collection.
+struct collect_work_item {
+    jsoncons::uri base_uri;
+    jsoncons::jsonpointer::json_pointer obj_ptr;
+    jsoncons::ojson* obj;
+    json_schema_dialect dialect;
+};
+
+void process_work_item(
   id_to_schema_pointer& bundled_schemas,
-  jsoncons::uri base_uri,
-  jsoncons::jsonpointer::json_pointer this_obj_ptr,
-  jsoncons::ojson& this_obj,
-  json_schema_dialect dialect) {
+  chunked_vector<collect_work_item>& work_stack,
+  collect_work_item item) {
     // scan the json schema object for bundled schema.
     // A bundled schema is defined as a schema with `"$id" : a_base_uri`.
     // all relative refs under this bundled schema will be relative
@@ -2266,12 +2272,12 @@ void collect_bundled_schemas_and_fix_refs(
     //   "id"  |  draft4  |       yes
 
     auto maybe_new_dialect = [&]() -> std::optional<json_schema_dialect> {
-        const auto dialect_it = this_obj.find("$schema");
-        if (dialect_it == this_obj.object_range().end()) {
+        const auto dialect_it = item.obj->find("$schema");
+        if (dialect_it == item.obj->object_range().end()) {
             // If no $schema is declared in an embedded schema, it defaults
             // to using the dialect of the parent schema. from
             // https://json-schema.org/understanding-json-schema/structuring#bundling
-            return dialect;
+            return item.dialect;
         }
 
         // we have a $schema keyword, use this dialect if we find out that
@@ -2285,17 +2291,17 @@ void collect_bundled_schemas_and_fix_refs(
         throw as_exception(invalid_schema(
           fmt::format(
             "bundled schema without a known dialect: '{}'",
-            this_obj["$schema"].as_string_view())));
+            (*item.obj)["$schema"].as_string_view())));
     }
 
-    const auto id_it = this_obj.find(id_keyword(maybe_new_dialect.value()));
+    const auto id_it = item.obj->find(id_keyword(maybe_new_dialect.value()));
 
-    if (id_it != this_obj.object_range().end()) {
+    if (id_it != item.obj->object_range().end()) {
         // we are visiting a bundled schema.
 
         // run validation since we are not a guaranteed to be in proper schema
         if (auto validation = validate_json_schema(
-              maybe_new_dialect.value(), this_obj);
+              maybe_new_dialect.value(), *item.obj);
             validation.has_error()) {
             // stop exploring this branch, the schema is invalid
             throw as_exception(invalid_schema(
@@ -2307,29 +2313,30 @@ void collect_bundled_schemas_and_fix_refs(
         // it's a validated schema. we can register this as a bundled schema and
         // continue scanning. (run resolve because it could be relative to the
         // parent schema).
-        base_uri = jsoncons::uri{id_it->value().as_string()}.resolve(base_uri);
-        dialect = maybe_new_dialect.value();
+        item.base_uri = jsoncons::uri{id_it->value().as_string()}.resolve(
+          item.base_uri);
+        item.dialect = maybe_new_dialect.value();
         bundled_schemas.insert_or_assign(
-          to_json_id_uri(base_uri),
-          std::pair{json::Pointer{this_obj_ptr.to_string()}, dialect});
+          to_json_id_uri(item.base_uri),
+          std::pair{json::Pointer{item.obj_ptr.to_string()}, item.dialect});
     }
 
-    if (auto ref_it = this_obj.find("$ref");
-        ref_it != this_obj.object_range().end()) {
+    if (auto ref_it = item.obj->find("$ref");
+        ref_it != item.obj->object_range().end()) {
         // ensure refs are absolute uris
         ref_it->value() = jsoncons::uri{ref_it->value().as_string()}
-                            .resolve(base_uri)
+                            .resolve(item.base_uri)
                             .string();
     }
 
-    // lambda to recursively scan the object for more bundled schemas and $refs
+    // lambda to scan the object for more bundled schemas and $refs
     auto collect_and_fix = [&](const auto& key, auto& value) {
-        collect_bundled_schemas_and_fix_refs(
-          bundled_schemas, base_uri, this_obj_ptr / key, value, dialect);
+        work_stack.push_back(
+          {item.base_uri, item.obj_ptr / key, &value, item.dialect});
     };
 
-    // recursively scan the object for more bundled schemas and $refs
-    for (auto& e : this_obj.object_range()) {
+    // Iteratively scan the object for more bundled schemas and $refs
+    for (auto& e : item.obj->object_range()) {
         const auto& key = e.key();
         auto& value = e.value();
         if (value.is_object()) {
@@ -2341,6 +2348,25 @@ void collect_bundled_schemas_and_fix_refs(
                 }
             }
         }
+    }
+}
+
+// Iterative version of collect_bundled_schemas_and_fix_refs.
+// Uses an explicit stack to avoid stack overflow on deeply nested schemas.
+void collect_bundled_schemas_and_fix_refs(
+  id_to_schema_pointer& bundled_schemas,
+  jsoncons::uri base_uri,
+  jsoncons::jsonpointer::json_pointer obj_ptr,
+  jsoncons::ojson& obj,
+  json_schema_dialect dialect) {
+    chunked_vector<collect_work_item> work_stack;
+    work_stack.push_back(
+      {std::move(base_uri), std::move(obj_ptr), &obj, dialect});
+
+    while (!work_stack.empty()) {
+        auto item = std::move(work_stack.back());
+        work_stack.pop_back();
+        process_work_item(bundled_schemas, work_stack, std::move(item));
     }
 }
 
@@ -2369,10 +2395,10 @@ result<id_to_schema_pointer> collect_bundled_schema_and_fix_refs(
       {root_id, std::pair{json::Pointer{}, dialect}}};
 
     if (doc.is_object()) {
-        // note: current implementation is overly strict and reject any bundled
-        // schema that is deemed invalid. this could be relaxed if the invalid
-        // schema is not actually accessed by a $ref, but it requires to scan
-        // the document in two passes.
+        // note: current implementation is overly strict and reject any
+        // bundled schema that is deemed invalid. this could be relaxed if
+        // the invalid schema is not actually accessed by a $ref, but it
+        // requires to scan the document in two passes.
         try {
             collect_bundled_schemas_and_fix_refs(
               bundled_schemas, jsoncons::uri{}, {}, doc, dialect);
