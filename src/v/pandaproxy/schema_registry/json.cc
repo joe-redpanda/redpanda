@@ -354,7 +354,7 @@ public:
 
 private:
     const json_schema_definition::impl& _schema;
-    static constexpr int max_recursion_depth{8};
+    static constexpr int max_recursion_depth{63};
     int _ref_units{max_recursion_depth};
 };
 
