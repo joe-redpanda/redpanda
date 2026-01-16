@@ -1664,7 +1664,7 @@ static const auto compatibility_test_cases = std::to_array<compatibility_test_ca
     .compat_result = {{"#/properties/a/exclusiveMinimum", incompat_t::exclusive_minimum_added}},
   },
   {
-// simple infinite recursive ref
+// simple infinite recursive ref - cycle detection handles this case
     .reader_schema = R"(
 {
   "type": "object",
@@ -1689,7 +1689,7 @@ static const auto compatibility_test_cases = std::to_array<compatibility_test_ca
   }
 })",
     .compat_result = {},
-    .expected_exception = true,
+    .expected_exception = false,
   },
   {
 // simple multiple recursive ref

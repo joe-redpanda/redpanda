@@ -350,6 +350,13 @@ private:
 struct context {
     schema_context older;
     schema_context newer;
+    // Track visited (older, newer) schema pairs for cycle detection.
+    // If we encounter the same pair twice during traversal, we've found a cycle
+    // and can return early (compatible by assumption - cycles that differ would
+    // have been caught on first visit).
+    using visited_locations
+      = chunked_hash_set<std::pair<const json::Value*, const json::Value*>>;
+    visited_locations& visited;
 };
 
 template<json_schema_dialect Dialect>
@@ -1917,7 +1924,7 @@ json_compatibility_result is_not_combinator_superset(
         // less strict than the older subschema, because this means that newer
         // validated less data than older
         auto is_not_superset = is_superset(
-          {ctx.newer, ctx.older},
+          {ctx.newer, ctx.older, ctx.visited},
           newer_it->value,
           older_it->value,
           ignored_path);
@@ -2145,6 +2152,17 @@ json_compatibility_result is_superset(
     if (is_true_schema(older_schema) || is_false_schema(newer_schema)) {
         // either older is the superset of every possible schema, or newer is
         // the subset of every possible schema
+        return res;
+    }
+
+    // Cycle detection: if we've already visited this (older_schema,
+    // newer_schema) pair, we're in a cycle. Return early as compatible - any
+    // incompatibility would have been detected on the first visit to this pair.
+    // We use the input schema pointers (before ref resolution) because they are
+    // stable pointers into the original documents, whereas resolved schemas may
+    // be synthesized with different addresses on each call.
+    auto [_, inserted] = ctx.visited.emplace(&older_schema, &newer_schema);
+    if (!inserted) {
         return res;
     }
 
@@ -2460,7 +2478,8 @@ compatibility_result check_compatible(
     auto raw_compat_result = [&]() {
         // reader is a superset of writer iff every schema that is valid for
         // writer is also valid for reader
-        context ctx{.older{reader()}, .newer{writer()}};
+        context::visited_locations visited;
+        context ctx{.older{reader()}, .newer{writer()}, .visited = visited};
         return is_superset(ctx, reader().ctx.doc, writer().ctx.doc, "#/");
     }();
 
