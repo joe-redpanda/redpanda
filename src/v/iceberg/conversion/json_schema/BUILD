@@ -36,7 +36,6 @@ redpanda_cc_library(
     implementation_deps = [
         "//src/v/container:chunked_vector",
         "//src/v/iceberg/conversion/json_schema/details:string_switch_table",
-        "@jsoncons",
     ],
     deps = [
         ":ir",

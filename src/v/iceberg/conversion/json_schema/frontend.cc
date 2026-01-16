@@ -13,10 +13,9 @@
 #include "container/chunked_vector.h"
 #include "iceberg/conversion/json_schema/details/string_switch_table.h"
 #include "iceberg/conversion/json_schema/ir.h"
+#include "json/uri.h"
 
 #include <seastar/util/defer.hh>
-
-#include <jsoncons/uri.hpp>
 
 #include <array>
 #include <memory>
@@ -27,9 +26,9 @@ namespace iceberg::conversion::json_schema {
 
 namespace {
 
-jsoncons::uri parse_base_uri(const std::string& uri_str) {
-    jsoncons::uri uri{uri_str};
-    if (!uri.encoded_fragment().empty()) {
+json::Uri parse_base_uri(const std::string& uri_str) {
+    json::Uri uri{uri_str};
+    if (uri.GetFragStringLength() > 0) {
         throw std::runtime_error("The base URI must not contain a fragment");
     }
     return uri;
@@ -119,12 +118,12 @@ public:
         friend class compile_context;
 
     public:
-        resource_context(jsoncons::uri base_uri, dialect d)
-          : base_uri_(std::move(base_uri))
+        resource_context(const json::Uri& base_uri, dialect d)
+          : base_uri_(base_uri)
           , dialect_(d) {}
 
     private:
-        jsoncons::uri base_uri_;
+        json::Uri base_uri_;
         dialect dialect_;
         std::unordered_map<std::string, ss::shared_ptr<subschema>> subschemas_;
         chunked_vector<std::string> path_stack_;
@@ -132,8 +131,8 @@ public:
 
 public:
     explicit compile_context(
-      jsoncons::uri base_uri, std::optional<dialect> default_dialect)
-      : ctx_base_uri_(std::move(base_uri))
+      const json::Uri& base_uri, std::optional<dialect> default_dialect)
+      : ctx_base_uri_(base_uri)
       , default_dialect_(default_dialect) {}
 
 public:
@@ -150,13 +149,11 @@ public:
     void push(Args&&... args) {
         stack_.emplace_back(std::forward<Args>(args)...);
 
-        const auto& id = stack_.back().base_uri_.string();
+        const auto id = json::Uri::Get(stack_.back().base_uri_);
         if (!seen_ids_.insert(id).second) {
-            std::string owned_id
-              = id; // Copy to avoid dangling reference after pop_back.
             stack_.pop_back(); // Remove the context we just added.
             throw std::runtime_error(
-              fmt::format("Duplicate schema ID: {}", owned_id));
+              fmt::format("Duplicate schema ID: {}", id));
         }
     }
 
@@ -167,7 +164,7 @@ public:
         return stack_.back();
     }
 
-    const jsoncons::uri& base_uri() const {
+    const json::Uri& base_uri() const {
         return empty() ? ctx_base_uri_ : top().base_uri_;
     }
 
@@ -189,7 +186,7 @@ public:
     }
 
 private:
-    jsoncons::uri ctx_base_uri_;
+    json::Uri ctx_base_uri_;
     std::optional<enum dialect> default_dialect_;
     chunked_vector<resource_context> stack_;
     std::unordered_set<std::string> seen_ids_;
@@ -223,7 +220,7 @@ bool maybe_push_context(compile_context& ctx, const json::Value& node) {
         node, id_keyword, {json_value_type::string})) {
         // The $id keyword starts a new resource context.
         ctx.push(
-          parse_base_uri(id_node->GetString()).resolve(ctx.base_uri()),
+          parse_base_uri(id_node->GetString()).Resolve(ctx.base_uri()),
           dialect_at_node);
 
         return true;
@@ -326,7 +323,7 @@ public:
         auto new_ctx = maybe_push_context(ctx, node);
 
         auto sub = new_ctx ? ss::make_shared<schema_resource>(
-                               ctx.base_uri().string(), ctx.dialect())
+                               ctx.base_uri().GetString(), ctx.dialect())
                            : ss::make_shared<subschema>();
 
         // Check for banned keywords.
