@@ -33,6 +33,7 @@
 #include "model/timeout_clock.h"
 #include "raft/errc.h"
 #include "raft/replicate.h"
+#include "ssx/future-util.h"
 #include "storage/log_reader.h"
 #include "storage/offset_translator_state.h"
 #include "storage/record_batch_builder.h"
@@ -591,8 +592,10 @@ ss::future<result<raft::replicate_result>> do_upload_and_replicate(
       ctp_stm_api->fence_epoch(upload_res.value().front().id.epoch));
     if (fence_fut.failed()) {
         auto e = fence_fut.get_exception();
-        vlog(
-          cd_log.warn,
+        vlogl(
+          cd_log,
+          ssx::is_shutdown_exception(e) ? ss::log_level::debug
+                                        : ss::log_level::warn,
           "Failed to fence epoch {} for ntp {}, error: {}",
           upload_res.value().front().id.epoch,
           ntp,
@@ -725,10 +728,11 @@ ss::future<std::expected<kafka::offset, std::error_code>> frontend::replicate(
     auto fence_fut = co_await ss::coroutine::as_future(
       _ctp_stm_api->fence_epoch(res.value().front().id.epoch));
     if (fence_fut.failed()) {
-        // TODO: handle shutdown failures gracefully
         auto e = fence_fut.get_exception();
-        vlog(
-          cd_log.warn,
+        vlogl(
+          cd_log,
+          ssx::is_shutdown_exception(e) ? ss::log_level::debug
+                                        : ss::log_level::warn,
           "Failed to fence epoch {} for ntp {}, error: {}",
           res.value().front().id.epoch,
           ntp(),
