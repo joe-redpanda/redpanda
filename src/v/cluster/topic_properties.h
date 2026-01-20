@@ -243,6 +243,16 @@ struct topic_properties
     bool has_overrides() const;
     bool requires_remote_erase() const;
 
+    // Returns true if the topic has archival (remote write on a tiered topic)
+    // enabled. This checks both storage_mode and shadow_indexing to ensure the
+    // topic is configured for tiered storage with archival.
+    bool is_archival_enabled() const;
+
+    // Returns true if the topic has remote fetch (remote read on a tiered
+    // topic) enabled. This checks both storage_mode and shadow_indexing to
+    // ensure the topic is configured for tiered storage with remote fetch.
+    bool is_remote_fetch_enabled() const;
+
     storage::ntp_config::default_overrides get_ntp_cfg_overrides() const;
 
     friend std::ostream& operator<<(std::ostream&, const topic_properties&);

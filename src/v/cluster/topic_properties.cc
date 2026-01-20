@@ -175,6 +175,34 @@ bool topic_properties::requires_remote_erase() const {
            && !read_replica.value_or(false) && remote_delete;
 }
 
+bool topic_properties::is_archival_enabled() const {
+    // Explicit tiered
+    if (storage_mode == model::redpanda_storage_mode::tiered) {
+        return true;
+    }
+    // Explicit local or cloud
+    if (storage_mode != model::redpanda_storage_mode::unset) {
+        return false;
+    }
+    // Unset = fall back to legacy shadow_indexing
+    return shadow_indexing.has_value()
+           && model::is_archival_enabled(shadow_indexing.value());
+}
+
+bool topic_properties::is_remote_fetch_enabled() const {
+    // Explicit tiered
+    if (storage_mode == model::redpanda_storage_mode::tiered) {
+        return true;
+    }
+    // Explicit local or cloud
+    if (storage_mode != model::redpanda_storage_mode::unset) {
+        return false;
+    }
+    // Unset = fall back to legacy shadow_indexing
+    return shadow_indexing.has_value()
+           && model::is_fetch_enabled(shadow_indexing.value());
+}
+
 storage::ntp_config::default_overrides
 topic_properties::get_ntp_cfg_overrides() const {
     storage::ntp_config::default_overrides ret;
