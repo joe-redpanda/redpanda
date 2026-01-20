@@ -264,6 +264,12 @@ struct counting_consumer {
             throw std::runtime_error(
               fmt::format("failed to end stream: {}", res.error()));
         }
+        if (!files.dlq_files.empty()) {
+            throw std::runtime_error(
+              fmt::format(
+                "unexpected dlq files created: dlq_files_created={}",
+                files.dlq_files.size()));
+        }
         co_return std::move(*this);
     }
 };
