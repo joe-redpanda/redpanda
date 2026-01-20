@@ -682,7 +682,7 @@ struct config_key {
     static constexpr topic_key_type keytype{topic_key_type::config};
     std::optional<model::offset> seq;
     std::optional<model::node_id> node;
-    std::optional<subject> sub;
+    std::optional<context_subject> sub;
     topic_key_magic magic{0};
 
     friend bool operator==(const config_key&, const config_key&) = default;
@@ -717,7 +717,7 @@ void rjson_serialize(
     ::json::rjson_serialize(w, to_string_view(key.keytype));
     w.Key("subject");
     if (key.sub) {
-        ::json::rjson_serialize(w, key.sub.value());
+        w.String(key.sub->to_string());
     } else {
         w.Null();
     }
@@ -802,7 +802,7 @@ public:
             return kt == result.keytype;
         }
         case state::subject: {
-            result.sub = subject{ss::sstring{sv}};
+            result.sub = context_subject::from_string(sv);
             _state = state::object;
             return true;
         }
@@ -833,7 +833,7 @@ public:
 
 struct config_value {
     compatibility_level compat{compatibility_level::none};
-    std::optional<subject> sub;
+    std::optional<context_subject> sub;
 
     friend bool operator==(const config_value&, const config_value&) = default;
 
@@ -853,7 +853,7 @@ void rjson_serialize(
     w.StartObject();
     if (val.sub.has_value()) {
         w.Key("subject");
-        ::json::rjson_serialize(w, val.sub.value());
+        w.String(val.sub->to_string());
     }
     w.Key("compatibilityLevel");
     ::json::rjson_serialize(w, to_string_view(val.compat));
@@ -898,7 +898,7 @@ public:
             }
             return s.has_value();
         } else if (_state == state::subject) {
-            result.sub.emplace(sv);
+            result.sub = context_subject::from_string(sv);
             _state = state::object;
             return true;
         }
@@ -918,7 +918,7 @@ struct mode_key {
     static constexpr topic_key_type keytype{topic_key_type::mode};
     std::optional<model::offset> seq;
     std::optional<model::node_id> node;
-    std::optional<subject> sub;
+    std::optional<context_subject> sub;
     topic_key_magic magic{0};
 
     friend bool operator==(const mode_key&, const mode_key&) = default;
@@ -953,7 +953,7 @@ void rjson_serialize(
     ::json::rjson_serialize(w, to_string_view(key.keytype));
     w.Key("subject");
     if (key.sub) {
-        ::json::rjson_serialize(w, key.sub.value());
+        w.String(key.sub->to_string());
     } else {
         w.Null();
     }
@@ -1038,7 +1038,7 @@ public:
             return kt == result.keytype;
         }
         case state::subject: {
-            result.sub = subject{ss::sstring{sv}};
+            result.sub = context_subject::from_string(sv);
             _state = state::object;
             return true;
         }
@@ -1069,7 +1069,7 @@ public:
 
 struct mode_value {
     mode mode{mode::read_write};
-    std::optional<subject> sub;
+    std::optional<context_subject> sub;
 
     friend bool operator==(const mode_value&, const mode_value&) = default;
 
@@ -1089,7 +1089,7 @@ void rjson_serialize(
     w.StartObject();
     if (val.sub.has_value()) {
         w.Key("subject");
-        ::json::rjson_serialize(w, val.sub.value());
+        w.String(val.sub->to_string());
     }
     w.Key("mode");
     ::json::rjson_serialize(w, to_string_view(val.mode));
@@ -1133,7 +1133,7 @@ public:
             }
             return s.has_value();
         } else if (_state == state::subject) {
-            result.sub.emplace(sv);
+            result.sub = context_subject::from_string(sv);
             _state = state::object;
             return true;
         }
@@ -1611,7 +1611,8 @@ struct consume_to_store {
         }
         try {
             vlog(srlog.debug, "Applying: {}", key);
-            if (key.sub.has_value()) {
+            if (key.sub.has_value() && !key.sub->is_context_only()) {
+                // Subject-level: non-empty subject name
                 if (!val.has_value()) {
                     co_await _store.clear_compatibility(
                       seq_marker{
@@ -1630,12 +1631,16 @@ struct consume_to_store {
                       *key.sub,
                       val->compat);
                 }
-            } else if (val.has_value()) {
-                co_await _store.set_compatibility(default_context, val->compat);
             } else {
-                vlog(
-                  srlog.warn,
-                  "Tried to apply config with neither subject nor value");
+                // Context-level: context-only qualified subject or nullopt
+                // (default context)
+                auto ctx = key.sub.has_value() ? key.sub->ctx : default_context;
+
+                if (val.has_value()) {
+                    co_await _store.set_compatibility(ctx, val->compat);
+                } else {
+                    co_await _store.clear_compatibility(ctx);
+                }
             }
         } catch (const exception& e) {
             vlog(srlog.debug, "Error replaying: {}: {}", key, e);
@@ -1664,7 +1669,8 @@ struct consume_to_store {
         }
         try {
             vlog(srlog.debug, "Applying: {}", key);
-            if (key.sub.has_value()) {
+            if (key.sub.has_value() && !key.sub->is_context_only()) {
+                // Subject-level: non-empty subject name
                 if (!val.has_value()) {
                     co_await _store.clear_mode(
                       seq_marker{
@@ -1685,13 +1691,16 @@ struct consume_to_store {
                       val->mode,
                       force::yes);
                 }
-            } else if (val.has_value()) {
-                co_await _store.set_mode(
-                  default_context, val->mode, force::yes);
             } else {
-                vlog(
-                  srlog.warn,
-                  "Tried to apply mode with neither subject nor value");
+                // Context-level: context-only qualified subject or nullopt
+                // (default context)
+                auto ctx = key.sub.has_value() ? key.sub->ctx : default_context;
+
+                if (val.has_value()) {
+                    co_await _store.set_mode(ctx, val->mode, force::yes);
+                } else {
+                    co_await _store.clear_mode(ctx, force::yes);
+                }
             }
         } catch (const exception& e) {
             vlog(srlog.debug, "Error replaying: {}: {}", key, e);
