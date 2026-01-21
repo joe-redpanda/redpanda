@@ -303,15 +303,15 @@ ss::future<> partition_replicator::fetch_and_replicate() {
         auto sleep_for = _backoff_policy.current_backoff_duration();
         vlog(
           _log.trace,
-          "Backing off for {}ms",
-          sleep_for / std::chrono::milliseconds{1});
+          "Backing off for {}ms, reset source to offset {}",
+          sleep_for / std::chrono::milliseconds{1},
+          reset_offset);
         co_await ss::sleep_abortable(sleep_for, _as);
         _backoff_policy.next_backoff();
     }
 }
 
 void partition_replicator::maybe_synchronize_start_offset() {
-    auto shadow_partition_hwm = _sink->high_watermark();
     auto shadow_partition_start_offset = _sink->start_offset();
     auto source_offsets = _source->get_offsets();
 
@@ -342,15 +342,6 @@ void partition_replicator::maybe_synchronize_start_offset() {
           "shadow: {}",
           source_start_offset,
           shadow_partition_start_offset);
-        return;
-    }
-
-    if (source_start_offset > shadow_partition_hwm) {
-        vlog(
-          _log.trace,
-          "Source start offset {} greater than shadow HWM {}, cannot truncate",
-          source_start_offset,
-          shadow_partition_hwm);
         return;
     }
 
