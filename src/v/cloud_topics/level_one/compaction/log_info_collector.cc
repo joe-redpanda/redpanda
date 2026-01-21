@@ -301,6 +301,7 @@ void log_info_collector::populate_log_infos(
 
         auto max_compactible_offset = offset_it->second;
 
+        log.has_seen_reconciled_data = true;
         log.info_and_ts = compaction_info_and_timestamp{
           .info = std::move(compaction_info).value(),
           .collected_at = collection_timestamp,
