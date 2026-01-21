@@ -41,7 +41,7 @@ replicated_database::errc map_stm_error(stm::errc e) {
 
 ss::future<std::expected<
   std::unique_ptr<replicated_database>,
-  replicated_database::errc>>
+  replicated_database::error>>
 replicated_database::open(
   model::term_id expected_term,
   stm* s,
@@ -51,11 +51,16 @@ replicated_database::open(
   ss::abort_source& as) {
     auto term_result = co_await s->sync(std::chrono::seconds(30));
     if (!term_result.has_value()) {
-        co_return std::unexpected(map_stm_error(term_result.error()));
+        co_return std::unexpected(
+          error(map_stm_error(term_result.error()), "Failed to sync"));
     }
     auto term = term_result.value();
     if (term != expected_term) {
-        co_return std::unexpected(errc::not_leader);
+        co_return std::unexpected(error(
+          errc::not_leader,
+          "Synced term != expected term: {} vs {}",
+          term,
+          expected_term));
     }
     auto epoch = s->state().to_epoch(term);
 
@@ -83,11 +88,9 @@ replicated_database::open(
           term, std::move(batch), as);
 
         if (!replicate_result.has_value()) {
-            vlog(
-              cd_log.warn,
-              "Failed to replicate set_domain_uuid batch: {}",
-              int(replicate_result.error()));
-            co_return std::unexpected(map_stm_error(replicate_result.error()));
+            co_return std::unexpected(error(
+              map_stm_error(replicate_result.error()),
+              "Failed to replicate set_domain_uuid batch"));
         }
         if (s->state().domain_uuid().is_nil()) {
             co_return std::unexpected(errc::replication_error);
@@ -144,8 +147,8 @@ replicated_database::open(
               db.apply(std::move(wb)));
             if (write_fut.failed()) {
                 auto ex = write_fut.get_exception();
-                vlog(cd_log.error, "Failed to apply volatile writes: {}", ex);
-                co_return std::unexpected(errc::io_error);
+                co_return std::unexpected(error(
+                  errc::io_error, "Failed to apply volatile writes: {}", ex));
             }
         }
     }
@@ -153,17 +156,18 @@ replicated_database::open(
       new replicated_database(term, domain_uuid, s, std::move(db), as));
 }
 
-ss::future<std::expected<void, replicated_database::errc>>
+ss::future<std::expected<void, replicated_database::error>>
 replicated_database::close() {
     auto fut = co_await ss::coroutine::as_future(db_.close());
     if (fut.failed()) {
         auto ex = fut.get_exception();
         if (ssx::is_shutdown_exception(ex)) {
-            co_return std::unexpected(errc::shutting_down);
+            co_return std::unexpected(error(errc::shutting_down));
         }
-        co_return std::unexpected(errc::io_error);
+        co_return std::unexpected(
+          error(errc::io_error, "Error closing database: {}", ex));
     }
-    co_return std::expected<void, errc>{};
+    co_return std::expected<void, error>{};
 }
 
 bool replicated_database::needs_reopen() const {
@@ -171,21 +175,20 @@ bool replicated_database::needs_reopen() const {
            || get_domain_uuid() != expected_domain_uuid_;
 }
 
-ss::future<std::expected<void, replicated_database::errc>>
+ss::future<std::expected<void, replicated_database::error>>
 replicated_database::write(chunked_vector<write_batch_row> rows) {
     if (rows.empty()) {
-        co_return std::expected<void, errc>{};
+        co_return std::expected<void, error>{};
     }
 
     auto update = apply_write_batch_update::build(
       stm_->state(), expected_domain_uuid_, std::move(rows));
 
     if (!update.has_value()) {
-        vlog(
-          cd_log.warn,
+        co_return std::unexpected(error(
+          errc::replication_error,
           "Failed to build write batch update: {}",
-          update.error());
-        co_return std::unexpected(errc::replication_error);
+          update.error()));
     }
 
     model::batch_builder builder;
@@ -199,11 +202,9 @@ replicated_database::write(chunked_vector<write_batch_row> rows) {
       term_, std::move(batch), as_);
 
     if (!replicate_result.has_value()) {
-        vlog(
-          cd_log.warn,
-          "Failed to replicate write batch: {}",
-          int(replicate_result.error()));
-        co_return std::unexpected(map_stm_error(replicate_result.error()));
+        co_return std::unexpected(error(
+          map_stm_error(replicate_result.error()),
+          "Failed to replicate write batch"));
     }
 
     auto wb = db_.create_write_batch();
@@ -222,18 +223,20 @@ replicated_database::write(chunked_vector<write_batch_row> rows) {
       db_.apply(std::move(wb)));
     if (write_fut.failed()) {
         auto ex = write_fut.get_exception();
-        vlog(cd_log.error, "Failed to write to LSM database: {}", ex);
-        co_return std::unexpected(errc::io_error);
+        co_return std::unexpected(error(
+          errc::io_error,
+          "Failed to write to database after replicating: {}",
+          ex));
     }
 
-    co_return std::expected<void, errc>{};
+    co_return std::expected<void, error>{};
 }
 
-ss::future<std::expected<void, replicated_database::errc>>
+ss::future<std::expected<void, replicated_database::error>>
 replicated_database::reset(
   domain_uuid uuid, std::optional<lsm::proto::manifest> manifest) {
     if (uuid == get_domain_uuid()) {
-        co_return std::expected<void, errc>{};
+        co_return std::expected<void, error>{};
     }
     std::optional<lsm_state::serialized_manifest> serialized_man;
     if (manifest) {
@@ -266,29 +269,26 @@ replicated_database::reset(
       term_, std::move(batch), as_);
 
     if (!replicate_result.has_value()) {
-        vlog(
-          cd_log.warn,
-          "Failed to replicate manifest reset: {}",
-          int(replicate_result.error()));
-        co_return std::unexpected(map_stm_error(replicate_result.error()));
+        co_return std::unexpected(error(
+          map_stm_error(replicate_result.error()),
+          "Failed to replicate manifest reset"));
     }
     if (uuid != get_domain_uuid()) {
-        vlog(
-          cd_log.warn,
+        co_return std::unexpected(error(
+          errc::replication_error,
           "Domain UUID doesn't match after replication: {} vs expected {}",
           get_domain_uuid(),
-          uuid);
-        co_return std::unexpected(errc::replication_error);
+          uuid));
     }
 
-    co_return std::expected<void, errc>{};
+    co_return std::expected<void, error>{};
 }
 
 domain_uuid replicated_database::get_domain_uuid() const {
     return stm_->state().domain_uuid;
 }
 
-ss::future<std::expected<void, replicated_database::errc>>
+ss::future<std::expected<void, replicated_database::error>>
 replicated_database::flush(std::optional<ss::lowres_clock::duration> timeout) {
     auto deadline = timeout ? ssx::lowres_steady_clock().now()
                                 + ssx::duration::from_chrono(*timeout)
@@ -296,10 +296,10 @@ replicated_database::flush(std::optional<ss::lowres_clock::duration> timeout) {
     auto flush_fut = co_await ss::coroutine::as_future(db_.flush(deadline));
     if (flush_fut.failed()) {
         auto ex = flush_fut.get_exception();
-        vlog(cd_log.error, "Failed to flush to LSM database: {}", ex);
-        co_return std::unexpected(errc::io_error);
+        co_return std::unexpected(
+          error(errc::io_error, "Failed to flush to database: {}", ex));
     }
-    co_return std::expected<void, errc>{};
+    co_return std::expected<void, error>{};
 }
 
 } // namespace cloud_topics::l1
