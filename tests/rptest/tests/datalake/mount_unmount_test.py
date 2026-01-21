@@ -28,6 +28,7 @@ from rptest.tests.datalake.utils import supported_storage_types
 from rptest.utils.data_migrations import DataMigrationTestMixin
 from rptest.utils.mode_checks import skip_debug_mode
 from rptest.utils.rpcn_utils import counter_stream_config
+from ducktape.utils.util import wait_until
 
 
 class MountUnmountIcebergTest(DataMigrationTestMixin):
@@ -102,6 +103,19 @@ class MountUnmountIcebergTest(DataMigrationTestMixin):
     def tearDown(self):
         self.dl.tearDown()
 
+    def wait_all_partitions_consuming(self, verifier, timeout_sec=60):
+        def all_partitions_started_consuming():
+            consumed = verifier.max_consumed_offsets
+            self.redpanda.logger.debug(f"Consumed offsets: {consumed}")
+            return (
+                all(offset > 0 for offset in consumed.values())
+                and len(consumed) == self.PARTITION_COUNT
+            )
+
+        wait_until(
+            all_partitions_started_consuming, timeout_sec=timeout_sec, backoff_sec=1
+        )
+
     @cluster(num_nodes=6)
     @skip_debug_mode
     @matrix(cloud_storage_type=supported_storage_types())
@@ -133,6 +147,8 @@ class MountUnmountIcebergTest(DataMigrationTestMixin):
             {"iceberg_catalog_commit_interval_ms": self.SLOW_COMMIT_INTVL_S * 1000}
         )
         verifier.start(wait_first_iceberg_msg=True)
+        self.wait_all_partitions_consuming(verifier, timeout_sec=60)
+
         self.admin = Admin(self.redpanda)
         ns_topic = NamespacedTopic(self.TOPIC_NAME)
 
