@@ -366,40 +366,6 @@ struct iceberg_invalid_record_action_validator {
     }
 };
 
-/*
- * it's an error to set the cloud topic property if cloud topics development
- * feature hasn't been enabled.
- */
-struct cloud_topic_config_validator {
-    static constexpr const char* error_message
-      = "Cloud topics property is invalid, or support for this development "
-        "feature is not enabled.";
-    static constexpr error_code ec = error_code::invalid_config;
-
-    static bool is_valid(const creatable_topic& c) {
-        auto it = std::find_if(
-          c.configs.begin(),
-          c.configs.end(),
-          [](const createable_topic_config& cfg) {
-              return cfg.name == topic_property_cloud_topic_enabled;
-          });
-        if (it == c.configs.end()) {
-            return true;
-        }
-        if (!config::shard_local_cfg().cloud_topics_enabled()) {
-            return false;
-        }
-        try {
-            std::ignore = string_switch<bool>(it->value.value())
-                            .match("true", true)
-                            .match("false", false);
-            return true;
-        } catch (...) {
-            return false;
-        }
-    }
-};
-
 struct write_caching_configs_validator {
     static constexpr const char* error_message
       = "Unsupported write caching configuration.";

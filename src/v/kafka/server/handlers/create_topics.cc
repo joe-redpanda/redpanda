@@ -98,17 +98,6 @@ bool is_supported(std::string_view name) {
         return true;
     }
 
-    /*
-     * check development features below. if a development feature is not
-     * enabled, the system should behave as if the feature does not exist.
-     */
-
-    if (config::shard_local_cfg().cloud_topics_enabled()) {
-        if (name == topic_property_cloud_topic_enabled) {
-            return true;
-        }
-    }
-
     return false;
 }
 } // namespace
@@ -132,7 +121,6 @@ using validators = make_validator_types<
   write_caching_configs_validator,
   iceberg_config_validator,
   iceberg_invalid_record_action_validator,
-  cloud_topic_config_validator,
   iceberg_target_lag_ms_validator,
   min_max_compaction_lag_ms_validator,
   storage_mode_config_validator>;

@@ -35,7 +35,6 @@ public:
     static constexpr bool legacy_remote_delete{false};
     static inline model::iceberg_mode default_iceberg_mode
       = model::iceberg_mode{};
-    static constexpr bool default_cloud_topic_enabled{false};
     static constexpr model::redpanda_storage_mode default_storage_mode{
       model::redpanda_storage_mode::unset};
 
@@ -82,7 +81,6 @@ public:
         std::optional<std::chrono::milliseconds> flush_ms;
         std::optional<size_t> flush_bytes;
         model::iceberg_mode iceberg_mode{default_iceberg_mode};
-        bool cloud_topic_enabled{default_cloud_topic_enabled};
 
         tristate<std::chrono::milliseconds> delete_retention_ms;
 
@@ -450,8 +448,9 @@ public:
         if (!config::shard_local_cfg().cloud_topics_enabled()) {
             return false;
         }
-        return _overrides ? _overrides->cloud_topic_enabled
-                          : default_cloud_topic_enabled;
+        return _overrides
+               && _overrides->storage_mode
+                    == model::redpanda_storage_mode::cloud;
     }
 
     std::optional<double> min_cleanable_dirty_ratio() const {

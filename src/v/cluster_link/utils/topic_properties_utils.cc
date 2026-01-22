@@ -242,13 +242,6 @@ bool maybe_append_update(
           topic_config.properties.leaders_preference,
           kafka::noop_validator<config::leaders_preference>{});
     }
-    if (config_name == kafka::topic_property_cloud_topic_enabled) {
-        if (config::shard_local_cfg().cloud_topics_enabled()) {
-            throw kafka::validation_error(
-              "Cloud topics property cannot be changed");
-        }
-        throw kafka::validation_error("Cloud topics is not enabled");
-    }
     if (config_name == kafka::topic_property_delete_retention_ms) {
         return parse_and_set(
           topic_config.tp_ns,

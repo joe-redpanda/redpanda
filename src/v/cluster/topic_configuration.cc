@@ -58,7 +58,6 @@ storage::ntp_config topic_configuration::make_ntp_config(
             .flush_ms = properties.flush_ms,
             .flush_bytes = properties.flush_bytes,
             .iceberg_mode = properties.iceberg_mode,
-            .cloud_topic_enabled = properties.cloud_topic_enabled,
             .delete_retention_ms = properties.delete_retention_ms,
             .min_cleanable_dirty_ratio = properties.min_cleanable_dirty_ratio,
             .min_compaction_lag_ms = properties.min_compaction_lag_ms,

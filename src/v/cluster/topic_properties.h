@@ -74,7 +74,6 @@ struct topic_properties
       std::optional<size_t> flush_bytes,
       model::iceberg_mode iceberg_mode,
       std::optional<config::leaders_preference> leaders_preference,
-      bool cloud_topic_enabled,
       tristate<std::chrono::milliseconds> delete_retention_ms,
       std::optional<bool> iceberg_delete,
       std::optional<ss::sstring> iceberg_partition_spec,
@@ -128,7 +127,6 @@ struct topic_properties
       , flush_bytes(flush_bytes)
       , iceberg_mode(iceberg_mode)
       , leaders_preference(std::move(leaders_preference))
-      , cloud_topic_enabled(cloud_topic_enabled)
       , delete_retention_ms(delete_retention_ms)
       , iceberg_delete(iceberg_delete)
       , iceberg_partition_spec(std::move(iceberg_partition_spec))
@@ -214,8 +212,6 @@ struct topic_properties
 
     std::optional<config::leaders_preference> leaders_preference;
 
-    bool cloud_topic_enabled{storage::ntp_config::default_cloud_topic_enabled};
-
     tristate<std::chrono::milliseconds> delete_retention_ms{disable_tristate};
     // Should we delete the corresponding iceberg table when deleting the topic.
     std::optional<bool> iceberg_delete;
@@ -293,7 +289,7 @@ struct topic_properties
           remote_topic_namespace_override,
           iceberg_mode,
           leaders_preference,
-          cloud_topic_enabled,
+          deprecated_cloud_topic_enabled,
           delete_retention_ms,
           iceberg_delete,
           iceberg_partition_spec,
@@ -310,6 +306,11 @@ struct topic_properties
 
     friend bool operator==(const topic_properties&, const topic_properties&)
       = default;
+
+private:
+    // This was deprecated in favour of redpanda.storage.mode, but is kept here
+    // for backwards compatible serde purposes.
+    bool deprecated_cloud_topic_enabled{false};
 };
 
 } // namespace cluster

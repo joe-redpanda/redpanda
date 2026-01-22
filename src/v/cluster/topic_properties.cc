@@ -102,11 +102,6 @@ std::ostream& operator<<(std::ostream& o, const topic_properties& properties) {
       properties.message_timestamp_after_max_ms,
       properties.storage_mode);
 
-    if (config::shard_local_cfg().cloud_topics_enabled()) {
-        fmt::print(
-          o, ", cloud_topic_enabled: {}", properties.cloud_topic_enabled);
-    }
-
     o << "}";
 
     return o;
@@ -156,11 +151,6 @@ bool topic_properties::has_overrides() const {
         || message_timestamp_before_max_ms.has_value()
         || message_timestamp_after_max_ms.has_value()
         || storage_mode != storage::ntp_config::default_storage_mode;
-
-    if (config::shard_local_cfg().cloud_topics_enabled()) {
-        return overrides
-               || (cloud_topic_enabled != storage::ntp_config::default_cloud_topic_enabled);
-    }
 
     return overrides;
 }
@@ -224,7 +214,6 @@ topic_properties::get_ntp_cfg_overrides() const {
     ret.flush_ms = flush_ms;
     ret.flush_bytes = flush_bytes;
     ret.iceberg_mode = iceberg_mode;
-    ret.cloud_topic_enabled = cloud_topic_enabled;
     ret.delete_retention_ms = delete_retention_ms;
     ret.min_cleanable_dirty_ratio = min_cleanable_dirty_ratio;
     ret.min_compaction_lag_ms = min_compaction_lag_ms;
@@ -321,7 +310,6 @@ adl<cluster::topic_properties>::from(iobuf_parser& parser) {
       std::nullopt,
       model::iceberg_mode::disabled,
       std::nullopt,
-      false,
       tristate<std::chrono::milliseconds>{disable_tristate},
       std::nullopt,
       std::nullopt,

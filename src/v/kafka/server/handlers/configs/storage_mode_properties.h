@@ -116,9 +116,6 @@ inline constexpr auto storage_mode_properties
     {topic_property_iceberg_target_lag_ms, storage_mode_mask::tiered_cloud},
     {topic_property_remote_delete, storage_mode_mask::tiered_cloud},
     {topic_property_read_replica, storage_mode_mask::tiered_cloud},
-
-    // Properties only valid for cloud mode
-    {topic_property_cloud_topic_enabled, storage_mode_mask::cloud},
   });
 
 // Convert a storage mode enum to its corresponding mask bit

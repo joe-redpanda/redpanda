@@ -227,7 +227,7 @@ topic_table::apply(topic_lifecycle_transition soft_del, model::offset offset) {
         }
 
         if (
-          topic_properties.cloud_topic_enabled
+          topic_properties.storage_mode == model::redpanda_storage_mode::cloud
           && !topic_properties.read_replica.value_or(false)
           && topic_properties.remote_delete) {
             auto tp_id = topic_cfg.tp_id;

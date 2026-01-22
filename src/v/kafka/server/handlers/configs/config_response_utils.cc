@@ -869,25 +869,6 @@ config_response_container_t make_topic_configs(
           });
     }
 
-    if (config::shard_local_cfg().cloud_topics_enabled()) {
-        if (config_property_requested(
-              config_keys, topic_property_cloud_topic_enabled)) {
-            add_topic_config<bool>(
-              result,
-              topic_property_cloud_topic_enabled,
-              false,
-              topic_property_cloud_topic_enabled,
-              override_if_not_default(
-                std::make_optional<bool>(topic_properties.cloud_topic_enabled),
-                false),
-              include_synonyms,
-              maybe_make_documentation(
-                include_documentation,
-                "Cloud topic enabled on this topic if ture."),
-              [](const bool& b) { return b ? "true" : "false"; });
-        }
-    }
-
     add_topic_config_if_requested(
       config_keys,
       result,

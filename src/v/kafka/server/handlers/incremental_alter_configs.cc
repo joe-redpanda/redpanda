@@ -391,13 +391,6 @@ create_topic_properties_update(
                   config::leaders_preference::parse);
                 continue;
             }
-            if (cfg.name == topic_property_cloud_topic_enabled) {
-                if (config::shard_local_cfg().cloud_topics_enabled()) {
-                    throw validation_error(
-                      "Cloud topics property cannot be changed");
-                }
-                throw validation_error("Cloud topics is not enabled");
-            }
             if (cfg.name == topic_property_delete_retention_ms) {
                 parse_and_set_tristate(
                   update.properties.delete_retention_ms, cfg.value, op);

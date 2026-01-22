@@ -76,9 +76,6 @@ inline constexpr std::string_view topic_property_mpx_virtual_cluster_id
 inline constexpr std::string_view topic_property_leaders_preference
   = "redpanda.leaders.preference";
 
-inline constexpr std::string_view topic_property_cloud_topic_enabled
-  = "cloud.topic.enabled";
-
 inline constexpr std::string_view topic_property_redpanda_storage_mode
   = "redpanda.storage.mode";
 

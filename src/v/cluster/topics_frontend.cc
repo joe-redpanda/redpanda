@@ -114,7 +114,8 @@ get_enterprise_features(const cluster::topic_configuration& cfg) {
         }
     }
     if (config::shard_local_cfg().cloud_topics_enabled.is_restricted()) {
-        if (cfg.properties.cloud_topic_enabled) {
+        if (
+          cfg.properties.storage_mode == model::redpanda_storage_mode::cloud) {
             features.emplace_back("cloud topics");
         }
     }
@@ -225,7 +226,7 @@ std::vector<std::string_view> get_enterprise_features(
         }
     }
     if (config::shard_local_cfg().cloud_topics_enabled.is_restricted()) {
-        if (properties.cloud_topic_enabled) {
+        if (properties.storage_mode == model::redpanda_storage_mode::cloud) {
             features.emplace_back("cloud topics");
         }
     }
@@ -655,9 +656,11 @@ topic_result topics_frontend::validate_topic_configuration(
     // the only way that cloud topics can be enabled on a topic is if the cloud
     // topics development feature is also enabled.
     if (!config::shard_local_cfg().cloud_topics_enabled()) {
-        if (assignable_config.cfg.properties.cloud_topic_enabled) {
+        if (
+          assignable_config.cfg.properties.storage_mode
+          == model::redpanda_storage_mode::cloud) {
             auto msg = ssx::sformat(
-              "Cloud topic flag on {} is set but development feature is "
+              "Cloud storage mode on {} is set but development feature is "
               "disabled",
               assignable_config.cfg.tp_ns);
             vlog(clusterlog.error, "{}", msg);
@@ -746,7 +749,8 @@ ss::future<topic_result> topics_frontend::do_create_topic(
         co_return result;
     }
 
-    auto is_cloud_topic = assignable_config.cfg.properties.cloud_topic_enabled;
+    auto is_cloud_topic = assignable_config.cfg.properties.storage_mode
+                          == model::redpanda_storage_mode::cloud;
     if (assignable_config.is_read_replica()) {
         if (!assignable_config.cfg.properties.read_replica_bucket) {
             co_return make_error_result(
