@@ -190,7 +190,7 @@ topic_table::apply(topic_lifecycle_transition soft_del, model::offset offset) {
         const auto& topic_cfg = tp->second.get_configuration();
         const auto& topic_properties = topic_cfg.properties;
 
-        if (topic_properties.requires_remote_erase()) {
+        if (topic_properties.requires_tiered_remote_erase()) {
             auto tombstone = nt_lifecycle_marker{
               .config = tp->second.get_configuration(),
               .initial_revision_id = tp->second.get_remote_revision().value_or(
@@ -205,10 +205,7 @@ topic_table::apply(topic_lifecycle_transition soft_del, model::offset offset) {
               soft_del.topic.initial_revision_id);
         }
 
-        if (
-          topic_properties.iceberg_mode != model::iceberg_mode::disabled
-          && topic_properties.iceberg_delete.value_or(
-            config::shard_local_cfg().iceberg_delete())) {
+        if (topic_properties.requires_iceberg_remote_erase()) {
             // Note that for iceberg tombstones we use topic.get_revision()
             // (i.e. revision that got assigned to the topic at creation time)
             // and not topic.get_remote_revision() (which may be an earlier
@@ -226,10 +223,7 @@ topic_table::apply(topic_lifecycle_transition soft_del, model::offset offset) {
               it->second.last_deleted_revision);
         }
 
-        if (
-          topic_properties.storage_mode == model::redpanda_storage_mode::cloud
-          && !topic_properties.read_replica.value_or(false)
-          && topic_properties.remote_delete) {
+        if (topic_properties.requires_cloud_topic_remote_erase()) {
             auto tp_id = topic_cfg.tp_id;
             if (tp_id.has_value()) {
                 auto tombstone = nt_cloud_topic_tombstone{

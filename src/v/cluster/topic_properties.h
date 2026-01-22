@@ -237,7 +237,15 @@ struct topic_properties
 
     bool is_compacted() const;
     bool has_overrides() const;
-    bool requires_remote_erase() const;
+    // Returns true if this topic is a tiered topic that requires
+    // deletion of Redpanda data in cloud storage.
+    bool requires_tiered_remote_erase() const;
+    // Returns true if this topic is a cloud topic that requires
+    // deletion of Redpanda data in cloud storage.
+    bool requires_cloud_topic_remote_erase() const;
+    // Returns true if this topic is an iceberg-enabled topic that requires
+    // deletion of Iceberg data in cloud storage.
+    bool requires_iceberg_remote_erase() const;
 
     // Returns true if the topic has archival (remote write on a tiered topic)
     // enabled. This checks both storage_mode and shadow_indexing to ensure the

@@ -155,14 +155,43 @@ bool topic_properties::has_overrides() const {
     return overrides;
 }
 
-bool topic_properties::requires_remote_erase() const {
-    // A topic requires remote erase if it matches all of:
-    // * Using tiered storage
+bool topic_properties::requires_tiered_remote_erase() const {
+    // A tiered topic requires remote erase if it matches all of:
+    // * Using tiered storage (explicit or inferred via shadow_indexing)
     // * Not a read replica
     // * Has redpanda.remote.delete=true
+    if (read_replica.value_or(false) || !remote_delete) {
+        return false;
+    }
+    // Explicit tiered = requires remote erase
+    if (storage_mode == model::redpanda_storage_mode::tiered) {
+        return true;
+    }
+    // Explicit local or cloud = no remote erase for tiered
+    if (storage_mode != model::redpanda_storage_mode::unset) {
+        return false;
+    }
+    // Unset = check if shadow_indexing indicates tiered storage
     auto mode = shadow_indexing.value_or(model::shadow_indexing_mode::disabled);
-    return mode != model::shadow_indexing_mode::disabled
+    return mode != model::shadow_indexing_mode::disabled;
+}
+
+bool topic_properties::requires_cloud_topic_remote_erase() const {
+    // A cloud topic requires remote erase if it matches all of:
+    // * Using cloud topics
+    // * Not a read replica
+    // * Has redpanda.remote.delete=true
+    return storage_mode == model::redpanda_storage_mode::cloud
            && !read_replica.value_or(false) && remote_delete;
+}
+
+bool topic_properties::requires_iceberg_remote_erase() const {
+    // An iceberg-enabled topic requires remote erase if it matches all of:
+    // * Using iceberg
+    // * Has redpanda.iceberg.delete=true
+    return iceberg_mode != model::iceberg_mode::disabled
+           && iceberg_delete.value_or(
+             config::shard_local_cfg().iceberg_delete());
 }
 
 bool topic_properties::is_archival_enabled() const {
