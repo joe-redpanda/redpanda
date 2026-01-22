@@ -259,7 +259,7 @@ ss::future<> partition_replicator::fetch_and_replicate() {
         while (!_gate.is_closed() && !as.abort_requested()) {
             auto inflight_units = co_await ss::get_units(_max_requests, 1, as);
             auto data = co_await _source->fetch_next(as);
-            maybe_synchronize_start_offset();
+            co_await maybe_synchronize_start_offset();
             if (data.batches.empty()) {
                 continue;
             }
@@ -318,26 +318,18 @@ ss::future<> partition_replicator::fetch_and_replicate() {
     }
 }
 
-void partition_replicator::maybe_synchronize_start_offset() {
+ss::future<> partition_replicator::maybe_synchronize_start_offset() {
     auto shadow_partition_start_offset = _sink->start_offset();
     auto source_offsets = _source->get_offsets();
 
     if (!_sink->can_prefix_truncate()) {
         vlog(_log.trace, "Partition does not support prefix truncation");
-        return;
-    }
-
-    if (_in_progress_truncate_offset.has_value()) {
-        vlog(
-          _log.trace,
-          "Truncation already in progress to offset {}",
-          _in_progress_truncate_offset.value());
-        return;
+        co_return;
     }
 
     if (!source_offsets.has_value()) {
         vlog(_log.debug, "Source partition not reporting offsets");
-        return;
+        co_return;
     }
 
     auto source_start_offset = source_offsets->source_start_offset;
@@ -349,10 +341,8 @@ void partition_replicator::maybe_synchronize_start_offset() {
           "shadow: {}",
           source_start_offset,
           shadow_partition_start_offset);
-        return;
+        co_return;
     }
-
-    _in_progress_truncate_offset = source_start_offset;
 
     vlog(
       _log.debug,
@@ -360,16 +350,13 @@ void partition_replicator::maybe_synchronize_start_offset() {
       shadow_partition_start_offset,
       source_start_offset);
 
-    ssx::spawn_with_gate(_gate, [this, source_start_offset] {
-        return prefix_truncate(source_start_offset);
-    });
+    co_await prefix_truncate(source_start_offset);
 }
 
 ss::future<> partition_replicator::prefix_truncate(kafka::offset o) {
     static constexpr auto prefix_truncate_timeout = 5s;
     auto prefix_f = co_await ss::coroutine::as_future(_sink->prefix_truncate(
       o, ss::lowres_clock::now() + prefix_truncate_timeout));
-    _in_progress_truncate_offset = std::nullopt;
     if (prefix_f.failed()) {
         auto ex = prefix_f.get_exception();
         auto level = ssx::is_shutdown_exception(ex) ? ss::log_level::debug
