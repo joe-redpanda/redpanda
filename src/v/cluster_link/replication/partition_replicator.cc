@@ -295,6 +295,13 @@ ss::future<> partition_replicator::fetch_and_replicate() {
     }
     co_await gate.close();
     if (!_gate.is_closed() && !_as.abort_requested()) {
+        auto sink_reset_f = co_await ss::coroutine::as_future(_sink->reset());
+        if (sink_reset_f.failed()) {
+            auto ex = sink_reset_f.get_exception();
+            vlog(_log.warn, "Failed to reset data sink on failure: {}", ex);
+            _sink->notify_replicator_failure(_term);
+            co_return;
+        }
         auto reset_offset = _start_offset;
         if (_sink->last_replicated_offset() >= kafka::offset{0}) {
             reset_offset = kafka::next_offset(_sink->last_replicated_offset());
