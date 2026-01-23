@@ -51,6 +51,18 @@ public:
     explicit version_edit(const internal::options& options)
       : _mutations_by_level(options.levels.size()) {}
 
+    version_edit(const version_edit&) = delete;
+    version_edit(version_edit&&) = default;
+    version_edit& operator=(const version_edit&) = delete;
+    version_edit& operator=(version_edit&& o) noexcept {
+        if (this != &o) {
+            this->~version_edit();
+            new (this) version_edit(std::move(o));
+        }
+        return *this;
+    }
+    ~version_edit() = default;
+
     // Set the compaction pointer, which is where the next compaction should
     // begin.
     void set_compact_pointer(internal::level level, internal::key key) {
