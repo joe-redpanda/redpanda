@@ -1839,10 +1839,10 @@ class RedpandaServiceCloud(KubeServiceMixin, RedpandaServiceABC):
         )
 
         self.rebuild_pods_classes()
+        self._initial_node_count = len(self.pods)
 
-        node_count = self.config_profile["nodes_count"]
-        assert self._min_brokers <= node_count, (
-            f"Not enough brokers: test needs {self._min_brokers} but cluster has {node_count}"
+        assert self._min_brokers <= self._initial_node_count, (
+            f"Not enough brokers: test needs {self._min_brokers} but cluster has {self._initial_node_count}"
         )
 
     @property
@@ -2327,20 +2327,20 @@ class RedpandaServiceCloud(KubeServiceMixin, RedpandaServiceABC):
 
         self._cloud_cluster._ensure_cluster_health()
 
-        expected_nodes = int(self.config_profile["nodes_count"])
+        expected_nodes = self._initial_node_count
         active, _, _ = self.get_redpanda_pods_presorted()
         failed = self.get_redpanda_pods_filtered("failed")
         active_count = len(active)
         failed_count = len(failed)
         assert expected_nodes == active_count, (
-            f"Expected {expected_nodes} per tier definition but found {active_count} active pods"
+            f"Expected {expected_nodes} nodes (initial count) but found {active_count} active pods"
         )
         assert failed_count == 0, f"Expected no failed pods, found {failed_count}"
 
         brokers = self._cloud_cluster.get_brokers()
         broker_count = len(brokers)
         assert expected_nodes == broker_count, (
-            f"Expected {expected_nodes} per tier definition but there "
+            f"Expected {expected_nodes} nodes (initial count) but there "
             f"were only {broker_count} brokers: {brokers}"
         )
 
