@@ -211,7 +211,7 @@ struct authorization_result {
 // A collection or association of entities, such as users, policies, or devices.
 // https://schema.ocsf.io/1.0.0/objects/group?extensions=
 struct group {
-    enum class type_id : int { unknown = 0, role = 1 };
+    enum class type_id : int { unknown = 0, role = 1, idp_group = 2 };
 
     type_id type{type_id::unknown};
     ss::sstring name;
@@ -482,6 +482,8 @@ inline void rjson_serialize(Writer<StringBuffer>& w, sa::group::type_id type) {
         return rjson_serialize(w, std::string_view{"unknown"});
     case sa::group::type_id::role:
         return rjson_serialize(w, std::string_view{"role"});
+    case sa::group::type_id::idp_group:
+        return rjson_serialize(w, std::string_view{"idp_group"});
     }
 }
 
