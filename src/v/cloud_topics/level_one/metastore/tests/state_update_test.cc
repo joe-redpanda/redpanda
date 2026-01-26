@@ -227,6 +227,32 @@ protected:
         return std::monostate{};
     }
 
+    std::expected<std::monostate, stm_update_error> apply_set_start_offset(
+      const model::topic_id_partition& tp, kafka::offset new_start_offset) {
+        if (GetParam() == state_backend::simple) {
+            auto update = set_start_offset_update::build(
+              state_, tp, new_start_offset);
+            if (!update.has_value()) {
+                return std::unexpected(
+                  stm_update_error{fmt::format("{}", update.error())});
+            }
+            return update->apply(state_);
+        }
+        set_start_offset_db_update db_update{
+          .tp = tp,
+          .new_start_offset = new_start_offset,
+        };
+        auto reader = state_reader(db_->create_snapshot());
+        chunked_vector<write_batch_row> rows;
+        auto result = db_update.build_rows(reader, rows).get();
+        if (!result.has_value()) {
+            return std::unexpected(
+              stm_update_error{fmt::format("{}", result.error())});
+        }
+        apply_rows_to_db(rows);
+        return std::monostate{};
+    }
+
     state& get_state() {
         if (GetParam() == state_backend::lsm) {
             state_ = snapshot_to_state();
@@ -1597,8 +1623,7 @@ TEST_P(StateUpdateParamTest, TestAddExtentEndsBelowLastTermStart) {
     EXPECT_FALSE(res.has_value());
 }
 
-TEST(StateUpdateTest, TestSetStartOffsetAlignedWithExtent) {
-    state s;
+TEST_P(StateUpdateParamTest, TestSetStartOffsetAlignedWithExtent) {
     // Add some extents
     auto add_update = add_objects_builder()
                         .add(new_obj_builder(oid1, 100, 1100)
@@ -1612,23 +1637,20 @@ TEST(StateUpdateTest, TestSetStartOffsetAlignedWithExtent) {
                                .build())
                         .add_term_start(tidp_a, 0_tm, 0_o)
                         .build();
-    auto res = add_update.apply(s);
+    auto res = apply_add_objects(std::move(add_update));
     ASSERT_TRUE(res.has_value());
 
     auto tp = model::topic_id_partition::from(tidp_a);
-    auto p_state = s.partition_state(tp);
+    auto p_state = get_state().partition_state(tp);
     ASSERT_TRUE(p_state.has_value());
     EXPECT_EQ(3, p_state->get().extents.size());
 
     // Set start offset to be aligned with the second extent (starts at 11)
-    auto set_start_update = set_start_offset_update::build(s, tp, 11_o);
-    ASSERT_TRUE(set_start_update.has_value());
-
-    auto apply_res = set_start_update->apply(s);
+    auto apply_res = apply_set_start_offset(tp, 11_o);
     ASSERT_TRUE(apply_res.has_value());
 
     // Verify that the state has been updated correctly
-    p_state = s.partition_state(tp);
+    p_state = get_state().partition_state(tp);
     ASSERT_TRUE(p_state.has_value());
     EXPECT_EQ(11_o, p_state->get().start_offset);
     EXPECT_EQ(31_o, p_state->get().next_offset);
@@ -1638,8 +1660,7 @@ TEST(StateUpdateTest, TestSetStartOffsetAlignedWithExtent) {
     EXPECT_EQ(2, p_state->get().extents.size());
 }
 
-TEST(StateUpdateTest, TestSetStartOffsetNotAlignedWithExtent) {
-    state s;
+TEST_P(StateUpdateParamTest, TestSetStartOffsetNotAlignedWithExtent) {
     // Add some extents
     auto add_update = add_objects_builder()
                         .add(new_obj_builder(oid1, 100, 1100)
@@ -1653,24 +1674,21 @@ TEST(StateUpdateTest, TestSetStartOffsetNotAlignedWithExtent) {
                                .build())
                         .add_term_start(tidp_a, 0_tm, 0_o)
                         .build();
-    auto res = add_update.apply(s);
+    auto res = apply_add_objects(std::move(add_update));
     ASSERT_TRUE(res.has_value());
 
     auto tp = model::topic_id_partition::from(tidp_a);
-    auto p_state = s.partition_state(tp);
+    auto p_state = get_state().partition_state(tp);
     ASSERT_TRUE(p_state.has_value());
     EXPECT_EQ(3, p_state->get().extents.size());
 
     // Set start offset to be not aligned with any extent (offset 15 is in the
     // middle of second extent)
-    auto set_start_update = set_start_offset_update::build(s, tp, 15_o);
-    ASSERT_TRUE(set_start_update.has_value());
-
-    auto apply_res = set_start_update->apply(s);
+    auto apply_res = apply_set_start_offset(tp, 15_o);
     ASSERT_TRUE(apply_res.has_value());
 
     // Verify that the state has been updated correctly
-    p_state = s.partition_state(tp);
+    p_state = get_state().partition_state(tp);
     ASSERT_TRUE(p_state.has_value());
     EXPECT_EQ(15_o, p_state->get().start_offset);
     EXPECT_EQ(31_o, p_state->get().next_offset);
@@ -1680,8 +1698,7 @@ TEST(StateUpdateTest, TestSetStartOffsetNotAlignedWithExtent) {
     EXPECT_EQ(2, p_state->get().extents.size());
 }
 
-TEST(StateUpdateTest, TestSetStartOffsetEmptyWithTerms) {
-    state s;
+TEST_P(StateUpdateParamTest, TestSetStartOffsetEmptyWithTerms) {
     // Add extents with various terms
     auto add_update = add_objects_builder()
                         .add(new_obj_builder(oid1, 100, 1100)
@@ -1691,23 +1708,20 @@ TEST(StateUpdateTest, TestSetStartOffsetEmptyWithTerms) {
                         .add_term_start(tidp_a, 2_tm, 3_o)
                         .add_term_start(tidp_a, 5_tm, 7_o)
                         .build();
-    auto res = add_update.apply(s);
+    auto res = apply_add_objects(std::move(add_update));
     ASSERT_TRUE(res.has_value());
 
     auto tp = model::topic_id_partition::from(tidp_a);
-    auto p_state = s.partition_state(tp);
+    auto p_state = get_state().partition_state(tp);
     ASSERT_TRUE(p_state.has_value());
     EXPECT_EQ(1, p_state->get().extents.size());
     EXPECT_EQ(3, p_state->get().term_starts.size());
 
     // Set start offset beyond the end of all extents to make log empty.
-    auto set_start_update = set_start_offset_update::build(s, tp, 10_o);
-    ASSERT_TRUE(set_start_update.has_value());
-
-    auto apply_res = set_start_update->apply(s);
+    auto apply_res = apply_set_start_offset(tp, 10_o);
     ASSERT_TRUE(apply_res.has_value());
 
-    p_state = s.partition_state(tp);
+    p_state = get_state().partition_state(tp);
     ASSERT_TRUE(p_state.has_value());
     EXPECT_EQ(10_o, p_state->get().start_offset);
     EXPECT_EQ(10_o, p_state->get().next_offset);
@@ -1720,11 +1734,10 @@ TEST(StateUpdateTest, TestSetStartOffsetEmptyWithTerms) {
     EXPECT_EQ(1, p_state->get().term_starts.size());
 }
 
-TEST(StateUpdateTest, TestSetStartOffsetWithCompactionState) {
+TEST_P(StateUpdateParamTest, TestSetStartOffsetWithCompactionState) {
     using testing::ElementsAre;
     using range = struct compaction_state_update::cleaned_range;
 
-    state s;
     // Add an extent and then compact it
     auto add_update = add_objects_builder()
                         .add(new_obj_builder(oid1, 100, 1100)
@@ -1732,7 +1745,7 @@ TEST(StateUpdateTest, TestSetStartOffsetWithCompactionState) {
                                .build())
                         .add_term_start(tidp_a, 0_tm, 0_o)
                         .build();
-    auto res = add_update.apply(s);
+    auto res = apply_add_objects(std::move(add_update));
     ASSERT_TRUE(res.has_value());
 
     // Compact part of the extent (clean offsets [5, 15])
@@ -1748,11 +1761,11 @@ TEST(StateUpdateTest, TestSetStartOffsetWithCompactionState) {
             3000_t)
           .set_expected_epoch(tidp_a, partition_state::compaction_epoch_t{0})
           .build();
-    auto replace_res = replace_update.apply(s);
+    auto replace_res = apply_replace_objects(std::move(replace_update));
     ASSERT_TRUE(replace_res.has_value());
 
     auto tp = model::topic_id_partition::from(tidp_a);
-    auto p_state = s.partition_state(tp);
+    auto p_state = get_state().partition_state(tp);
     ASSERT_TRUE(p_state.has_value());
     ASSERT_TRUE(p_state->get().compaction_state.has_value());
 
@@ -1767,14 +1780,11 @@ TEST(StateUpdateTest, TestSetStartOffsetWithCompactionState) {
       p_state->get().compaction_epoch, partition_state::compaction_epoch_t{1});
 
     // Set start offset to fall within the cleaned range (offset 10)
-    auto set_start_update = set_start_offset_update::build(s, tp, 10_o);
-    ASSERT_TRUE(set_start_update.has_value());
-
-    auto apply_res = set_start_update->apply(s);
+    auto apply_res = apply_set_start_offset(tp, 10_o);
     ASSERT_TRUE(apply_res.has_value());
 
     // Verify that the state has been updated correctly
-    p_state = s.partition_state(tp);
+    p_state = get_state().partition_state(tp);
     ASSERT_TRUE(p_state.has_value());
     EXPECT_EQ(10_o, p_state->get().start_offset);
     EXPECT_EQ(21_o, p_state->get().next_offset);

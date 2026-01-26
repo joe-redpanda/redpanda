@@ -374,6 +374,33 @@ protected:
         apply_replace_update(db_update);
     }
 
+    void apply_set_start_offset_update(set_start_offset_db_update& update) {
+        auto reader = make_reader();
+        chunked_vector<write_batch_row> rows;
+        auto result = update.build_rows(reader, rows).get();
+        ASSERT_TRUE(result.has_value());
+
+        auto seqno = next_seqno();
+        auto wb = db_->create_write_batch();
+        for (const auto& row : rows) {
+            if (row.value.empty()) {
+                wb.remove(row.key, seqno);
+            } else {
+                wb.put(row.key, row.value.copy(), seqno);
+            }
+        }
+        db_->apply(std::move(wb)).get();
+    }
+
+    void
+    set_start_offset(model::topic_id_partition tidp, kafka::offset offset) {
+        auto update = set_start_offset_db_update{
+          .tp = tidp,
+          .new_start_offset = offset,
+        };
+        apply_set_start_offset_update(update);
+    }
+
     std::optional<lsm::database> db_;
 };
 
@@ -853,4 +880,188 @@ TEST_F(StateUpdateTest, TestReplaceObjectsRejectsCleanedRangeNotAtLogStart) {
       tidp0,
       /*expected_cleaned_ranges=*/{{100, 199}},
       /*expected_tombstone_ranges=*/{});
+}
+
+TEST_F(StateUpdateTest, TestSetStartOffsetBasic) {
+    // Set up partition with three extents.
+    auto oid1 = make_oid();
+    auto oid2 = make_oid();
+    auto oid3 = make_oid();
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(oid1, tp(tidp0, 0, 99).pos(0, 1023)),
+      make_object(oid2, tp(tidp0, 100, 199).pos(0, 1023)),
+      make_object(oid3, tp(tidp0, 200, 299).pos(0, 1023)));
+
+    verify_metadata(tidp0, kafka::offset(0), kafka::offset(300));
+
+    // Set start offset to 200, which should remove the first two extents.
+    set_start_offset(tidp0, kafka::offset(200));
+
+    // Verify metadata is updated.
+    verify_metadata(tidp0, kafka::offset(200), kafka::offset(300));
+
+    // Verify first two extents are removed.
+    verify_extent_missing(tidp0, kafka::offset(0));
+    verify_extent_missing(tidp0, kafka::offset(100));
+
+    // Verify third extent still exists.
+    verify_extent_exists(tidp0, kafka::offset(200), kafka::offset(299));
+
+    // Verify object entries have updated removed_data_size.
+    verify_object_exists(oid1, 1024, /*removed_data_size=*/1024);
+    verify_object_exists(oid2, 1024, /*removed_data_size=*/1024);
+    verify_object_exists(oid3, 1024, /*removed_data_size=*/0);
+}
+
+TEST_F(StateUpdateTest, TestSetStartOffsetNoOp) {
+    // Set up partition.
+    auto oid = make_oid();
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(oid, tp(tidp0, 0, 99).pos(0, 1023)));
+
+    verify_metadata(tidp0, kafka::offset(0), kafka::offset(100));
+
+    // Set start offset to 0 (same as current), should be no-op.
+    set_start_offset(tidp0, kafka::offset(0));
+
+    // Verify nothing changed.
+    verify_metadata(tidp0, kafka::offset(0), kafka::offset(100));
+    verify_extent_exists(tidp0, kafka::offset(0), kafka::offset(99));
+    verify_object_exists(oid, 1024, /*removed_data_size=*/0);
+}
+
+TEST_F(StateUpdateTest, TestSetStartOffsetPartialRemoval) {
+    // Set up partition with three extents.
+    auto oid1 = make_oid();
+    auto oid2 = make_oid();
+    auto oid3 = make_oid();
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(oid1, tp(tidp0, 0, 99).pos(0, 1023)),
+      make_object(oid2, tp(tidp0, 100, 199).pos(0, 1023)),
+      make_object(oid3, tp(tidp0, 200, 299).pos(0, 1023)));
+
+    // Set start offset to 100, which should only remove the first extent.
+    set_start_offset(tidp0, kafka::offset(100));
+
+    verify_metadata(tidp0, kafka::offset(100), kafka::offset(300));
+    verify_extent_missing(tidp0, kafka::offset(0));
+    verify_extent_exists(tidp0, kafka::offset(100), kafka::offset(199));
+    verify_extent_exists(tidp0, kafka::offset(200), kafka::offset(299));
+    verify_object_exists(oid1, 1024, /*removed_data_size=*/1024);
+    verify_object_exists(oid2, 1024, /*removed_data_size=*/0);
+    verify_object_exists(oid3, 1024, /*removed_data_size=*/0);
+}
+
+TEST_F(StateUpdateTest, TestSetStartOffsetWithinExtent) {
+    // Set up partition with extent [0-99].
+    auto oid = make_oid();
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(oid, tp(tidp0, 0, 99).pos(0, 1023)));
+
+    // Set start offset to 50 (within the extent).
+    // The extent [0-99] should NOT be deleted since its last_offset >= 50.
+    set_start_offset(tidp0, kafka::offset(50));
+
+    verify_metadata(tidp0, kafka::offset(50), kafka::offset(100));
+    // The extent should still exist since last_offset (99) >= new_start (50).
+    verify_extent_exists(tidp0, kafka::offset(0), kafka::offset(99));
+    // No data removed since extent wasn't fully deleted.
+    verify_object_exists(oid, 1024, /*removed_data_size=*/0);
+}
+
+TEST_F(StateUpdateTest, TestSetStartOffsetRejectsBelowStart) {
+    // Set up partition with start_offset=100.
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 1023)));
+    set_start_offset(tidp0, kafka::offset(50));
+
+    verify_metadata(tidp0, kafka::offset(50), kafka::offset(100));
+
+    // Try to set start offset below current start.
+    auto update = set_start_offset_db_update{
+      .tp = tidp0,
+      .new_start_offset = kafka::offset(25),
+    };
+    auto reader = make_reader();
+    chunked_vector<write_batch_row> rows;
+    auto result = update.build_rows(reader, rows).get();
+    ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(StateUpdateTest, TestSetStartOffsetRejectsAboveNext) {
+    // Set up partition with next_offset=100.
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 1023)));
+
+    verify_metadata(tidp0, kafka::offset(0), kafka::offset(100));
+
+    // Try to set start offset above next_offset.
+    auto update = set_start_offset_db_update{
+      .tp = tidp0,
+      .new_start_offset = kafka::offset(150),
+    };
+    auto reader = make_reader();
+    chunked_vector<write_batch_row> rows;
+    auto result = update.build_rows(reader, rows).get();
+    ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(StateUpdateTest, TestSetStartOffsetRejectsMissingPartition) {
+    // Try to set start offset on a partition that doesn't exist.
+    auto update = set_start_offset_db_update{
+      .tp = tidp0,
+      .new_start_offset = kafka::offset(50),
+    };
+    auto reader = make_reader();
+    chunked_vector<write_batch_row> rows;
+    auto result = update.build_rows(reader, rows).get();
+    ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(StateUpdateTest, TestSetStartOffsetRemovesAllExtents) {
+    // Set up partition with extents [0-99].
+    auto oid = make_oid();
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(oid, tp(tidp0, 0, 99).pos(0, 1023)));
+
+    // Set start offset to next_offset, which removes all extents.
+    set_start_offset(tidp0, kafka::offset(100));
+
+    verify_metadata(tidp0, kafka::offset(100), kafka::offset(100));
+    verify_extent_missing(tidp0, kafka::offset(0));
+    verify_object_exists(oid, 1024, /*removed_data_size=*/1024);
+}
+
+TEST_F(StateUpdateTest, TestSetStartOffsetTruncatesCompactionState) {
+    auto oid1 = make_oid();
+    add_objects(
+      {terms(tidp0, {{0, 1}})},
+      make_object(oid1, tp(tidp0, 0, 99).pos(0, 1023)));
+
+    replace_objects(
+      {{compact_spec{
+        .tidp = tidp0,
+        .cleaned = {{20, 80, true}},
+      }}},
+      make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 511)));
+
+    verify_compaction_state(
+      tidp0,
+      /*expected_cleaned_ranges=*/{{20, 80}},
+      /*expected_tombstone_ranges=*/{{20, 80, 1000}});
+
+    // Set start offset to 50, which should truncate compaction ranges.
+    set_start_offset(tidp0, kafka::offset(50));
+    verify_metadata(tidp0, kafka::offset(50), kafka::offset(100));
+    verify_compaction_state(
+      tidp0,
+      /*expected_cleaned_ranges=*/{{50, 80}},
+      /*expected_tombstone_ranges=*/{{50, 80, 1000}});
 }
