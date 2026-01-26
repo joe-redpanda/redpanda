@@ -35,7 +35,7 @@ constexpr auto pool_ready_timeout = 15s;
 namespace cloud_storage_clients {
 
 namespace {
-constexpr auto default_upstream_key = upstream_key{};
+const auto default_upstream_key = upstream_key{};
 }
 
 client_pool::client_pool(
@@ -193,8 +193,7 @@ ss::future<client_pool::client_lease> client_pool::acquire(
   std::optional<ss::lowres_clock::time_point> deadline) {
     auto guard = _gate.hold();
 
-    // Support for bucket_name_parts connection parameters is currently a no-op.
-    std::ignore = bucket;
+    auto up_key = make_upstream_key(_config, bucket);
 
     std::optional<unsigned int> source_sid;
     std::optional<client_ptr> client;
@@ -236,14 +235,34 @@ ss::future<client_pool::client_lease> client_pool::acquire(
             }
         }
 
-        // Pool is ready. This is unlikely to block but theoretically possible.
-        auto& up = _default_upstream.value();
+        std::optional<upstream_registry::handle> dynamic_up_holder;
+        upstream_registry::handle* up_ptr = nullptr;
+        if (up_key == default_upstream_key) {
+            up_ptr = &_default_upstream.value();
+        } else {
+            dynamic_up_holder.emplace(co_await _upstreams.get(up_key));
+            up_ptr = &*dynamic_up_holder;
+        }
+        auto& up = *up_ptr;
 
         while (!deadline_reached() && !_gate.is_closed()
                && !_as.abort_requested()) {
             if (up_key != default_upstream_key) {
                 // For now, we don't implement client re-use for non-default
                 // upstreams. Just create a new client every time.
+                // But we still need to respect capacity limits by consuming
+                // a slot from the pool.
+                if (_idle_clients.empty()) {
+                    co_await ssx::with_timeout_abortable(
+                      _cvar.wait(), deadline.value_or(model::no_timeout), as);
+                    continue;
+                }
+                // Consume a slot from the pool.
+                auto slot_client = pop_least_recently_used();
+                slot_client->shutdown();
+                ssx::spawn_with_gate(_bg_gate, [slot_client] {
+                    return slot_client->stop().finally([slot_client] {});
+                });
                 client = up->make_client(_as);
                 break;
             }
@@ -375,8 +394,22 @@ ss::future<client_pool::client_lease> client_pool::acquire(
       ss::make_deleter([pool = weak_from_this(),
                         client = client.value(),
                         g = std::move(guard),
-                        source_sid]() mutable {
+                        source_sid,
+                        up_key]() mutable {
           if (pool) {
+              if (up_key != default_upstream_key) {
+                  // For now, we don't implement client re-use for non-default
+                  // upstreams. Just shutdown the client and return the slot
+                  // to the pool.
+                  pool->emplace_idle(pool->_default_upstream.value());
+                  pool->_cvar.signal();
+                  client->shutdown();
+                  ssx::spawn_with_gate(pool->_bg_gate, [client] {
+                      return client->stop().finally([client] {});
+                  });
+                  return;
+              }
+
               if (source_sid.has_value()) {
                   // If all clients from the local pool are in-use we will
                   // shutdown the borrowed one and return the "accounting unit"
