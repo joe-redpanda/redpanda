@@ -11,6 +11,7 @@ from rptest.services.kgo_repeater_service import repeater_traffic
 from ducktape.mark import matrix
 from ducktape.utils.util import wait_until
 
+from ducktape.cluster.cluster import ClusterNode
 from ducktape.tests.test import TestContext
 from rptest.clients.rpk import RpkTool
 from rptest.clients.types import TopicSpec
@@ -23,7 +24,7 @@ from rptest.services.redpanda import (
 from rptest.tests.redpanda_test import RedpandaTest
 
 
-class CloudTopicsL0GCTest(RedpandaTest):
+class CloudTopicsL0GCTestBase(RedpandaTest):
     def __init__(self, test_context: TestContext):
         self.test_context = test_context
         si_settings = SISettings(
@@ -43,13 +44,13 @@ class CloudTopicsL0GCTest(RedpandaTest):
             "cloud_topics_short_term_gc_interval": 2000,
             "cloud_topics_short_term_gc_backoff_interval": 10000,
         }
-        super(CloudTopicsL0GCTest, self).__init__(
+        super().__init__(
             test_context=test_context,
             extra_rp_conf=extra_rp_conf,
             si_settings=si_settings,
         )
 
-    def __create_topics(self, topics: list[TopicSpec]):
+    def create_topics(self, topics: list[TopicSpec]):
         rpk = RpkTool(self.redpanda)
         for spec in topics:
             rpk.create_topic(
@@ -59,37 +60,42 @@ class CloudTopicsL0GCTest(RedpandaTest):
                 config={"redpanda.cloud_topic.enabled": "true"},
             )
 
-    @cluster(num_nodes=4)
-    @matrix(cloud_storage_type=get_cloud_storage_type())
-    def test_l0_gc(self, cloud_storage_type: CloudStorageType):
-        self.topics = [TopicSpec(partition_count=2)]
-        self.__create_topics(self.topics)
+    def get_num_objects_deleted(self, nodes: list[ClusterNode] | None = None):
+        samples = self.redpanda.metrics_sample(
+            "vectorized_cloud_topics_l0_gc_objects_deleted_total",
+            nodes=nodes,
+        )
+        self.logger.info(samples)
+        if samples is not None and samples.samples:
+            return int(sum(s.value for s in samples.samples))
+        return 0
 
+    def produce_some(self, topics: list[str], n: int = 300):
         with repeater_traffic(
             context=self.test_context,
             redpanda=self.redpanda,
-            topics=[spec.name for spec in self.topics],
+            topics=topics,
             msg_size=1024,
             rate_limit_bps=2 * 1024 * 1024,
             workers=1,
         ) as repeater:
             repeater.await_group_ready()
-            repeater.await_progress(300, timeout_sec=90)
+            repeater.await_progress(n, timeout_sec=90)
+
+
+class CloudTopicsL0GCTest(CloudTopicsL0GCTestBase):
+    @cluster(num_nodes=4)
+    @matrix(cloud_storage_type=get_cloud_storage_type())
+    def test_l0_gc(self, cloud_storage_type: CloudStorageType):
+        self.topics = [TopicSpec(partition_count=2)]
+        self.create_topics(self.topics)
+        self.produce_some(topics=[spec.name for spec in self.topics])
 
         # TODO: we are only checking that deletes are happening here (and should
         # also be happening in parallel with the repeater's fetch/produce
         # workload), but we do want to add tests that check constraints
-        def get_num_objects_deleted():
-            samples = self.redpanda.metrics_sample(
-                "vectorized_cloud_topics_l0_gc_objects_deleted_total"
-            )
-            self.logger.info(samples)
-            if samples is not None and samples.samples:
-                return int(sum(s.value for s in samples.samples))
-            return 0
-
         wait_until(
-            lambda: get_num_objects_deleted() > 0,
+            lambda: self.get_num_objects_deleted() > 0,
             timeout_sec=30,
             backoff_sec=5,
             retry_on_exc=True,
