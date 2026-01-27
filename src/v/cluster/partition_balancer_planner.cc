@@ -348,7 +348,9 @@ void partition_balancer_planner::init_per_node_state(
         if (
           broker.state.get_membership_state()
           == model::membership_state::draining) {
-            vlog(clusterlog.debug, "node {}: decommissioning", id);
+            vlog(/*todo revert to debug*/ clusterlog.info,
+                 "node {}: decommissioning",
+                 id);
             ctx.decommissioning_nodes.insert(id);
         }
 
@@ -366,7 +368,7 @@ void partition_balancer_planner::init_per_node_state(
         auto time_since_last_seen = now - node_status->last_seen;
 
         vlog(
-          clusterlog.debug,
+          /*todo revert to debug*/ clusterlog.info,
           "node {}: {} ms since last heartbeat",
           id,
           std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1505,7 +1507,7 @@ void partition_balancer_planner::force_reassignable_partition::
         }
     }
     vlog(
-      clusterlog.debug,
+      /*todo revert to debug*/ clusterlog.info,
       "Attempt to force reconfigure {} with replicas {}, replicas to be "
       "removed: {}",
       ntp(),
@@ -1534,7 +1536,7 @@ void partition_balancer_planner::force_reassignable_partition::
     }
 
     vlog(
-      clusterlog.debug,
+      /*todo revert to debug*/ clusterlog.info,
       "Attempt to force reconfigure {} with replicas {}, replicas to be "
       "removed: {} "
       "successful, new assignment: {}",
@@ -2303,7 +2305,7 @@ void partition_balancer_planner::get_auto_decommission_actions(
     for (const auto& report : health_report.node_reports) {
         auto node_uptime = report->local_state.uptime;
         vlog(
-          clusterlog.debug,
+          /*todo revert to debug*/ clusterlog.info,
           "liveness report from node: {}, with uptime: {}, and report: {}",
           report->id,
           node_uptime,
@@ -2323,7 +2325,7 @@ void partition_balancer_planner::get_auto_decommission_actions(
        .maintenance_mode_nodes = ctx.maintenance_mode_nodes});
 
     vlog(
-      clusterlog.debug,
+      /*todo revert to debug*/ clusterlog.info,
       "found candidates to auto decommission: {}",
       nodes_to_auto_decommission);
 
