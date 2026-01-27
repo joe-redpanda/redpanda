@@ -344,13 +344,14 @@ ss::future<> partition_replicator::maybe_synchronize_start_offset() {
         co_return;
     }
 
+    auto truncate_offset = std::max(_start_offset, source_start_offset);
     vlog(
       _log.debug,
       "Truncating shadow partition from {} -> {}",
       shadow_partition_start_offset,
-      source_start_offset);
+      truncate_offset);
 
-    co_await prefix_truncate(source_start_offset);
+    co_await prefix_truncate(truncate_offset);
 }
 
 ss::future<> partition_replicator::prefix_truncate(kafka::offset o) {
