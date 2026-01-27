@@ -18,6 +18,7 @@
 #include "cluster/types.h"
 #include "container/chunked_vector.h"
 #include "model/metadata.h"
+#include "utils/uuid.h"
 
 #include <chrono>
 #include <functional>
@@ -104,7 +105,7 @@ public:
     };
 
     ss::future<plan_data>
-    plan_actions(const cluster_health_report&, ss::abort_source&);
+    plan_actions(const cluster_health_report&, ss::abort_source&, const uuid_t& tick_id);
 
 private:
     class request_context;
@@ -156,6 +157,7 @@ private:
         absl::flat_hash_set<model::node_id> cluster_members;
         absl::flat_hash_set<model::node_id> decommissioning_nodes;
         absl::flat_hash_set<model::node_id> maintenance_mode_nodes;
+        uuid_t tick_id;
     };
     static absl::flat_hash_set<model::node_id> do_get_auto_decommission_actions(
       const do_get_auto_decommission_actions_params& params) noexcept;

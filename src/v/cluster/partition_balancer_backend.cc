@@ -29,6 +29,7 @@
 #include "model/metadata.h"
 #include "random/generators.h"
 #include "utils/stable_iterator_adaptor.h"
+#include "utils/uuid.h"
 
 #include <seastar/core/coroutine.hh>
 #include <seastar/core/shared_ptr.hh>
@@ -353,7 +354,8 @@ ss::future<> partition_balancer_backend::do_tick() {
         co_return;
     }
 
-    vlog(/*todo revert to debug*/ clusterlog.info, "tick");
+    uuid_t tick_id = uuid_t::create();
+    vlog(/*todo revert to debug*/ clusterlog.info, "{} tick", tick_id);
 
     if (!_cur_term || _raft0->term() != _cur_term->id) {
         _cur_term = per_term_state(_raft0->term());
@@ -365,13 +367,20 @@ ss::future<> partition_balancer_backend::do_tick() {
 
     if (_raft0->term() != _cur_term->id) {
         vlog(/*todo revert to debug*/ clusterlog.info,
-             "lost leadership, exiting");
+             "{} lost leadership, exiting",
+             tick_id);
         // TODO: add term checks to planner
         co_return;
     }
 
     const bool force_refresh_this_tick
       = _cur_term->_force_health_report_refresh;
+
+    vlog(
+      clusterlog.info,
+      "{} force refreshing this tick? {}",
+      tick_id,
+      force_refresh_this_tick);
     auto health_report = co_await _health_monitor.get_cluster_health(
       cluster_report_filter{},
       force_refresh(force_refresh_this_tick),
@@ -381,14 +390,16 @@ ss::future<> partition_balancer_backend::do_tick() {
     if (!health_report) {
         vlog(
           clusterlog.info,
-          "unable to get health report - {}",
+          "{} unable to get health report - {}",
+          tick_id,
           health_report.error().message());
         co_return;
     }
 
     if (_raft0->term() != _cur_term->id) {
         vlog(/*todo revert to debug*/ clusterlog.info,
-             "lost leadership, exiting");
+             "{} lost leadership, exiting",
+             tick_id);
         co_return;
     }
 
@@ -433,7 +444,7 @@ ss::future<> partition_balancer_backend::do_tick() {
       _partition_allocator);
 
     auto plan_data = co_await planner.plan_actions(
-      health_report.value(), _tick_in_progress.value());
+      health_report.value(), _tick_in_progress.value(), tick_id);
 
     _cur_term->last_tick_time = clock_t::now();
     _cur_term->last_violations = std::move(plan_data.violations);
@@ -461,13 +472,14 @@ ss::future<> partition_balancer_backend::do_tick() {
     if (_cur_term->last_status != partition_balancer_status::ready) {
         vlog(
           clusterlog.info,
-          "last status: {}; "
+          "{} last status: {}; "
           "violations: unavailable nodes: {}, full nodes: {}; "
           "nodes to rebalance count: {}; on demand rebalance requested: {}; "
           "updates in progress: {}; "
           "action counts: reassignments: {}, cancellations: {}, node to "
           "auto decommission: {}, failed: {}; "
           "counts rebalancing finished: {}, force refresh health report: {}",
+          tick_id,
           _cur_term->last_status,
           _cur_term->last_violations.unavailable_nodes.size(),
           _cur_term->last_violations.full_nodes.size(),
@@ -490,17 +502,19 @@ ss::future<> partition_balancer_backend::do_tick() {
         // make a copy in case the collection is modified concurrently.
         auto nodes_to_finish = _state.nodes_to_rebalance();
         co_await ss::max_concurrent_for_each(
-          nodes_to_finish, 32, [this](model::node_id node) {
+          nodes_to_finish, 32, [this, tick_id](model::node_id node) {
               _tick_in_progress->check();
 
               return _members_frontend
                 .finish_node_reallocations(node, _cur_term->id)
-                .then([node](auto errc) {
+                .then([node, tick_id](auto errc) {
                     if (errc) {
                         vlog(
                           clusterlog.warn,
-                          "submitting finish_reallocations for node {} failed, "
+                          "{} submitting finish_reallocations for node {} "
+                          "failed, "
                           "error: {}",
+                          tick_id,
                           node,
                           errc.message());
                     }
@@ -509,18 +523,19 @@ ss::future<> partition_balancer_backend::do_tick() {
     }
 
     co_await ss::max_concurrent_for_each(
-      plan_data.cancellations, 32, [this](model::ntp& ntp) {
+      plan_data.cancellations, 32, [this, tick_id](model::ntp& ntp) {
           _tick_in_progress->check();
           auto f = _topics_frontend.cancel_moving_partition_replicas(
             ntp,
             model::timeout_clock::now() + add_move_cmd_timeout,
             _cur_term->id);
 
-          return f.then([ntp = std::move(ntp)](auto errc) {
+          return f.then([ntp = std::move(ntp), tick_id](auto errc) {
               if (errc) {
                   vlog(
                     clusterlog.warn,
-                    "submitting {} movement cancellation failed, error: {}",
+                    "{} submitting {} movement cancellation failed, error: {}",
+                    tick_id,
                     ntp,
                     errc.message());
               }
@@ -528,7 +543,9 @@ ss::future<> partition_balancer_backend::do_tick() {
       });
 
     co_await ss::max_concurrent_for_each(
-      plan_data.reassignments, 32, [this](ntp_reassignment& reassignment) {
+      plan_data.reassignments,
+      32,
+      [this, tick_id](ntp_reassignment& reassignment) {
           _tick_in_progress->check();
           auto f = ss::make_ready_future<std::error_code>();
           switch (reassignment.type) {
@@ -554,11 +571,12 @@ ss::future<> partition_balancer_backend::do_tick() {
               break;
           }
           return std::move(f).then(
-            [reassignment = std::move(reassignment)](auto errc) {
+            [reassignment = std::move(reassignment), tick_id](auto errc) {
                 if (errc) {
                     vlog(
                       clusterlog.warn,
-                      "submitting {} reassignment failed, error: {}",
+                      "{} submitting {} reassignment failed, error: {}",
+                      tick_id,
                       reassignment.ntp,
                       errc.message());
                 }
@@ -573,7 +591,8 @@ ss::future<> partition_balancer_backend::do_tick() {
         const auto& node_to_decom = *plan_data.maybe_node_to_autodecommission;
         vlog(
           clusterlog.info,
-          "submitting decommission on unresponsive node: {}",
+          "{} submitting decommission on unresponsive node: {}",
+          tick_id,
           node_to_decom);
 
         auto decom_error = co_await _members_frontend.decommission_node(
@@ -582,7 +601,8 @@ ss::future<> partition_balancer_backend::do_tick() {
         if (decom_error) {
             vlog(
               clusterlog.warn,
-              "node: {}, failed to decommission with error: {}",
+              "{} node: {}, failed to decommission with error: {}",
+              tick_id,
               node_to_decom,
               decom_error);
         }

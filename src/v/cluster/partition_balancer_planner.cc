@@ -203,9 +203,13 @@ private:
 
     friend class partition_balancer_planner;
 
-    request_context(partition_balancer_planner& parent, ss::abort_source& as)
+    request_context(
+      partition_balancer_planner& parent,
+      ss::abort_source& as,
+      const uuid_t& tick_id)
       : _parent(parent)
-      , _as(as) {}
+      , _as(as)
+      , _tick_id(tick_id) {}
 
     bool all_reports_received() const;
 
@@ -282,6 +286,7 @@ private:
     absl::node_hash_set<model::ntp> _cancellations;
     bool _counts_rebalancing_finished = false;
     ss::abort_source& _as;
+    uuid_t _tick_id;
 };
 
 std::pair<uint64_t, uint64_t> partition_balancer_planner::get_node_bytes_info(
@@ -349,7 +354,8 @@ void partition_balancer_planner::init_per_node_state(
           broker.state.get_membership_state()
           == model::membership_state::draining) {
             vlog(/*todo revert to debug*/ clusterlog.info,
-                 "node {}: decommissioning",
+                 "{} node {}: decommissioning",
+                 ctx._tick_id,
                  id);
             ctx.decommissioning_nodes.insert(id);
         }
@@ -369,7 +375,8 @@ void partition_balancer_planner::init_per_node_state(
 
         vlog(
           /*todo revert to debug*/ clusterlog.info,
-          "node {}: {} ms since last heartbeat",
+          "{} node {}: {} ms since last heartbeat",
+          ctx._tick_id,
           id,
           std::chrono::duration_cast<std::chrono::milliseconds>(
             time_since_last_seen)
@@ -378,7 +385,8 @@ void partition_balancer_planner::init_per_node_state(
         if (time_since_last_seen > _config.node_responsiveness_timeout) {
             vlog(
               clusterlog.info,
-              "node {} is unresponsive, time since last status reply: {} ms",
+              "{} node {} is unresponsive, time since last status reply: {} ms",
+              ctx._tick_id,
               id,
               time_since_last_seen / 1ms);
             ctx.all_unavailable_nodes.insert(id);
@@ -387,8 +395,10 @@ void partition_balancer_planner::init_per_node_state(
         if (time_since_last_seen > _config.node_availability_timeout_sec) {
             vlog(
               clusterlog.info,
-              "node {} is unresponsive and unavailable, time since last status "
+              "{} node {} is unresponsive and unavailable, time since last "
+              "status "
               "reply: {} ms",
+              ctx._tick_id,
               id,
               time_since_last_seen / 1ms);
             ctx.timed_out_unavailable_nodes.insert(id);
@@ -448,7 +458,8 @@ void partition_balancer_planner::init_per_node_state(
 
     for (model::node_id id : ctx.all_nodes) {
         if (!ctx.node_disk_reports.contains(id)) {
-            vlog(clusterlog.info, "node {}: no disk report", id);
+            vlog(
+              clusterlog.info, "{} node {}: no disk report", ctx._tick_id, id);
         }
     }
 }
@@ -463,7 +474,8 @@ ss::future<> partition_balancer_planner::init_ntp_sizes_from_health_report(
                   0);
                 vlog(
                   clusterlog.trace,
-                  "ntp {} on node {}: size {}, reclaimable: {}",
+                  "{} ntp {} on node {}: size {}, reclaimable: {}",
+                  ctx._tick_id,
                   ntp,
                   node_report->id,
                   human::bytes(partition.size_bytes),
@@ -541,7 +553,8 @@ ss::future<> partition_balancer_planner::init_ntp_sizes_from_health_report(
     for (const auto& [id, disk] : ctx.node_disk_reports) {
         vlog(
           clusterlog.trace,
-          "after processing in-progress updates, node id {} disk: {}",
+          "{} after processing in-progress updates, node id {} disk: {}",
+          ctx._tick_id,
           id,
           disk);
     }
@@ -588,7 +601,8 @@ bool partition_balancer_planner::request_context::increment_failure_count() {
     } else if (_failed_actions_count == max_logged_failures + 1) {
         vlog(
           clusterlog.info,
-          "too many balancing action failures, won't log anymore");
+          "{} too many balancing action failures, won't log anymore",
+          _tick_id);
         return false;
     } else {
         return false;
@@ -727,7 +741,8 @@ public:
         if (!_cancel_requested) {
             vlog(
               clusterlog.info,
-              "ntp: {}, cancelling move {} -> {}, reason: {}",
+              "{} ntp: {}, cancelling move {} -> {}, reason: {}",
+              _ctx._tick_id,
               ntp(),
               orig_replicas(),
               replicas(),
@@ -765,7 +780,8 @@ public:
                           bs.node_id);
                         vlog(
                           clusterlog.trace,
-                          "after cancelling, node id {} disk: {}",
+                          "{} after cancelling, node id {} disk: {}",
+                          _ctx._tick_id,
                           node_it->first,
                           node_it->second);
                     }
@@ -780,8 +796,9 @@ public:
         if (_ctx.increment_failure_count()) {
             vlog(
               clusterlog.info,
-              "[ntp {}, replicas: {}]: can't change replicas with "
+              "{} [ntp {}, replicas: {}]: can't change replicas with "
               "cancellation: {} (change reason: {})",
+              _ctx._tick_id,
               _ntp,
               _replicas,
               reason,
@@ -864,8 +881,9 @@ public:
 
         vlog(
           clusterlog.info,
-          "[ntp {}, replicas: {}]: can't change replicas: {} (change "
+          "{} [ntp {}, replicas: {}]: can't change replicas: {} (change "
           "reason: {})",
+          _ctx._tick_id,
           _ntp,
           _replicas,
           reason,
@@ -1012,8 +1030,10 @@ auto partition_balancer_planner::request_context::do_with_partition(
             if (!has_quorum(all_unavailable_nodes, orig_replicas)) {
                 vlog(
                   clusterlog.trace,
-                  "[{}] in progress move found to have source replica quorum "
+                  "{} [{}] in progress move found to have source replica "
+                  "quorum "
                   "loss",
+                  _tick_id,
                   ntp);
                 partition part{immutable_partition{
                   ntp,
@@ -1227,14 +1247,15 @@ ss::future<> partition_balancer_planner::request_context::with_partition(
     auto topic = model::topic_namespace_view(ntp);
     auto topic_meta = _parent._state.topics().get_topic_metadata_ref(topic);
     if (!topic_meta) {
-        vlog(clusterlog.warn, "topic {} not found", topic);
+        vlog(clusterlog.warn, "{} topic {} not found", this->_tick_id, topic);
         co_return;
     }
     auto it = topic_meta->get().get_assignments().find(ntp.tp.partition);
     if (it == topic_meta->get().get_assignments().end()) {
         vlog(
           clusterlog.warn,
-          "partition {} of topic {} not found",
+          "{} partition {} of topic {} not found",
+          this->_tick_id,
           ntp.tp.partition,
           topic);
         co_return;
@@ -1318,8 +1339,9 @@ partition_balancer_planner::reassignable_partition::move_replica(
         if (_ctx.increment_failure_count()) {
             vlog(
               clusterlog.info,
-              "ntp {} (sizes: {}, current replicas: {}): "
+              "{} ntp {} (sizes: {}, current replicas: {}): "
               "attempt to move replica {} (reason: {}) failed, error: {}",
+              _ctx._tick_id,
               _ntp,
               _sizes,
               replicas(),
@@ -1334,8 +1356,9 @@ partition_balancer_planner::reassignable_partition::move_replica(
     if (new_node != replica) {
         vlog(
           clusterlog.info,
-          "ntp {} (sizes: {}, orig replicas: {}): "
+          "{} ntp {} (sizes: {}, orig replicas: {}): "
           "scheduling replica move {} -> {}, reason: {}",
+          _ctx._tick_id,
           _ntp,
           _sizes,
           _orig_replicas,
@@ -1369,7 +1392,8 @@ partition_balancer_planner::reassignable_partition::move_replica(
 
             vlog(
               clusterlog.trace,
-              "after scheduling move, node id {} disk: {}",
+              "{} after scheduling move, node id {} disk: {}",
+              _ctx._tick_id,
               from_it->first,
               from_it->second);
         }
@@ -1384,7 +1408,8 @@ partition_balancer_planner::reassignable_partition::move_replica(
 
             vlog(
               clusterlog.trace,
-              "after scheduling move, node id {} disk: {}",
+              "{} after scheduling move, node id {} disk: {}",
+              _ctx._tick_id,
               to_it->first,
               to_it->second);
         }
@@ -1411,7 +1436,8 @@ void partition_balancer_planner::reassignable_partition::revert(
     vassert(err == errc::success, "ntp {}: revert error: {}", _ntp, err);
     vlog(
       clusterlog.info,
-      "ntp {}: reverted previously scheduled move {} -> {}",
+      "{} ntp {}: reverted previously scheduled move {} -> {}",
+      _ctx._tick_id,
       _ntp,
       move.previous()->node_id,
       move.current().node_id);
@@ -1437,7 +1463,8 @@ void partition_balancer_planner::reassignable_partition::revert(
 
         vlog(
           clusterlog.trace,
-          "after reverting move, node id {} disk: {}",
+          "{} after reverting move, node id {} disk: {}",
+          _ctx._tick_id,
           from_it->first,
           from_it->second);
     }
@@ -1453,7 +1480,8 @@ void partition_balancer_planner::reassignable_partition::revert(
 
         vlog(
           clusterlog.trace,
-          "after reverting move, node id {} disk: {}",
+          "{} after reverting move, node id {} disk: {}",
+          _ctx._tick_id,
           to_it->first,
           to_it->second);
     }
@@ -1508,8 +1536,9 @@ void partition_balancer_planner::force_reassignable_partition::
     }
     vlog(
       /*todo revert to debug*/ clusterlog.info,
-      "Attempt to force reconfigure {} with replicas {}, replicas to be "
+      "{} Attempt to force reconfigure {} with replicas {}, replicas to be "
       "removed: {}",
+      _ctx._tick_id,
       ntp(),
       replicas,
       replicas_to_remove);
@@ -1526,8 +1555,9 @@ void partition_balancer_planner::force_reassignable_partition::
         if (_ctx.increment_failure_count()) {
             vlog(
               clusterlog.info,
-              "allocation failure when force moving partition, ntp: {}, "
+              "{} allocation failure when force moving partition, ntp: {}, "
               "replicas {}, error: {}",
+              _ctx._tick_id,
               _ntp,
               replicas,
               _reallocation.error());
@@ -1537,9 +1567,10 @@ void partition_balancer_planner::force_reassignable_partition::
 
     vlog(
       /*todo revert to debug*/ clusterlog.info,
-      "Attempt to force reconfigure {} with replicas {}, replicas to be "
+      "{} Attempt to force reconfigure {} with replicas {}, replicas to be "
       "removed: {} "
       "successful, new assignment: {}",
+      _ctx._tick_id,
       ntp(),
       replicas,
       replicas_to_remove,
@@ -2109,7 +2140,8 @@ ss::future<> partition_balancer_planner::get_counts_rebalancing_actions(
     double cur_objective = calc_objective();
     vlog(
       clusterlog.info,
-      "counts rebalancing objective: {:.6} -> {:.6}",
+      "{} counts rebalancing objective: {:.6} -> {:.6}",
+      ctx._tick_id,
       orig_objective,
       cur_objective);
 
@@ -2213,8 +2245,9 @@ partition_balancer_planner::do_get_auto_decommission_actions(
                       if (time_since_last_seen > out_time_since_last_seen) {
                           vlog(
                             clusterlog.info,
-                            "unexpected state: time since last seen {} is "
+                            "{} unexpected state: time since last seen {} is "
                             "greater than uptime {}",
+                            params.tick_id,
                             time_since_last_seen,
                             out_time_since_last_seen);
                       }
@@ -2292,7 +2325,10 @@ void partition_balancer_planner::get_auto_decommission_actions(
   request_context& ctx, const cluster_health_report& health_report) {
     const auto& auto_decom_timeout = ctx.config().node_autodecommission_timeout;
     if (!auto_decom_timeout) {
-        vlog(clusterlog.trace, "auto_decommissioning is not enabled, skipping");
+        vlog(
+          clusterlog.trace,
+          "{} auto_decommissioning is not enabled, skipping",
+          ctx._tick_id);
         return;
     }
 
@@ -2306,7 +2342,8 @@ void partition_balancer_planner::get_auto_decommission_actions(
         auto node_uptime = report->local_state.uptime;
         vlog(
           /*todo revert to debug*/ clusterlog.info,
-          "liveness report from node: {}, with uptime: {}, and report: {}",
+          "{} liveness report from node: {}, with uptime: {}, and report: {}",
+          ctx._tick_id,
           report->id,
           node_uptime,
           report->node_liveness_report);
@@ -2322,11 +2359,13 @@ void partition_balancer_planner::get_auto_decommission_actions(
        .auto_decom_report_map = std::move(auto_decom_report_map),
        .cluster_members = std::move(member_nodes),
        .decommissioning_nodes = ctx.decommissioning_nodes,
-       .maintenance_mode_nodes = ctx.maintenance_mode_nodes});
+       .maintenance_mode_nodes = ctx.maintenance_mode_nodes,
+       .tick_id = ctx._tick_id});
 
     vlog(
       /*todo revert to debug*/ clusterlog.info,
-      "found candidates to auto decommission: {}",
+      "{} found candidates to auto decommission: {}",
+      ctx._tick_id,
       nodes_to_auto_decommission);
 
     auto node_to_auto_decommission = do_postprocess_auto_decommission_actions(
@@ -2385,8 +2424,10 @@ void partition_balancer_planner::request_context::collect_actions(
 
 ss::future<partition_balancer_planner::plan_data>
 partition_balancer_planner::plan_actions(
-  const cluster_health_report& health_report, ss::abort_source& as) {
-    request_context ctx(*this, as);
+  const cluster_health_report& health_report,
+  ss::abort_source& as,
+  const uuid_t& tick_id) {
+    request_context ctx(*this, as, tick_id);
     plan_data result;
 
     init_per_node_state(health_report, ctx, result);

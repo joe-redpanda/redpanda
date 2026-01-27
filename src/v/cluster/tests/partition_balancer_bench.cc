@@ -36,7 +36,7 @@ PERF_TEST_C(partition_balancer_planner_fixture, unavailable_nodes) {
 
     abort_source as;
     perf_tests::start_measuring_time();
-    auto plan_data = co_await planner.plan_actions(hr, as);
+    auto plan_data = co_await planner.plan_actions(hr, as, uuid_t::create());
     perf_tests::stop_measuring_time();
 
     const auto& reassignments = plan_data.reassignments;
@@ -91,7 +91,7 @@ PERF_TEST_C(partition_balancer_planner_fixture, counts_rebalancing) {
 
     abort_source as;
     perf_tests::start_measuring_time();
-    auto plan_data = co_await planner.plan_actions(hr, as);
+    auto plan_data = co_await planner.plan_actions(hr, as, uuid_t::create());
     perf_tests::stop_measuring_time();
 
     const auto& reassignments = plan_data.reassignments;
