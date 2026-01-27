@@ -78,7 +78,7 @@ FIXTURE_TEST(test_stable, partition_balancer_planner_fixture) {
     populate_node_status_table().get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
     check_violations(plan_data, {}, {});
     BOOST_REQUIRE_EQUAL(plan_data.reassignments.size(), 0);
 }
@@ -108,7 +108,7 @@ FIXTURE_TEST(test_node_down, partition_balancer_planner_fixture) {
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, unavailable_nodes, {});
 
@@ -146,7 +146,7 @@ FIXTURE_TEST(test_no_quorum_for_partition, partition_balancer_planner_fixture) {
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
     BOOST_REQUIRE_EQUAL(plan_data.reassignments.size(), 0);
 }
 
@@ -180,7 +180,7 @@ FIXTURE_TEST(
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, unavailable_nodes, {});
 
@@ -219,7 +219,7 @@ FIXTURE_TEST(
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, unavailable_nodes, {});
     // No nodes within the max disk usage ratio.
@@ -228,7 +228,7 @@ FIXTURE_TEST(
     // Bump the max disk usage ratio and try again
     auto new_planner = make_planner(
       model::partition_autobalancing_mode::continuous, 2, false, 0.95);
-    plan_data = new_planner.plan_actions(hr, as).get();
+    plan_data = new_planner.plan_actions(hr, as, uuid_t::create()).get();
     check_violations(plan_data, unavailable_nodes, {});
     BOOST_REQUIRE_EQUAL(plan_data.reassignments.size(), 1);
 
@@ -265,7 +265,7 @@ FIXTURE_TEST(
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, unavailable_nodes, full_nodes);
 
@@ -297,7 +297,7 @@ FIXTURE_TEST(test_move_from_full_node, partition_balancer_planner_fixture) {
     populate_node_status_table().get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, {}, full_nodes);
 
@@ -338,7 +338,7 @@ FIXTURE_TEST(
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, unavailable_nodes, {});
 
@@ -386,7 +386,7 @@ FIXTURE_TEST(
     populate_node_status_table().get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
     check_violations(plan_data, {}, full_nodes);
 
     const auto& reassignments = plan_data.reassignments;
@@ -433,7 +433,7 @@ FIXTURE_TEST(
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
     check_violations(plan_data, unavailable_nodes, full_nodes);
 
     const auto& reassignments = plan_data.reassignments;
@@ -491,7 +491,7 @@ FIXTURE_TEST(test_move_part_of_replicas, partition_balancer_planner_fixture) {
       ss::make_lw_shared<const cluster::node_health_report>(std::move(nr_2)));
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, {}, full_nodes);
 
@@ -552,7 +552,7 @@ FIXTURE_TEST(
     hr.node_reports[0] = ss::make_foreign(
       ss::make_lw_shared<const cluster::node_health_report>(std::move(nr_0)));
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, {}, full_nodes);
 
@@ -604,7 +604,7 @@ FIXTURE_TEST(test_lot_of_partitions, partition_balancer_planner_fixture) {
     const size_t max_concurrent_actions = 50;
     auto planner = make_planner(
       model::partition_autobalancing_mode::continuous, max_concurrent_actions);
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
     check_violations(plan_data, unavailable_nodes, {});
 
     const auto& reassignments = plan_data.reassignments;
@@ -663,7 +663,7 @@ FIXTURE_TEST(test_node_cancelation, partition_balancer_planner_fixture) {
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner();
-    auto planner_result = planner.plan_actions(hr, as).get();
+    auto planner_result = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     BOOST_REQUIRE_EQUAL(planner_result.reassignments.size(), 1);
 
@@ -685,7 +685,7 @@ FIXTURE_TEST(test_node_cancelation, partition_balancer_planner_fixture) {
     unavailable_nodes = {0, 3};
     populate_node_status_table(unavailable_nodes).get();
 
-    planner_result = planner.plan_actions(hr, as).get();
+    planner_result = planner.plan_actions(hr, as, uuid_t::create()).get();
     BOOST_REQUIRE(planner_result.reassignments.size() == 0);
     BOOST_REQUIRE(planner_result.cancellations.size() == 1);
     BOOST_REQUIRE(planner_result.cancellations.front() == ntp);
@@ -729,7 +729,7 @@ FIXTURE_TEST(test_rack_awareness, partition_balancer_planner_fixture) {
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, unavailable_nodes, {});
 
@@ -764,7 +764,7 @@ FIXTURE_TEST(
     set_maintenance_mode(model::node_id{3});
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, unavailable_nodes, {});
     BOOST_REQUIRE_EQUAL(plan_data.reassignments.size(), 1);
@@ -796,7 +796,7 @@ FIXTURE_TEST(
     set_decommissioning(model::node_id{3});
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, unavailable_nodes, {});
     BOOST_REQUIRE_EQUAL(plan_data.reassignments.size(), 0);
@@ -826,7 +826,7 @@ FIXTURE_TEST(
     set_decommissioning(model::node_id{0});
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, unavailable_nodes, {});
     BOOST_REQUIRE_EQUAL(plan_data.reassignments.size(), 1);
@@ -898,7 +898,7 @@ FIXTURE_TEST(test_rack_awareness_repair, partition_balancer_planner_fixture) {
     populate_node_status_table().get();
 
     auto planner = make_planner();
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, {}, {});
     BOOST_REQUIRE_EQUAL(plan_data.reassignments.size(), 2);
@@ -929,7 +929,7 @@ FIXTURE_TEST(balancing_modes, partition_balancer_planner_fixture) {
     populate_node_status_table(unavailable_nodes).get();
 
     auto planner = make_planner(model::partition_autobalancing_mode::node_add);
-    auto plan_data = planner.plan_actions(hr, as).get();
+    auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
     check_violations(plan_data, {}, {});
     BOOST_REQUIRE_EQUAL(plan_data.reassignments.size(), 0);
@@ -986,7 +986,7 @@ FIXTURE_TEST(
               model::partition_autobalancing_mode::node_add, 50, true);
 
             try {
-                auto plan_data = planner.plan_actions(hr, as).get();
+                auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
                 successes += 1;
                 reassignments += plan_data.reassignments.size();
             } catch (concurrent_modification_error&) {

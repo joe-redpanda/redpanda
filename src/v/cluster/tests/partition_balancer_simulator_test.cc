@@ -267,7 +267,7 @@ public:
 
         ss::abort_source as;
 
-        auto plan_data = planner.plan_actions(hr, as).get();
+        auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
 
         return plan_data;
     }
