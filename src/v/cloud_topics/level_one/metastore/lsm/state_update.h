@@ -76,8 +76,10 @@ struct replace_objects_db_update {
 };
 
 struct set_start_offset_db_update {
-    ss::future<std::expected<void, db_update_error>>
-    build_rows(state_reader&, chunked_vector<write_batch_row>&) const;
+    ss::future<std::expected<void, db_update_error>> build_rows(
+      state_reader&,
+      chunked_vector<write_batch_row>&,
+      bool* is_no_op = nullptr) const;
 
     model::topic_id_partition tp;
     kafka::offset new_start_offset;

@@ -707,8 +707,7 @@ TEST_F(ReplicatedMetastoreTest, TestSetStartOffset) {
 
     // Test setting below the start.
     auto set_start_invalid = meta.set_start_offset(tp, o{0}).get();
-    ASSERT_FALSE(set_start_invalid.has_value());
-    ASSERT_EQ(set_start_invalid.error(), metastore::errc::invalid_request);
+    ASSERT_TRUE(set_start_invalid.has_value());
     ASSERT_NO_FATAL_FAILURE(assert_get_offsets(o{50}, o{100}));
 
     // Test setting start offset for missing ntp

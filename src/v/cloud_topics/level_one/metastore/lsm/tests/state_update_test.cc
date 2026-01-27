@@ -1044,8 +1044,8 @@ TEST_F(StateUpdateTest, TestSetStartOffsetWithinExtent) {
     verify_object_exists(oid, 1024, /*removed_data_size=*/0);
 }
 
-TEST_F(StateUpdateTest, TestSetStartOffsetRejectsBelowStart) {
-    // Set up partition with start_offset=100.
+TEST_F(StateUpdateTest, TestSetStartOffsetBelowStartIsNoOp) {
+    // Set up partition with start_offset=50.
     add_objects(
       {terms(tidp0, {{0, 1}})},
       make_object(make_oid(), tp(tidp0, 0, 99).pos(0, 1023)));
@@ -1060,8 +1060,11 @@ TEST_F(StateUpdateTest, TestSetStartOffsetRejectsBelowStart) {
     };
     auto reader = make_reader();
     chunked_vector<write_batch_row> rows;
-    auto result = update.build_rows(reader, rows).get();
-    ASSERT_FALSE(result.has_value());
+    bool is_no_op = false;
+    auto result = update.build_rows(reader, rows, &is_no_op).get();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(is_no_op);
+    EXPECT_TRUE(rows.empty());
 }
 
 TEST_F(StateUpdateTest, TestSetStartOffsetRejectsAboveNext) {

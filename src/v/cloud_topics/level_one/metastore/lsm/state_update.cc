@@ -769,7 +769,9 @@ replace_objects_db_update::validate_inputs() const {
 
 ss::future<std::expected<void, db_update_error>>
 set_start_offset_db_update::build_rows(
-  state_reader& reader, chunked_vector<write_batch_row>& out) const {
+  state_reader& reader,
+  chunked_vector<write_batch_row>& out,
+  bool* is_no_op) const {
     auto meta_res = co_await reader.get_metadata(tp);
     if (!meta_res.has_value()) {
         co_return std::unexpected(wrap_read_err(
@@ -782,20 +784,20 @@ set_start_offset_db_update::build_rows(
     const auto& metadata = meta_res.value().value();
 
     // Validate the current offset range.
-    if (
-      new_start_offset < metadata.start_offset
-      || new_start_offset > metadata.next_offset) {
+    if (new_start_offset > metadata.next_offset) {
         co_return std::unexpected(db_update_error(
           invalid_update,
           fmt::format(
-            "Invalid start offset {} for partition {} (current range: [{}, "
-            "{}])",
+            "Requested start offset for {} is above the next offset: {} > {}",
             new_start_offset,
             tp,
-            metadata.start_offset,
             metadata.next_offset)));
     }
-    if (metadata.start_offset >= new_start_offset) {
+    auto no_op = new_start_offset <= metadata.start_offset;
+    if (is_no_op) {
+        *is_no_op = no_op;
+    }
+    if (no_op) {
         co_return std::expected<void, db_update_error>{};
     }
 
