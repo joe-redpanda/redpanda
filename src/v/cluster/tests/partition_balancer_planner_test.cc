@@ -986,7 +986,8 @@ FIXTURE_TEST(
               model::partition_autobalancing_mode::node_add, 50, true);
 
             try {
-                auto plan_data = planner.plan_actions(hr, as, uuid_t::create()).get();
+                auto plan_data
+                  = planner.plan_actions(hr, as, uuid_t::create()).get();
                 successes += 1;
                 reassignments += plan_data.reassignments.size();
             } catch (concurrent_modification_error&) {

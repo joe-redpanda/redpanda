@@ -104,8 +104,8 @@ public:
         void maybe_add_reallocation_failure();
     };
 
-    ss::future<plan_data>
-    plan_actions(const cluster_health_report&, ss::abort_source&, const uuid_t& tick_id);
+    ss::future<plan_data> plan_actions(
+      const cluster_health_report&, ss::abort_source&, const uuid_t& tick_id);
 
 private:
     class request_context;
