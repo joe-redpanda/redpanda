@@ -165,13 +165,13 @@ void partition_balancer_backend::maybe_rearm_timer(bool now) {
         schedule_at = std::min(schedule_at, _timer.get_timeout());
         _timer.rearm(schedule_at);
         vlog(
-          clusterlog.debug,
+          /*todo revert to debug*/ clusterlog.info,
           "Tick rescheduled to run in: {}ms",
           duration_ms(schedule_at));
     } else if (_lock.waiters() == 0) {
         _timer.arm(schedule_at);
         vlog(
-          clusterlog.debug,
+          /*todo revert to debug*/ clusterlog.info,
           "Tick scheduled to run in: {}ms",
           duration_ms(schedule_at));
     }
@@ -195,7 +195,7 @@ void partition_balancer_backend::on_members_update(
 
     if (state == model::membership_state::draining) {
         vlog(
-          clusterlog.debug,
+          /*todo revert to debug*/ clusterlog.info,
           "node {} state notification: {}, scheduling tick",
           id,
           state);
@@ -208,7 +208,7 @@ void partition_balancer_backend::on_members_update(
       state == model::membership_state::active
       && _health_monitor.contains_node_health_report(id)) {
         vlog(
-          clusterlog.debug,
+          /*todo revert to debug*/ clusterlog.info,
           "node {} state notification: {}, scheduling tick as health report "
           "for node is already present",
           id,
@@ -236,7 +236,7 @@ void partition_balancer_backend::on_topic_table_update() {
                             * double(last_in_progress_updates);
     if (schedule_now) {
         vlog(
-          clusterlog.debug,
+          /*todo revert to debug*/ clusterlog.info,
           "current updates in progress: {} (after last tick: {}), "
           "scheduling tick",
           current_in_progress_updates,
@@ -265,7 +265,7 @@ void partition_balancer_backend::on_health_monitor_update(
 
     if (!old_report) {
         vlog(
-          clusterlog.debug,
+          /*todo revert to debug*/ clusterlog.info,
           "health report for node {} appeared, scheduling tick",
           report.id);
 
@@ -273,7 +273,7 @@ void partition_balancer_backend::on_health_monitor_update(
     } else if (
       !has_log_data_size(*old_report.value()) && has_log_data_size(report)) {
         vlog(
-          clusterlog.debug,
+          /*todo revert to debug*/ clusterlog.info,
           "log data size for node {} appeared, scheduling tick",
           report.id);
 
@@ -288,7 +288,7 @@ void partition_balancer_backend::tick() {
           [this] {
               if (_tick_in_progress) {
                   vlog(
-                    clusterlog.debug,
+                    /*todo revert to debug*/ clusterlog.info,
                     "skipping tick, tick already in progress");
                   return ss::now();
               }
@@ -306,7 +306,7 @@ void partition_balancer_backend::tick() {
           .handle_exception_type(
             [this](topic_table::concurrent_modification_error& e) {
                 vlog(
-                  clusterlog.debug,
+                  /*todo revert to debug*/ clusterlog.info,
                   "concurrent modification of topics table: {}, rescheduling "
                   "tick",
                   e.what());
@@ -314,7 +314,7 @@ void partition_balancer_backend::tick() {
             })
           .handle_exception_type([this](iterator_stability_violation& e) {
               vlog(
-                clusterlog.debug,
+                /*todo revert to debug*/ clusterlog.info,
                 "iterator_stability_violation: {}, rescheduling tick",
                 e.what());
               maybe_rearm_timer(true);
@@ -340,18 +340,20 @@ ss::future<> partition_balancer_backend::stop() {
 
 ss::future<> partition_balancer_backend::do_tick() {
     if (!is_enabled()) {
-        vlog(clusterlog.debug, "not leader, skipping tick");
+        vlog(/*todo revert to debug*/ clusterlog.info,
+             "not leader, skipping tick");
         co_return;
     }
 
     auto units = co_await _lock.get_units();
 
     if (!_raft0->is_leader()) {
-        vlog(clusterlog.debug, "lost leadership, exiting");
+        vlog(/*todo revert to debug*/ clusterlog.info,
+             "lost leadership, exiting");
         co_return;
     }
 
-    vlog(clusterlog.debug, "tick");
+    vlog(/*todo revert to debug*/ clusterlog.info, "tick");
 
     if (!_cur_term || _raft0->term() != _cur_term->id) {
         _cur_term = per_term_state(_raft0->term());
@@ -362,7 +364,8 @@ ss::future<> partition_balancer_backend::do_tick() {
       model::timeout_clock::now() + controller_stm_sync_timeout);
 
     if (_raft0->term() != _cur_term->id) {
-        vlog(clusterlog.debug, "lost leadership, exiting");
+        vlog(/*todo revert to debug*/ clusterlog.info,
+             "lost leadership, exiting");
         // TODO: add term checks to planner
         co_return;
     }
@@ -384,7 +387,8 @@ ss::future<> partition_balancer_backend::do_tick() {
     }
 
     if (_raft0->term() != _cur_term->id) {
-        vlog(clusterlog.debug, "lost leadership, exiting");
+        vlog(/*todo revert to debug*/ clusterlog.info,
+             "lost leadership, exiting");
         co_return;
     }
 
