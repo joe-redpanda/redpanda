@@ -316,3 +316,111 @@ BOOST_AUTO_TEST_CASE(test_get_group_claim_comma_with_spaces) {
     BOOST_CHECK_EQUAL(groups[1], " developers");
     BOOST_CHECK_EQUAL(groups[2], " users");
 }
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_none_simple) {
+    // Test: nested_group_behavior::none with simple group name
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "admin", security::oidc::nested_group_behavior::none);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "admin");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_none_nested) {
+    // Test: nested_group_behavior::none with nested group name
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "parent/child/admin", security::oidc::nested_group_behavior::none);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "parent/child/admin");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_none_empty) {
+    // Test: nested_group_behavior::none with empty string
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "", security::oidc::nested_group_behavior::none);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_none_trailing_slash) {
+    // Test: nested_group_behavior::none with trailing slash
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "parent/child/", security::oidc::nested_group_behavior::none);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "parent/child/");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_none_leading_slash) {
+    // Test: nested_group_behavior::none with leading slash
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "/admin", security::oidc::nested_group_behavior::none);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "/admin");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_suffix_simple) {
+    // Test: nested_group_behavior::suffix with simple group name (no slashes)
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "admin", security::oidc::nested_group_behavior::suffix);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "admin");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_suffix_single_level) {
+    // Test: nested_group_behavior::suffix with single-level nested group
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "parent/child", security::oidc::nested_group_behavior::suffix);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "child");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_suffix_multi_level) {
+    // Test: nested_group_behavior::suffix with multi-level nested group
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "a/b/c/d", security::oidc::nested_group_behavior::suffix);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "d");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_suffix_trailing_slash) {
+    // Test: nested_group_behavior::suffix with trailing slash
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "parent/child/", security::oidc::nested_group_behavior::suffix);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_suffix_leading_slash) {
+    // Test: nested_group_behavior::suffix with leading slash
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "/admin", security::oidc::nested_group_behavior::suffix);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "admin");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_suffix_only_slash) {
+    // Test: nested_group_behavior::suffix with only slash
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "/", security::oidc::nested_group_behavior::suffix);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "");
+}
+
+BOOST_AUTO_TEST_CASE(test_apply_nested_group_policy_suffix_empty) {
+    // Test: nested_group_behavior::suffix with empty string
+    auto principal = security::oidc::detail::apply_nested_group_policy(
+      "", security::oidc::nested_group_behavior::suffix);
+
+    BOOST_CHECK_EQUAL(principal.type(), security::principal_type::group);
+    BOOST_CHECK_EQUAL(principal.name(), "");
+}
