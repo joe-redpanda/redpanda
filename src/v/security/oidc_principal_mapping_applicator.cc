@@ -93,8 +93,24 @@ group_policy_apply(const group_claim_policy& policy, const jwt& jwt) {
             }));
     }
 
-    // Will do error checking here
-    return chunked_vector<acl_principal>{};
+    if (group_claim.error() == errc::group_claim_not_found) {
+        if (auto claim_names_groups = jwt.claim<std::string_view>(
+              json::Pointer("/_claim_names/groups"));
+            claim_names_groups) {
+            vlog(
+              seclog.warn,
+              "Azure AD group overage detected: JWT contains "
+              "_claim_names.groups instead of actual groups (occurs when "
+              "user has >200 groups). Redpanda does not support fetching "
+              "groups from external endpoints. Configure Azure AD to limit "
+              "groups in the token or use security group filtering");
+        }
+
+        vlog(seclog.debug, "Treating missing group claim as empty groups");
+        return chunked_vector<acl_principal>{};
+    } else {
+        return std::unexpected(group_claim.error());
+    }
 }
 
 } // namespace security::oidc
