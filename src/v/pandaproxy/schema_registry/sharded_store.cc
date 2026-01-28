@@ -236,7 +236,8 @@ ss::future<> sharded_store::process_marked_schemas() {
                       return ss::now();
                   }
                   return make_canonical_schema(
-                           {{}, std::move(schema).assume_value()},
+                           {context_subject{id.ctx, subject{}},
+                            std::move(schema).assume_value()},
                            normalize::no,
                            false)
                     .then([id, &store](auto canonical) {

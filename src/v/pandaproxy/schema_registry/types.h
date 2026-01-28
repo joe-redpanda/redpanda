@@ -273,7 +273,7 @@ struct schema_reference {
     operator<(const schema_reference& lhs, const schema_reference& rhs);
 
     ss::sstring name;
-    context_subject sub{invalid_subject};
+    context_subject_reference sub{invalid_subject, is_qualified::no};
     schema_version version{invalid_schema_version};
 };
 
