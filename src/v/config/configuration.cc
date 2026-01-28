@@ -3279,7 +3279,7 @@ configuration::configuration()
       15min)
   , partition_autobalancing_node_autodecommission_timeout_sec(
       *this,
-      "partition_autobalancing_node_autodecommission_time",
+      "partition_autobalancing_node_autodecommission_timeout_sec",
       "When a node is unavailable for at least this timeout duration, it "
       "triggers Redpanda to decommission the node. This property "
       "applies only when `partition_autobalancing_mode` is set to "
