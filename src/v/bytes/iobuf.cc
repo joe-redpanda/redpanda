@@ -182,7 +182,8 @@ std::strong_ordering iobuf::operator<=>(const iobuf& o) const {
 }
 
 bool iobuf::operator==(std::string_view o) const {
-    return _size == o.size() && (*this <=> o) == std::strong_ordering::equal;
+    return size_bytes() == o.size()
+           && (*this <=> o) == std::strong_ordering::equal;
 }
 
 std::strong_ordering iobuf::operator<=>(std::string_view o) const {

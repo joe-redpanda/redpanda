@@ -862,7 +862,6 @@ SEASTAR_THREAD_TEST_CASE(iobuf_spaceship_string_view) {
     // sources of bugs as the comparison is done fragment by fragment.
     iobuf buf = iobuf::from("ab");
     buf.append_fragments(iobuf::from("cd"));
-    // buf contains "abcd" across two fragments
 
     // Equal comparison
     BOOST_CHECK(
@@ -889,7 +888,6 @@ SEASTAR_THREAD_TEST_CASE(iobuf_spaceship_string_view) {
     buf2.append_fragments(iobuf::from("a"));
     buf2.append_fragments(iobuf::from("b"));
     buf2.append_fragments(iobuf::from("c"));
-    // buf2 = "abc"
 
     BOOST_CHECK(
       (buf2 <=> std::string_view("abc")) == std::strong_ordering::equal);
@@ -902,7 +900,6 @@ SEASTAR_THREAD_TEST_CASE(iobuf_spaceship_string_view) {
     iobuf buf3;
     buf3.append_fragments(iobuf::from("xx"));
     buf3.append_fragments(iobuf::from("yy"));
-    // buf3 = "xxyy"
 
     BOOST_CHECK(
       (buf3 <=> std::string_view("xxyy")) == std::strong_ordering::equal);
@@ -915,7 +912,6 @@ SEASTAR_THREAD_TEST_CASE(iobuf_spaceship_string_view) {
     iobuf buf4;
     buf4.append_fragments(iobuf::from("b"));
     buf4.append_fragments(iobuf::from("a"));
-    // buf4 = "ba"
     BOOST_CHECK(
       (buf4 <=> std::string_view("ax")) == std::strong_ordering::greater);
 
