@@ -28,7 +28,12 @@ from rptest.clients.kcl import RawKCL
 from rptest.clients.rpk import RpkException, RpkTool
 from rptest.services.admin import Admin
 from rptest.services.cluster import cluster
-from rptest.services.redpanda import LoggingConfig, RESTART_LOG_ALLOW_LIST, SISettings
+from rptest.services.redpanda import (
+    LoggingConfig,
+    RESTART_LOG_ALLOW_LIST,
+    SISettings,
+    ClusterNode,
+)
 from rptest.tests.redpanda_test import RedpandaTest
 from rptest.util import expect_exception
 
@@ -183,7 +188,30 @@ class QuotaOutput(NamedTuple):
         return cls.from_dict(json.loads(out))
 
 
-class QuotaManagementTest(RedpandaTest):
+class QuotaManagementUtils:
+    def describe(self, *args: Any, **kwargs: Any) -> QuotaOutput:
+        res = self.rpk.describe_cluster_quotas(*args, **kwargs)
+        return QuotaOutput.from_dict(res)
+
+    def alter(self, *args: Any, with_retries: bool = False, **kwargs: Any):
+        if with_retries:
+            wait_until(
+                lambda: self.rpk.alter_cluster_quotas(*args, **kwargs)["status"]
+                == "OK",
+                timeout_sec=10,
+                backoff_sec=1,
+                err_msg="failed to run rpk.alter_cluster_quotas",
+            )
+        else:
+            res = self.rpk.alter_cluster_quotas(*args, **kwargs)
+            assert res["status"] == "OK", f"Alter failed with result: {res}"
+
+    @staticmethod
+    def _assert_equal(got: Any, expected: Any):
+        assert got == expected, f"Mismatch.\n\tGot:\t\t{got}\n\tExpected:\t{expected}"
+
+
+class QuotaManagementTest(RedpandaTest, QuotaManagementUtils):
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, log_config=log_config, **kwargs)
 
@@ -300,18 +328,6 @@ Quota configs for client-id 'custom-producer' are producer_byte_rate=20480.0"""
         )
         expected = "Quota configs for user-principal 'custom-user-3', the default client-id are producer_byte_rate=20483.0"
         assert_outputs_equal(out, expected)
-
-    def describe(self, *args: Any, **kwargs: Any) -> QuotaOutput:
-        res = self.rpk.describe_cluster_quotas(*args, **kwargs)
-        return QuotaOutput.from_dict(res)
-
-    def alter(self, *args: Any, **kwargs: Any):
-        res = self.rpk.alter_cluster_quotas(*args, **kwargs)
-        assert res["status"] == "OK", f"Alter failed with result: {res}"
-
-    @staticmethod
-    def _assert_equal(got: Any, expected: Any):
-        assert got == expected, f"Mismatch.\n\tGot:\t\t{got}\n\tExpected:\t{expected}"
 
     @cluster(num_nodes=1)
     def test_describe_default(self):
@@ -745,13 +761,40 @@ Quota configs for client-id 'custom-producer' are producer_byte_rate=20480.0"""
         )
 
 
-class QuotaManagementUpgradeTest(EndToEndTest):
+class QuotaManagementUpgradeTest(EndToEndTest, QuotaManagementUtils):
     """
     Verify that user quota clients work as expected during an upgrade
     """
 
     def __init__(self, test_context):
         super().__init__(test_context=test_context)
+
+    def transfer_leadership(self, new_leader: ClusterNode):
+        """
+        Request leadership transfer of the controller and check that it completes successfully.
+        """
+        self.logger.debug(
+            f"Request transferring leadership to {new_leader.account.hostname}"
+        )
+        target_id = self.redpanda.node_id(new_leader, force_refresh=True)
+
+        admin = Admin(self.redpanda)
+
+        leader_id = admin.await_stable_leader(
+            namespace="redpanda", topic="controller", partition=0
+        )
+        self.logger.debug(f"Current leader {leader_id}")
+
+        if leader_id == target_id:
+            return
+
+        self.logger.debug(f"Transferring leadership to {new_leader.account.hostname}")
+        admin.transfer_leadership_to(
+            namespace="redpanda", topic="controller", partition=0, target_id=target_id
+        )
+        admin.await_stable_leader(
+            namespace="redpanda", topic="controller", check=lambda id: id == target_id
+        )
 
     @cluster(num_nodes=2, log_allow_list=RESTART_LOG_ALLOW_LIST)
     def test_upgrade(self):
@@ -817,3 +860,145 @@ class QuotaManagementUpgradeTest(EndToEndTest):
         assert len(res["Entries"]) == 1, f"Unexpected entries: {res}"
         entry = res["Entries"][0]
         assert entry["ErrorCode"] == 0, f"Unexpected entry: {entry}"
+
+    @cluster(num_nodes=2, log_allow_list=RESTART_LOG_ALLOW_LIST)
+    def test_quotas_during_upgrade(self):
+        install_opts = InstallOptions(version=RedpandaVersionTriple((25, 3, 1)))
+        self.start_redpanda(
+            num_nodes=2,
+            si_settings=SISettings(test_context=self.test_context),
+            install_opts=install_opts,
+        )
+
+        self.rpk = RpkTool(self.redpanda)
+
+        first_node = self.redpanda.nodes[0]
+        second_node = self.redpanda.nodes[1]
+
+        self.logger.debug("Add a default quota and two exact ones as a base setup")
+        self.alter(default=["client-id"], add=["producer_byte_rate=1111"])
+        self.alter(name=["client-id=a-consumer"], add=["consumer_byte_rate=2222"])
+        self.alter(
+            name=["client-id-prefix=admins-"], add=["controller_mutation_rate=3333"]
+        )
+
+        def check_all_nodes(entity_type: str, expected_quota: Quota):
+            for n in self.redpanda.nodes:
+                self.logger.debug(f"Waiting for quota '{expected_quota}' in node {n}")
+
+                def quota_in_node():
+                    got = self.describe(any=[entity_type])
+                    self.logger.debug(f"describe result: {got}")
+                    return expected_quota in got.quotas
+
+                wait_until(
+                    quota_in_node,
+                    timeout_sec=5,
+                    err_msg=f"Could not find expected quota '{expected_quota}'",
+                )
+
+        default_quota = Quota(
+            entity=QuotaEntity.client_id_default(),
+            values=[QuotaValue.producer_byte_rate("1111")],
+        )
+        consumer_a_quota = Quota(
+            entity=QuotaEntity.client_id("a-consumer"),
+            values=[QuotaValue.consumer_byte_rate("2222")],
+        )
+        admins_quota = Quota(
+            entity=QuotaEntity.client_id_prefix("admins-"),
+            values=[QuotaValue.controller_mutation_rate("3333")],
+        )
+
+        all_quotas = {
+            "default": ("client-id", default_quota),
+            "consumer_a": ("client-id", consumer_a_quota),
+            "admins": ("client-id-prefix", admins_quota),
+        }
+
+        # Check all quotas exist on every node
+        for etype, quota in all_quotas.values():
+            check_all_nodes(etype, quota)
+
+        # Upgrade one node to the head version.
+        self.redpanda._installer.install(self.redpanda.nodes, RedpandaInstaller.HEAD)
+        self.redpanda.restart_nodes([first_node])
+        wait_for_num_versions(self.redpanda, 2)
+
+        # Make some changes in quotas in the new version
+        self.transfer_leadership(first_node)
+
+        # First call after restart is run with retries because it takes some time for everything to stabilize
+        self.alter(
+            with_retries=True,
+            default=["client-id"],
+            add=["producer_byte_rate=1112"],
+            node=first_node,
+        )
+        self.alter(
+            name=["client-id=b-consumer"],
+            add=["consumer_byte_rate=2223"],
+            node=first_node,
+        )
+        self.alter(
+            name=["client-id-prefix=superuser-"],
+            add=["controller_mutation_rate=3334"],
+            node=first_node,
+        )
+
+        # Make some changes in quotas in the old version
+        self.transfer_leadership(second_node)
+
+        self.alter(
+            name=["client-id=c-consumer"],
+            add=["producer_byte_rate=2224"],
+            node=second_node,
+        )
+
+        new_default_quota = Quota(
+            entity=QuotaEntity.client_id_default(),
+            values=[QuotaValue.producer_byte_rate("1112")],
+        )
+        consumer_b_quota = Quota(
+            entity=QuotaEntity.client_id("b-consumer"),
+            values=[QuotaValue.consumer_byte_rate("2223")],
+        )
+        superusers_quota = Quota(
+            entity=QuotaEntity.client_id_prefix("superuser-"),
+            values=[QuotaValue.controller_mutation_rate("3334")],
+        )
+
+        # Overwrite old default
+        all_quotas["default"] = ("client-id", new_default_quota)
+        # Add new quotas
+        all_quotas["consumer_b"] = ("client-id", consumer_b_quota)
+        all_quotas["superusers"] = ("client-id-prefix", superusers_quota)
+
+        # Check all quotas exist on every node
+        for etype, quota in all_quotas.values():
+            check_all_nodes(etype, quota)
+
+        # Upgrade the second node to the head version, as well.
+        self.redpanda.restart_nodes([second_node])
+        wait_for_num_versions(self.redpanda, 1)
+
+        self.transfer_leadership(second_node)
+        # First call after restart is run with retries because it takes some time for everything to stabilize
+        self.alter(
+            with_retries=True,
+            default=["user"],
+            add=["producer_byte_rate=1113"],
+            node=second_node,
+        )
+
+        default_user_quota = Quota(
+            entity=QuotaEntity.user_default(),
+            values=[QuotaValue.producer_byte_rate("1113")],
+        )
+
+        # Add user quota
+        all_quotas["default_user"] = ("user", default_user_quota)
+
+        # Check all quotas exist on every node
+        for etype, quota in all_quotas.values():
+            check_all_nodes(etype, quota)
