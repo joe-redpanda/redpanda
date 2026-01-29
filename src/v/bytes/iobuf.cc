@@ -204,21 +204,22 @@ bool iobuf::operator==(std::string_view o) const {
 }
 
 std::strong_ordering iobuf::operator<=>(std::string_view o) const {
-    std::strong_ordering cmp = std::strong_ordering::equal;
-    auto in = iobuf::iterator_consumer(cbegin(), cend());
-    std::string_view other = o;
-    std::ignore = in.consume(
-      std::min(size_bytes(), o.size()),
-      [&cmp, &other](const char* src, size_t fg_sz) {
-          cmp = std::string_view(src, fg_sz) <=> other;
-          other.remove_prefix(std::min(fg_sz, other.size()));
-          return cmp == std::strong_ordering::equal ? ss::stop_iteration::yes
-                                                    : ss::stop_iteration::no;
-      });
-    if (cmp == std::strong_ordering::equal) {
-        cmp = size_bytes() <=> o.size();
+    auto other = o;
+    // first compare the common length prefix
+    for (const auto& frag : *this) {
+        auto compare_len = std::min(frag.size(), other.size());
+        std::strong_ordering cmp = std::string_view(frag.get(), compare_len)
+                                   <=> other.substr(0, compare_len);
+        if (cmp != std::strong_ordering::equal) {
+            return cmp;
+        }
+        other.remove_prefix(compare_len);
+        if (other.empty()) {
+            break;
+        }
     }
-    return cmp;
+    // prefix was equal, only size matters now
+    return size_bytes() <=> o.size();
 }
 
 /**
