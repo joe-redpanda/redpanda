@@ -51,6 +51,28 @@ AVRO_SAMPLE_PAYLOAD = json.dumps(
     {"name": "hello my name is avro shady", "id": 24680, "ts": 1625079045123456}
 ).encode("utf8")
 
+JSON_SCHEMA = """{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Simple",
+  "properties": {
+    "name": {"type": "string"},
+    "id": {"type": "integer"},
+    "ts": {"type": "integer"},
+    "labels": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["name", "id", "ts", "labels"]
+}"""
+JSON_TOPIC_NAME = "iceberg-json-topic"
+JSON_SAMPLE_PAYLOAD = json.dumps(
+    {
+        "name": "hello my name is json shady",
+        "id": 13579,
+        "ts": 1625079045123456,
+        "labels": ["one", "two", "three"],
+    }
+).encode("utf8")
+
 
 async def setup_schema_and_topic(
     args: argparse.Namespace,
@@ -300,16 +322,17 @@ async def check_iceberg_state(tmpdir: Path):
         raise RuntimeError(status)
 
 
-async def send_avro_messages(args: argparse.Namespace):
-    print("Sending 100 Avro messages via rpk...")
+async def send_iceberg_rpk_messages(
+    args: argparse.Namespace, topic_name: str, payload: bytes
+):
+    print(f"Sending 100 messages to {topic_name} via rpk...")
 
     for _ in range(100):
-        # rpk doesn't understand value_schema_latest so for rpk the topic needs to use value_schema_id_prefix
         produce_args: list[str] = [
             str(args.rpk_binary),
             "topic",
             "produce",
-            AVRO_TOPIC_NAME,
+            topic_name,
             "--schema-id=topic",
         ]
         proc = await asyncio.create_subprocess_exec(
@@ -319,7 +342,7 @@ async def send_avro_messages(args: argparse.Namespace):
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
         )
-        await proc.communicate(input=AVRO_SAMPLE_PAYLOAD)
+        await proc.communicate(input=payload)
         if proc.returncode != 0:
             raise RuntimeError(f"Failed to send message to {topic_name}")
 
@@ -350,6 +373,9 @@ async def profile(args: argparse.Namespace, tmpdir: Path, redpanda_bin: Path):
         await read_until(cluster_proc, CLUSTER_STARTUP_MARKER, "cluster")
         cluster_task = asyncio.create_task(continue_stream(cluster_proc, "cluster"))
 
+        # rpk doesn't understand value_schema_latest so for rpk the topic needs
+        # to use value_schema_id_prefix for the rpk based loads
+
         # do very simple avro iceberg training
         await setup_schema_and_topic(
             args,
@@ -359,7 +385,18 @@ async def profile(args: argparse.Namespace, tmpdir: Path, redpanda_bin: Path):
             "avro_schema.avsc",
             "value_schema_id_prefix",
         )
-        await send_avro_messages(args)
+        await send_iceberg_rpk_messages(args, AVRO_TOPIC_NAME, AVRO_SAMPLE_PAYLOAD)
+
+        # do very simple json schema iceberg training
+        await setup_schema_and_topic(
+            args,
+            tmpdir,
+            JSON_TOPIC_NAME,
+            JSON_SCHEMA,
+            "json_schema.json",
+            "value_schema_id_prefix",
+        )
+        await send_iceberg_rpk_messages(args, JSON_TOPIC_NAME, JSON_SAMPLE_PAYLOAD)
 
         # full produce plus protobuf iceberg
         await setup_schema_and_topic(
