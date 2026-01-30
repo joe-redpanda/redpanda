@@ -7567,6 +7567,301 @@ class SchemaRegistryACLTest(SchemaRegistryEndpoints):
         # Verify ACL no longer exists eventually
         self.await_acl_count(0)
 
+    @cluster(num_nodes=3)
+    def test_group_acl_creation(self):
+        """
+        Test that Group principal ACLs can be created
+        """
+        # Create Group ACLs with various configurations
+        group_acls = [
+            self._create_test_acl(
+                principal="Group:developers",
+                resource="dev-subject",
+                resource_type="SUBJECT",
+                operation="READ",
+                permission="ALLOW",
+            ),
+            self._create_test_acl(
+                principal="Group:admins",
+                resource="*",
+                resource_type="REGISTRY",
+                operation="ALL",
+                permission="ALLOW",
+            ),
+            self._create_test_acl(
+                principal="Group:blocked",
+                resource="secret-subject",
+                resource_type="SUBJECT",
+                operation="WRITE",
+                permission="DENY",
+            ),
+        ]
+
+        # POST should succeed
+        response = self.sr_client.post_security_acls(group_acls)
+        self.assert_equal(
+            response.status_code, 201, f"Failed to create Group ACLs: {response.text}"
+        )
+
+        # Verify ACLs were created
+        self.await_acl_count(3)
+
+        # GET and verify principals
+        response = self.sr_client.get_security_acls()
+        self.assert_equal(response.status_code, 200)
+        acls = response.json()
+
+        principals = {acl["principal"] for acl in acls}
+        self.assert_in("Group:developers", principals)
+        self.assert_in("Group:admins", principals)
+        self.assert_in("Group:blocked", principals)
+
+        # Verify ACL details
+        for acl in acls:
+            if acl["principal"] == "Group:developers":
+                self.assert_equal(acl["resource"], "dev-subject")
+                self.assert_equal(acl["resource_type"], "SUBJECT")
+                self.assert_equal(acl["operation"], "READ")
+                self.assert_equal(acl["permission"], "ALLOW")
+            elif acl["principal"] == "Group:admins":
+                self.assert_equal(acl["resource"], "*")
+                self.assert_equal(acl["resource_type"], "REGISTRY")
+                self.assert_equal(acl["operation"], "ALL")
+            elif acl["principal"] == "Group:blocked":
+                self.assert_equal(acl["resource"], "secret-subject")
+                self.assert_equal(acl["permission"], "DENY")
+
+    @cluster(num_nodes=3)
+    def test_group_acl_query_filtering(self):
+        """Test querying ACLs with Group principal filters"""
+
+        # Create mix of User and Group ACLs
+        acls = [
+            self._create_test_acl(
+                principal="User:alice", resource="alice-subject", operation="WRITE"
+            ),
+            self._create_test_acl(
+                principal="Group:developers",
+                resource="dev-subject",
+                operation="READ",
+            ),
+            self._create_test_acl(
+                principal="Group:developers",
+                resource="dev-registry",
+                resource_type="REGISTRY",
+                operation="DESCRIBE",
+            ),
+            self._create_test_acl(
+                principal="Group:admins",
+                resource="*",
+                resource_type="REGISTRY",
+                operation="ALL",
+            ),
+        ]
+
+        response = self.sr_client.post_security_acls(acls)
+        self.assert_equal(response.status_code, 201)
+        self.await_acl_count(4)
+
+        # Query for Group:developers ACLs only
+        response = self.sr_client.get_security_acls(
+            params={"principal": "Group:developers"}
+        )
+        self.assert_equal(response.status_code, 200)
+        filtered_acls = response.json()
+        self.assert_equal(len(filtered_acls), 2)
+
+        for acl in filtered_acls:
+            self.assert_equal(acl["principal"], "Group:developers")
+
+        # Query for all Group principals
+        response = self.sr_client.get_security_acls()
+        self.assert_equal(response.status_code, 200)
+        all_acls = response.json()
+
+        group_acls = [acl for acl in all_acls if acl["principal"].startswith("Group:")]
+        self.assert_equal(len(group_acls), 3)
+
+        # Query for specific resource
+        response = self.sr_client.get_security_acls(params={"resource": "dev-subject"})
+        self.assert_equal(response.status_code, 200)
+        resource_acls = response.json()
+        self.assert_equal(len(resource_acls), 1)  # Group:developers
+
+    @cluster(num_nodes=3)
+    def test_group_acl_deletion(self):
+        """Test deleting Group ACLs with various filter combinations"""
+
+        # Create multiple Group ACLs
+        acls = [
+            self._create_test_acl(
+                principal="Group:team_a", resource="subject_a", operation="READ"
+            ),
+            self._create_test_acl(
+                principal="Group:team_a", resource="subject_b", operation="WRITE"
+            ),
+            self._create_test_acl(
+                principal="Group:team_b", resource="subject_a", operation="READ"
+            ),
+        ]
+
+        response = self.sr_client.post_security_acls(acls)
+        self.assert_equal(response.status_code, 201)
+        self.await_acl_count(3)
+
+        # Delete all team_a ACLs using principal filter
+        delete_filter = [{"principal": "Group:team_a"}]
+
+        response = self.sr_client.delete_security_acls(delete_filter)
+        self.assert_equal(response.status_code, 200)
+        deleted = response.json()
+        self.assert_equal(len(deleted), 2)
+
+        # Verify only team_b ACL remains
+
+        self.await_acl_count(1)
+
+        response = self.sr_client.get_security_acls()
+        self.assert_equal(response.status_code, 200)
+        remaining = response.json()
+        self.logger.info(f"Remaining: {remaining}")
+        self.assert_equal(remaining[0]["principal"], "Group:team_b")
+
+    @cluster(num_nodes=3)
+    def test_mixed_user_and_group_acls(self):
+        """Test Schema Registry with both User and Group ACLs"""
+
+        mixed_acls = [
+            self._create_test_acl(
+                principal="User:alice", resource="user-subject", operation="WRITE"
+            ),
+            self._create_test_acl(
+                principal="Group:readers",
+                resource="shared-subject",
+                operation="READ",
+            ),
+            self._create_test_acl(
+                principal="User:bob", resource="shared-subject", operation="WRITE"
+            ),
+            self._create_test_acl(
+                principal="Group:admins",
+                resource="*",
+                resource_type="REGISTRY",
+                operation="ALL",
+            ),
+        ]
+
+        # Create all ACLs
+        response = self.sr_client.post_security_acls(mixed_acls)
+        self.assert_equal(response.status_code, 201)
+        self.await_acl_count(4)
+
+        # Verify all ACLs exist
+        response = self.sr_client.get_security_acls()
+        self.assert_equal(response.status_code, 200)
+        acls = response.json()
+
+        principals = {acl["principal"] for acl in acls}
+        self.assert_equal(len(principals), 4)
+        self.assert_in("User:alice", principals)
+        self.assert_in("User:bob", principals)
+        self.assert_in("Group:readers", principals)
+        self.assert_in("Group:admins", principals)
+
+        # Verify resource distribution
+        subject_acls = [acl for acl in acls if acl["resource_type"] == "SUBJECT"]
+        registry_acls = [acl for acl in acls if acl["resource_type"] == "REGISTRY"]
+        self.assert_equal(len(subject_acls), 3)
+        self.assert_equal(len(registry_acls), 1)
+
+    @cluster(num_nodes=3)
+    def test_group_acl_validation(self):
+        """Test validation rules specific to Group principals"""
+
+        # Test wildcard group (should fail)
+        wildcard_group_acl = [self._create_test_acl(principal="Group:*")]
+        response = self.sr_client.post_security_acls(wildcard_group_acl)
+        self.assert_equal(
+            response.status_code,
+            400,
+            f"Wildcard group should fail but got {response.status_code}: {response.text}",
+        )
+        self.assert_in("wildcard", response.text.lower())
+
+        # Test empty group name (should fail)
+        empty_group_acl = [self._create_test_acl(principal="Group:")]
+        response = self.sr_client.post_security_acls(empty_group_acl)
+        self.assert_equal(
+            response.status_code,
+            400,
+            f"Empty group should fail but got {response.status_code}",
+        )
+
+        # Test valid group names with special characters
+        valid_groups = [
+            "Group:my-team",
+            "Group:team_123",
+            "Group:UPPERCASE_GROUP",
+            "Group:mixed_Case-123",
+        ]
+
+        for group in valid_groups:
+            acl = [
+                self._create_test_acl(
+                    principal=group, resource=f"test-{group.replace(':', '-')}"
+                )
+            ]
+            response = self.sr_client.post_security_acls(acl)
+            self.assert_equal(
+                response.status_code,
+                201,
+                f"Valid group {group} should be accepted but got {response.status_code}: {response.text}",
+            )
+
+    @cluster(num_nodes=3)
+    @matrix(scale=[1, 100])
+    def test_group_acl_scale(self, scale):
+        """Test Group ACL operations at scale"""
+
+        # Create N Group ACLs
+        acls = [
+            self._create_test_acl(
+                principal=f"Group:team_{i}",
+                resource=f"subject_{i}",
+                operation="READ",
+            )
+            for i in range(scale)
+        ]
+
+        # Test creation performance
+        response = self.sr_client.post_security_acls(acls)
+        self.assert_equal(
+            response.status_code,
+            201,
+            f"Failed to create {scale} Group ACLs: {response.text}",
+        )
+
+        # Verify all created
+        self.await_acl_count(scale)
+
+        # Test query performance
+        response = self.sr_client.get_security_acls()
+        self.assert_equal(response.status_code, 200)
+        all_acls = response.json()
+        self.assert_equal(len(all_acls), scale)
+
+        # Verify all are Group principals
+        for acl in all_acls:
+            assert acl["principal"].startswith("Group:team_"), (
+                f"Unexpected principal: {acl['principal']}"
+            )
+
+        # Test deletion performance
+        response = self.sr_client.delete_security_acls(acls)
+        self.assert_equal(response.status_code, 200)
+        deleted = response.json()
+        self.assert_equal(len(deleted), scale)
+
 
 class ACLTestEndpoint:
     """Base class for ACL-protected endpoints"""
