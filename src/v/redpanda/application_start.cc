@@ -157,7 +157,8 @@ void application::start_runtime_services(
         producer_id_recovery_manager,
         std::move(offsets_recovery_requestor),
         redpanda_start_time,
-        _data_migrations_group_proxy)
+        _data_migrations_group_proxy,
+        cloud_topics_app ? cloud_topics_app->get_state() : nullptr)
       .get();
 
     if (archiver_manager.local_is_initialized()) {

@@ -92,3 +92,27 @@ redpanda_cc_gtest(
         "@googletest//:gtest",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "cluster_recovery_test",
+    timeout = "moderate",
+    srcs = [
+        "cluster_recovery_test.cc",
+    ],
+    cpu = 1,
+    deps = [
+        ":cluster_fixture",
+        "//src/v/cloud_storage",
+        "//src/v/cluster",
+        "//src/v/cluster/cloud_metadata/tests:cluster_metadata_utils",
+        "//src/v/kafka/server/tests:kafka_test_utils",
+        "//src/v/random:generators",
+        "//src/v/ssx:future_util",
+        "//src/v/ssx:sformat",
+        "//src/v/test_utils:gtest",
+        "//src/v/test_utils:scoped_config",
+        "//src/v/utils:retry_chain_node",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)

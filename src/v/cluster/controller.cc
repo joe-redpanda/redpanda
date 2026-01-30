@@ -256,7 +256,8 @@ ss::future<> controller::start(
     offsets_recovery,
   std::chrono::milliseconds application_start_time,
   ss::sharded<std::unique_ptr<cluster::data_migrations::group_proxy>>&
-    data_migrations_group_proxy) {
+    data_migrations_group_proxy,
+  ss::sharded<cloud_topics::state_accessors>* ct_state) {
     /**
      * Switch to cluster scheduling group to ensure that all the controller
      * services are started within that scheduling group.
@@ -859,7 +860,8 @@ ss::future<> controller::start(
                 producer_id_recovery,
                 offsets_recovery,
                 std::ref(_recovery_table),
-                _raft0);
+                _raft0,
+                ct_state);
             if (!config::shard_local_cfg()
                    .disable_cluster_recovery_loop_for_tests()) {
                 _recovery_backend->start();
