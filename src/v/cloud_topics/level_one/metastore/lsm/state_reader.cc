@@ -745,6 +745,13 @@ state_reader::get_partitions_for_topic(const model::topic_id& tid) {
     co_return partitions;
 }
 
+std::expected<state_reader::object_key_range, state_reader::error>
+make_object_range(lsm::iterator iter, std::optional<object_id> start_oid) {
+    auto base_key = start_oid ? object_row_key::encode(*start_oid)
+                              : object_row_key::encode(object_id(uuid_t{}));
+    return state_reader::object_key_range(std::move(base_key), std::move(iter));
+}
+
 ss::future<std::expected<state_reader::object_key_range, state_reader::error>>
 state_reader::get_object_range(std::optional<object_id> start_oid) {
     auto base_key = start_oid ? object_row_key::encode(*start_oid)

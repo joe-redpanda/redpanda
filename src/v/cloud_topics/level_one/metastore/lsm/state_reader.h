@@ -188,6 +188,11 @@ private:
     lsm::snapshot snap_;
 };
 
+// Returns an object_key_range starting from the given object_id. If start_oid
+// is nullopt, starts from the first object in the database.
+std::expected<state_reader::object_key_range, state_reader::error>
+make_object_range(lsm::iterator iter, std::optional<object_id> start_oid);
+
 } // namespace cloud_topics::l1
 
 template<>
