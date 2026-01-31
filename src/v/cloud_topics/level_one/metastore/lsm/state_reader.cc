@@ -187,6 +187,7 @@ state_reader::object_key_range::get_rows() {
             co_yield object_row{
               .key = ss::sstring(_iter.key()),
               .val = val,
+              .seqno = _iter.seqno(),
             };
 
             co_await _iter.next();

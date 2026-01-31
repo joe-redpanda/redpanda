@@ -41,6 +41,7 @@ public:
     struct object_row {
         ss::sstring key;
         object_row_value val;
+        lsm::sequence_number seqno;
     };
 
     enum class direction { forward, backward };
