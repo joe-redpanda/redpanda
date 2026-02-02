@@ -23,6 +23,7 @@
 #include "cluster/types.h"
 #include "config/configuration.h"
 #include "config/property.h"
+#include "constants/common.h"
 #include "features/enterprise_feature_messages.h"
 #include "features/enterprise_features.h"
 #include "features/feature_table.h"
@@ -486,7 +487,9 @@ ss::future<> partition_balancer_backend::do_tick() {
         // make a copy in case the collection is modified concurrently.
         auto nodes_to_finish = _state.nodes_to_rebalance();
         co_await ss::max_concurrent_for_each(
-          nodes_to_finish, 32, [this](model::node_id node) {
+          nodes_to_finish,
+          constants::common::default_concurrency,
+          [this](model::node_id node) {
               _tick_in_progress->check();
 
               return _members_frontend
@@ -505,7 +508,9 @@ ss::future<> partition_balancer_backend::do_tick() {
     }
 
     co_await ss::max_concurrent_for_each(
-      plan_data.cancellations, 32, [this](model::ntp& ntp) {
+      plan_data.cancellations,
+      constants::common::default_concurrency,
+      [this](model::ntp& ntp) {
           _tick_in_progress->check();
           auto f = _topics_frontend.cancel_moving_partition_replicas(
             ntp,
@@ -524,7 +529,9 @@ ss::future<> partition_balancer_backend::do_tick() {
       });
 
     co_await ss::max_concurrent_for_each(
-      plan_data.reassignments, 32, [this](ntp_reassignment& reassignment) {
+      plan_data.reassignments,
+      constants::common::default_concurrency,
+      [this](ntp_reassignment& reassignment) {
           _tick_in_progress->check();
           auto f = ss::make_ready_future<std::error_code>();
           switch (reassignment.type) {
