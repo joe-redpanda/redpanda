@@ -23,6 +23,7 @@
 #include "cluster/types.h"
 #include "config/configuration.h"
 #include "config/property.h"
+#include "constants/balancer_constants.h"
 #include "constants/common.h"
 #include "features/enterprise_feature_messages.h"
 #include "features/enterprise_features.h"
@@ -392,7 +393,9 @@ ss::future<> partition_balancer_backend::do_tick() {
     double max_disk_usage_ratio = _max_disk_usage_percent() / 100.0;
     // claim node unresponsive it doesn't responded to at least 7
     // status requests by default 700ms
-    const auto node_responsiveness_timeout = _node_status_interval() * 7;
+    const auto node_responsiveness_timeout
+      = _node_status_interval()
+        * constants::balancer::missed_statuses_until_unresponsive;
 
     const bool should_sanction = _feature_table.should_sanction();
 

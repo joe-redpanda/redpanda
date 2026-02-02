@@ -5,3 +5,9 @@ redpanda_cc_library(
     hdrs = ["common.h"],
     visibility = ["//visibility:public"],
 )
+
+redpanda_cc_library(
+    name = "balancer_constants",
+    hdrs = ["balancer_constants.h"],
+    visibility = ["//visibility:public"],
+)
