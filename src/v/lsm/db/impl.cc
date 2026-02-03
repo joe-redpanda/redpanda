@@ -237,6 +237,14 @@ ss::future<> impl::flush() {
     return impl::flush(ssx::instant::infinite_future());
 }
 
+ss::future<bool> impl::refresh() {
+    if (!_opts->readonly) {
+        throw invalid_argument_exception(
+          "refresh() can only be called on a read-only database");
+    }
+    co_return co_await _versions->refresh();
+}
+
 ss::future<> impl::close() {
     vlog(log.trace, "close_start");
     _as.request_abort_ex(abort_requested_exception("database closing"));
