@@ -790,6 +790,7 @@ public:
     bounded_property<uint64_t> cloud_topics_compaction_key_map_memory;
     property<std::chrono::milliseconds>
       cloud_topics_long_term_garbage_collection_interval;
+    property<std::chrono::milliseconds> cloud_topics_long_term_flush_interval;
     property<std::chrono::milliseconds>
       cloud_topics_epoch_service_epoch_increment_interval;
     property<std::chrono::milliseconds>
