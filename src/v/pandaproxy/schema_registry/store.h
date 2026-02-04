@@ -563,8 +563,9 @@ public:
     result<bool>
     set_mode(seq_marker marker, const context& ctx, mode m, force f) {
         BOOST_OUTCOME_TRYX(check_mode_mutability(f));
-        _context_stores[ctx]._mode_written_at.emplace_back(marker);
-        return std::exchange(_context_stores[ctx]._mode, m) != m;
+        auto& context = get_or_create_context_store(ctx);
+        context._mode_written_at.emplace_back(marker);
+        return std::exchange(context._mode, m) != m;
     }
 
     ///\brief Set the mode for a subject.
@@ -590,9 +591,9 @@ public:
     ///\brief Clear the mode for a context.
     result<bool> clear_mode(const context& ctx, force f) {
         BOOST_OUTCOME_TRYX(check_mode_mutability(f));
-        _context_stores[ctx]._mode_written_at.clear();
-        return std::exchange(_context_stores[ctx]._mode, std::nullopt)
-               != std::nullopt;
+        auto& context = get_or_create_context_store(ctx);
+        context._mode_written_at.clear();
+        return std::exchange(context._mode, std::nullopt) != std::nullopt;
     }
 
     /// \brief Return the seq_marker write history of a context, but only
@@ -639,8 +640,9 @@ public:
       seq_marker marker,
       const context& ctx,
       compatibility_level compatibility) {
-        _context_stores[ctx]._config_written_at.push_back(marker);
-        return std::exchange(_context_stores[ctx]._compatibility, compatibility)
+        auto& context = get_or_create_context_store(ctx);
+        context._config_written_at.push_back(marker);
+        return std::exchange(context._compatibility, compatibility)
                != compatibility;
     }
 
@@ -657,8 +659,9 @@ public:
 
     ///\brief Clear the compatibility level of a context.
     result<bool> clear_compatibility(const context& ctx) {
-        _context_stores[ctx]._config_written_at.clear();
-        return std::exchange(_context_stores[ctx]._compatibility, std::nullopt)
+        auto& context = get_or_create_context_store(ctx);
+        context._config_written_at.clear();
+        return std::exchange(context._compatibility, std::nullopt)
                != std::nullopt;
     }
 
@@ -699,6 +702,11 @@ public:
                           : std::prev(_schemas.end())->first.id + 1;
         auto [_, inserted] = _schemas.try_emplace(
           context_schema_id{ctx, id}, std::move(def));
+
+        if (inserted) {
+            get_or_create_context_store(ctx).increment_schema_count();
+        }
+
         return {id, inserted};
     }
 
@@ -707,12 +715,26 @@ public:
         if (mark_schema) {
             _marked_schemas.push_back(id);
         }
-        return _schemas
-          .insert_or_assign(std::move(id), schema_entry(std::move(def)))
-          .second;
+        auto [it, inserted] = _schemas.insert_or_assign(
+          std::move(id), schema_entry(std::move(def)));
+
+        if (inserted) {
+            get_or_create_context_store(it->first.ctx).increment_schema_count();
+        }
+
+        return inserted;
     }
 
-    void delete_schema(const context_schema_id& id) { _schemas.erase(id); }
+    void delete_schema(const context_schema_id& id) {
+        auto it = _schemas.find(id);
+        if (it != _schemas.end()) {
+            auto ctx_it = _context_stores.find(id.ctx);
+            if (ctx_it != _context_stores.end()) {
+                ctx_it->second.decrement_schema_count();
+            }
+            _schemas.erase(it);
+        }
+    }
 
     // This function returns and unmarkes all marked schemas.
     chunked_vector<context_schema_id> extract_marked_schemas() {
@@ -799,12 +821,6 @@ public:
 
     void setup_metrics() {
         namespace sm = ss::metrics;
-        const auto make_schema_count = [this]() {
-            return sm::make_gauge(
-              "schema_count",
-              [this] { return _schemas.size(); },
-              sm::description("The number of schemas in the store"));
-        };
         const auto make_subject_count = [this](is_deleted deleted) {
             return sm::make_gauge(
               "subject_count",
@@ -837,7 +853,6 @@ public:
             _metrics.add_group(
               group_name,
               {
-                make_schema_count(),
                 make_schema_bytes(),
                 make_subject_count(is_deleted::no),
                 make_subject_count(is_deleted::yes),
@@ -850,7 +865,6 @@ public:
             _public_metrics.add_group(
               group_name,
               {
-                make_schema_count().aggregate(agg),
                 make_schema_bytes().aggregate(agg),
                 make_subject_count(is_deleted::no).aggregate(agg),
                 make_subject_count(is_deleted::yes).aggregate(agg),
@@ -859,7 +873,7 @@ public:
     };
 
     void maybe_update_max_schema_id(const context_schema_id& id) {
-        auto& nsi = _context_stores[id.ctx]._next_schema_id;
+        auto& nsi = get_or_create_context_store(id.ctx)._next_schema_id;
         auto old = nsi;
         nsi = std::max(nsi, id.id + schema_id{1});
         vlog(
@@ -873,7 +887,7 @@ public:
         // operations if needed.  _next_schema_id gets updated
         // if the operation was successful, as a side effect
         // of applying the write to the store.
-        return _context_stores[ctx]._next_schema_id;
+        return get_or_create_context_store(ctx)._next_schema_id;
     }
 
     chunked_vector<context> get_materialized_contexts() const {
@@ -896,7 +910,7 @@ public:
     }
 
     void set_context_materialized(const context& ctx, bool materialized) {
-        _context_stores[ctx]._materialized = materialized;
+        get_or_create_context_store(ctx)._materialized = materialized;
     }
 
 private:
@@ -1030,10 +1044,60 @@ private:
         schema_id _next_schema_id{1};
         bool _materialized{false};
 
+        void increment_schema_count() { _schema_count++; }
+
+        void decrement_schema_count() {
+            if (_schema_count > 0) {
+                _schema_count--;
+            }
+        }
+
+        void clear_schema_count() { _schema_count = 0; }
+
         chunked_vector<seq_marker> _config_written_at;
         chunked_vector<seq_marker> _mode_written_at;
+
+    private:
+        metrics::internal_metric_groups _metrics;
+        metrics::public_metric_groups _public_metrics;
+        size_t _schema_count{0};
+
+        void setup_metrics(const context& ctx) {
+            namespace sm = ss::metrics;
+            auto group_name = prometheus_sanitize::metrics_name(
+              "schema_registry_cache");
+
+            const auto make_schema_count = [this, &ctx]() {
+                return sm::make_gauge(
+                  "schema_count",
+                  [this] { return _schema_count; },
+                  sm::description("The number of schemas in the store"),
+                  {sm::label{"context"}(ctx)});
+            };
+
+            if (!config::shard_local_cfg().disable_metrics()) {
+                _metrics.add_group(
+                  group_name, {make_schema_count()}, {}, {sm::shard_label});
+            }
+
+            if (!config::shard_local_cfg().disable_public_metrics()) {
+                _public_metrics.add_group(
+                  group_name,
+                  {make_schema_count().aggregate({sm::shard_label})});
+            }
+        }
+
+        friend class store;
     };
     using context_store_map = absl::node_hash_map<context, context_store>;
+
+    context_store& get_or_create_context_store(const context& ctx) {
+        auto [it, inserted] = _context_stores.try_emplace(ctx);
+        if (inserted) {
+            it->second.setup_metrics(ctx);
+        }
+        return it->second;
+    }
 
     // NOTE: sharded_store shards data into multiple store instances, so some
     // fields are only present on certain shards.
