@@ -36,6 +36,8 @@ public:
     static inline model::iceberg_mode default_iceberg_mode
       = model::iceberg_mode{};
     static constexpr bool default_cloud_topic_enabled{false};
+    static constexpr model::redpanda_storage_mode default_storage_mode{
+      model::redpanda_storage_mode::unset};
 
     static constexpr std::chrono::milliseconds read_replica_retention{3600000};
 
@@ -91,6 +93,9 @@ public:
 
         // Controls behavior during pause
         std::optional<bool> remote_allow_gaps;
+
+        // Storage mode for the topic (local, tiered, or cloud)
+        model::redpanda_storage_mode storage_mode{default_storage_mode};
 
         friend std::ostream&
         operator<<(std::ostream&, const default_overrides&);

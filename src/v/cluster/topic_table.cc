@@ -1050,6 +1050,31 @@ void incremental_update(
     }
 }
 
+void incremental_update(
+  model::redpanda_storage_mode& property,
+  property_update<std::optional<model::redpanda_storage_mode>> override,
+  model::redpanda_storage_mode /*default_value*/) {
+    // Validation of storage mode transitions is done at the kafka layer.
+    // This function only applies the update.
+    switch (override.op) {
+    case incremental_update_operation::remove:
+        // Cannot remove redpanda.storage.mode - it can only be set explicitly
+        vlog(
+          clusterlog.warn,
+          "Cannot remove property redpanda.storage.mode - it can only be set "
+          "explicitly. Current value: {}",
+          property);
+        return;
+    case incremental_update_operation::set:
+        if (override.value) {
+            property = *override.value;
+        }
+        return;
+    case incremental_update_operation::none:
+        return;
+    }
+}
+
 template<typename T>
 void incremental_update(
   tristate<T>& property, property_update<tristate<T>> override) {
@@ -1208,6 +1233,10 @@ topic_properties topic_table::update_topic_properties(
       updated_properties.message_timestamp_after_max_ms,
       overrides.message_timestamp_after_max_ms);
     incremental_update(updated_properties.remote_label, overrides.remote_label);
+    incremental_update(
+      updated_properties.storage_mode,
+      overrides.storage_mode,
+      storage::ntp_config::default_storage_mode);
     return updated_properties;
 }
 

@@ -10,6 +10,7 @@
 #include "cluster/topic_properties.h"
 
 #include "model/adl_serde.h"
+#include "model/metadata.h"
 #include "reflection/adl.h"
 
 namespace cluster {
@@ -49,9 +50,10 @@ std::ostream& operator<<(std::ostream& o, const topic_properties& properties) {
       "iceberg_target_lag_ms: {}, "
       "min_cleanable_dirty_ratio: {}, "
       "min_compaction_lag_ms: {}, "
-      "max_compaction_lag_ms: {},"
-      "message_timestamp_before_max_ms: {},"
-      "message_timestamp_after_max_ms: {}",
+      "max_compaction_lag_ms: {}, "
+      "message_timestamp_before_max_ms: {}, "
+      "message_timestamp_after_max_ms: {}, "
+      "redpanda_storage_mode: {}",
       properties.compression,
       properties.cleanup_policy_bitflags,
       properties.compaction_strategy,
@@ -97,7 +99,8 @@ std::ostream& operator<<(std::ostream& o, const topic_properties& properties) {
       properties.min_compaction_lag_ms,
       properties.max_compaction_lag_ms,
       properties.message_timestamp_before_max_ms,
-      properties.message_timestamp_after_max_ms);
+      properties.message_timestamp_after_max_ms,
+      properties.storage_mode);
 
     if (config::shard_local_cfg().cloud_topics_enabled()) {
         fmt::print(
@@ -151,7 +154,8 @@ bool topic_properties::has_overrides() const {
         || max_compaction_lag_ms.has_value()
         || remote_topic_allow_gaps.has_value()
         || message_timestamp_before_max_ms.has_value()
-        || message_timestamp_after_max_ms.has_value();
+        || message_timestamp_after_max_ms.has_value()
+        || storage_mode != storage::ntp_config::default_storage_mode;
 
     if (config::shard_local_cfg().cloud_topics_enabled()) {
         return overrides
@@ -198,6 +202,7 @@ topic_properties::get_ntp_cfg_overrides() const {
     ret.min_compaction_lag_ms = min_compaction_lag_ms;
     ret.max_compaction_lag_ms = max_compaction_lag_ms;
     ret.remote_allow_gaps = remote_topic_allow_gaps;
+    ret.storage_mode = storage_mode;
     return ret;
 }
 
@@ -300,6 +305,7 @@ adl<cluster::topic_properties>::from(iobuf_parser& parser) {
       std::nullopt,
       std::nullopt,
       std::nullopt,
+      model::redpanda_storage_mode::local,
     };
 }
 

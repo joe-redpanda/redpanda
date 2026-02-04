@@ -462,6 +462,15 @@ create_topic_properties_update(
                   /*clamp_to_duration_max=*/true);
                 continue;
             }
+
+            if (cfg.name == topic_property_redpanda_storage_mode) {
+                parse_and_set_optional(
+                  update.properties.storage_mode,
+                  cfg.value,
+                  op,
+                  storage_mode_validator{current_storage_mode});
+                continue;
+            }
         } catch (const validation_error& e) {
             vlog(
               klog.debug,

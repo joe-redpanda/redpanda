@@ -185,7 +185,8 @@ consteval describe_configs_type property_config_type() {
         std::is_same_v<T, model::vcluster_id> ||
         std::is_same_v<T, model::write_caching_mode> ||
         std::is_same_v<T, config::leaders_preference> || std::is_same_v<T, model::iceberg_mode> ||
-        std::is_same_v<T, model::iceberg_invalid_record_action>;
+        std::is_same_v<T, model::iceberg_invalid_record_action> ||
+        std::is_same_v<T, model::redpanda_storage_mode>;
 
     constexpr auto is_long_type = is_long<T> ||
         // Long type since seconds is atleast a 35-bit signed integral
@@ -1204,6 +1205,22 @@ config_response_container_t make_topic_configs(
         include_documentation,
         config::shard_local_cfg().log_message_timestamp_after_max_ms.desc()),
       describe_as_string<std::chrono::milliseconds>);
+
+    add_topic_config_if_requested(
+      config_keys,
+      result,
+      config::shard_local_cfg().default_redpanda_storage_mode.name(),
+      config::shard_local_cfg().default_redpanda_storage_mode(),
+      topic_property_redpanda_storage_mode,
+      override_if_not_default(
+        std::make_optional<model::redpanda_storage_mode>(
+          topic_properties.storage_mode),
+        config::shard_local_cfg().default_redpanda_storage_mode()),
+      include_synonyms,
+      maybe_make_documentation(
+        include_documentation,
+        config::shard_local_cfg().default_redpanda_storage_mode.desc()),
+      &describe_as_string<model::redpanda_storage_mode>);
 
     return result;
 }

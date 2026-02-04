@@ -566,6 +566,48 @@ struct min_max_compaction_lag_ms_validator {
     }
 };
 
+/*
+ * Validates that storage_mode is compatible with the cluster configuration:
+ * - 'cloud' mode requires cloud_topics_enabled()
+ * - 'tiered' mode requires cloud_storage_enabled()
+ * - 'local' mode is always allowed
+ */
+struct storage_mode_config_validator {
+    static constexpr const char* error_message
+      = "Invalid storage mode: 'cloud' requires cloud topics to be enabled, "
+        "'tiered' requires cloud storage to be enabled.";
+    static constexpr error_code ec = error_code::invalid_config;
+
+    static bool is_valid(const creatable_topic& c) {
+        auto it = std::find_if(
+          c.configs.begin(),
+          c.configs.end(),
+          [](const createable_topic_config& cfg) {
+              return cfg.name == topic_property_redpanda_storage_mode;
+          });
+        if (it == c.configs.end() || !it->value.has_value()) {
+            return true;
+        }
+        auto mode = model::redpanda_storage_mode_from_string(it->value.value());
+        if (!mode) {
+            return false;
+        }
+        switch (*mode) {
+        case model::redpanda_storage_mode::local:
+            return true;
+        case model::redpanda_storage_mode::tiered:
+            return config::shard_local_cfg().cloud_storage_enabled();
+        case model::redpanda_storage_mode::cloud:
+            return config::shard_local_cfg().cloud_topics_enabled();
+        case model::redpanda_storage_mode::unset:
+            // unset is always valid - actual behavior depends on
+            // shadow_indexing
+            return true;
+        }
+        return false;
+    }
+};
+
 using compression_type_validator
   = configuration_value_validator<compression_type_validator_details>;
 using compaction_strategy_validator

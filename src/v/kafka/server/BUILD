@@ -65,6 +65,7 @@ redpanda_cc_library(
         "@boost//:algorithm",
         "@boost//:container",
         "@boost//:lexical_cast",
+        "@fmt",
         "@seastar",
     ],
 )

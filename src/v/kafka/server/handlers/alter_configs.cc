@@ -96,7 +96,7 @@ create_topic_properties_update(
     std::apply(apply_op(op_t::none), update.custom_properties.serde_fields());
 
     static_assert(
-      std::tuple_size_v<decltype(update.properties.serde_fields())> == 43,
+      std::tuple_size_v<decltype(update.properties.serde_fields())> == 44,
       "If you add a property, decide on its default alter config "
       "policy, and handle the update in the loop below");
     static_assert(
@@ -138,6 +138,8 @@ create_topic_properties_update(
       properties.
      */
     update.properties.delete_retention_ms.op = op_t::none;
+
+    update.properties.storage_mode.op = op_t::none;
 
     // Now that the defaults are set, continue to set properties from the
     // request
@@ -491,6 +493,14 @@ create_topic_properties_update(
                   kafka::config_resource_operation::set,
                   message_timestamp_after_max_ms_validator,
                   /*clamp_to_duration_max=*/true);
+                continue;
+            }
+            if (cfg.name == topic_property_redpanda_storage_mode) {
+                parse_and_set_optional(
+                  update.properties.storage_mode,
+                  cfg.value,
+                  kafka::config_resource_operation::set,
+                  storage_mode_validator{current_storage_mode});
                 continue;
             }
 
