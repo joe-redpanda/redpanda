@@ -881,6 +881,8 @@ db_domain_manager::exclusive_db_lock() {
     auto fut = co_await ss::coroutine::as_future(
       db_instance_lock_.hold_write_lock());
     if (fut.failed()) {
+        auto ex = fut.get_exception();
+        vlog(cd_log.debug, "Exception while getting database lock: {}", ex);
         co_return std::unexpected(rpc::errc::not_leader);
     }
     co_return std::move(fut.get());
@@ -901,6 +903,8 @@ db_domain_manager::gate_and_open_reads() {
       db_instance_lock_.hold_read_lock());
     if (fut.failed()) {
         // Shutting down.
+        auto ex = fut.get_exception();
+        vlog(cd_log.debug, "Exception while getting database lock: {}", ex);
         co_return std::unexpected(rpc::errc::not_leader);
     }
     if (!db_ || db_->needs_reopen()) {
@@ -920,7 +924,8 @@ db_domain_manager::gate_and_open_writes() {
     }
     auto fut = co_await ss::coroutine::as_future(writer_lock_.get_units());
     if (fut.failed()) {
-        // Shutting down.
+        auto ex = fut.get_exception();
+        vlog(cd_log.debug, "Exception while getting writer lock: {}", ex);
         co_return std::unexpected(rpc::errc::not_leader);
     }
     auto& gl = *gl_res;
@@ -956,6 +961,8 @@ ss::future<std::expected<void, rpc::errc>> db_domain_manager::write_rows(
             expected_term_, "Failed to write to database"));
         if (step_down_fut.failed()) {
             // Only throws at shutdown.
+            auto ex = step_down_fut.get_exception();
+            vlog(cd_log.debug, "Exception while stepping down: {}", ex);
             co_return std::unexpected(rpc::errc::not_leader);
         }
     }
