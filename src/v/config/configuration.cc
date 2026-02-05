@@ -1729,6 +1729,17 @@ configuration::configuration()
       "compressed, the limit applies to the compressed batch size.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       1_MiB)
+  , delete_topic_enable(
+      *this,
+      false,
+      "delete_topic_enable",
+      "Enable or disable topic deletion via the Kafka DeleteTopics API. When "
+      "set to false, all topic deletion requests are rejected with error code "
+      "73 (TOPIC_DELETION_DISABLED). This is a cluster-wide safety setting "
+      "that cannot be overridden by superusers. Topics in "
+      "kafka_nodelete_topics are always protected regardless of this setting.",
+      meta{.needs_restart = needs_restart::no, .visibility = visibility::user},
+      true)
   , kafka_nodelete_topics(
       *this,
       "kafka_nodelete_topics",
