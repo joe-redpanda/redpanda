@@ -25,6 +25,18 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "test_fixture_cfg",
+    hdrs = [
+        "test_fixture_cfg.h",
+    ],
+    visibility = [
+        "//src/v/cloud_topics/tests:__pkg__",
+        "//src/v/redpanda:__pkg__",
+        "//src/v/redpanda/tests:__pkg__",
+    ],
+)
+
+redpanda_cc_library(
     name = "types",
     srcs = [
         "types.cc",
@@ -80,6 +92,7 @@ redpanda_cc_library(
         ":cluster_services_interface",
         ":data_plane_impl",
         "//src/v/cloud_topics/housekeeper:manager",
+        "//src/v/cloud_topics/level_one/metastore:flush_loop",
         "//src/v/cloud_topics/level_one/metastore:topic_purger",
         "//src/v/cloud_topics/level_zero/gc:level_zero_gc",
         "//src/v/cloud_topics/manager",

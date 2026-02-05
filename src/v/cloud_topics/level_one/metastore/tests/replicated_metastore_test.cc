@@ -41,9 +41,16 @@ public:
 
     bool is_lsm_backend() const { return GetParam() == metastore_backend::lsm; }
 
+    cloud_topics::test_fixture_cfg fixture_cfg() const {
+        return {
+          .use_lsm_metastore = is_lsm_backend(),
+          // Skip flushing since tests may exercise flushing.
+          .skip_flush_loop = true,
+        };
+    }
     void SetUp() override {
         for (size_t i = 0; i < num_brokers; i++) {
-            add_node(is_lsm_backend());
+            add_node(fixture_cfg());
         }
         wait_for_all_members(5s).get();
     }
@@ -1007,7 +1014,7 @@ TEST_P(ReplicatedMetastoreTest, TestBasicFlushAndRestore) {
     // Restart all nodes.
     // NOTE: the added nodes get the same node IDs 0, 1, 2.
     for (size_t i = 0; i < num_brokers; i++) {
-        add_node(is_lsm_backend());
+        add_node(fixture_cfg());
     }
     wait_for_all_members(5s).get();
 

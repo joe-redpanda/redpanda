@@ -4586,6 +4586,13 @@ configuration::configuration()
       "term storage.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       5min)
+  , cloud_topics_long_term_flush_interval(
+      *this,
+      "cloud_topics_long_term_flush_interval",
+      "Time interval at which long term storage metadata is flushed to object "
+      "storage.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      10min)
   , cloud_topics_epoch_service_epoch_increment_interval(
       *this,
       "cloud_topics_epoch_service_epoch_increment_interval",

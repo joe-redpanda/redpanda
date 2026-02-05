@@ -15,6 +15,7 @@
 #include "cloud_topics/data_plane_impl.h"
 #include "cloud_topics/housekeeper/manager.h"
 #include "cloud_topics/level_one/compaction/scheduler.h"
+#include "cloud_topics/level_one/metastore/flush_loop.h"
 #include "cloud_topics/level_one/metastore/topic_purger.h"
 #include "cloud_topics/level_zero/gc/level_zero_gc.h"
 #include "cloud_topics/manager/manager.h"
@@ -45,7 +46,8 @@ ss::future<> app::construct(
   ss::sharded<cluster::metadata_cache>* metadata_cache,
   ss::sharded<rpc::connection_cache>* connection_cache,
   cloud_storage_clients::bucket_name bucket,
-  ss::sharded<storage::api>* storage) {
+  ss::sharded<storage::api>* storage,
+  bool skip_flush_loop) {
     data_plane = co_await make_data_plane(
       ssx::sformat("{}::data_plane", _logger_name),
       remote,
@@ -103,6 +105,13 @@ ss::future<> app::construct(
       &controller->get_topics_state(),
       &controller->get_topics_frontend());
 
+    if (!skip_flush_loop) {
+        co_await construct_service(
+          flush_loop_manager, ss::sharded_parameter([this] {
+              return &replicated_metastore.local();
+          }));
+    }
+
     co_await construct_service(
       reconciler,
       ss::sharded_parameter([this] { return &l1_io.local(); }),
@@ -153,6 +162,10 @@ ss::future<> app::start() {
     co_await housekeeper_manager.invoke_on_all(&housekeeper_manager::start);
     co_await compaction_scheduler->start();
     co_await l0_gc.invoke_on_all(&level_zero_gc::start);
+    if (flush_loop_manager.local_is_initialized()) {
+        co_await flush_loop_manager.invoke_on_all(
+          &l1::flush_loop_manager::start);
+    }
 
     // When start is called, we must have registered all the callbacks before
     // this as starting the manager will invoke callbacks for partitions already
@@ -175,6 +188,22 @@ ss::future<> app::wire_up_notifications() {
             purge_mgr.enqueue_loop_reset(needs_loop);
         });
     });
+    if (flush_loop_manager.local_is_initialized()) {
+        co_await flush_loop_manager.invoke_on_all([this](auto& flm) {
+            manager.local().on_l1_domain_leader(
+              [&flm](
+                const model::ntp& ntp,
+                const auto&,
+                const auto& partition) noexcept {
+                  if (ntp.tp.partition != model::partition_id{0}) {
+                      return;
+                  }
+                  auto needs_loop = l1::flush_loop_manager::needs_loop{
+                    bool(partition)};
+                  flm.enqueue_loop_reset(needs_loop);
+              });
+        });
+    }
     co_await housekeeper_manager.invoke_on_all([this](auto& hm) {
         manager.local().on_ctp_partition_leader(
           [&hm](
