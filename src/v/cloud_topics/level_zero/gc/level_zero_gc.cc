@@ -86,6 +86,8 @@ public:
             // range, but if they're not it doesn't really matter. all best
             // effort.
             if (!objects.has_value() || !objects.value().empty()) {
+                probe_->objects_listed(
+                  objects.has_value() ? objects.value().size() : 0);
                 co_return std::move(objects);
             }
 

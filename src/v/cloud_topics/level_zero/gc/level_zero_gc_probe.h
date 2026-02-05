@@ -24,6 +24,7 @@ public:
     explicit level_zero_gc_probe(bool disable);
 
     void objects_deleted(uint64_t count = 1) { objects_deleted_ += count; }
+    void objects_listed(uint64_t count) { objects_listed_ += count; }
     void list_error() { list_errors_++; }
     void delete_error() { delete_errors_++; }
     void set_max_gc_eligible_epoch(cluster_epoch epoch) {
@@ -40,6 +41,7 @@ private:
     cloud_topics::cluster_epoch::type epoch_lag() const;
 
     uint64_t objects_deleted_{0};
+    uint64_t objects_listed_{0};
     uint64_t list_errors_{0};
     uint64_t delete_errors_{0};
 
