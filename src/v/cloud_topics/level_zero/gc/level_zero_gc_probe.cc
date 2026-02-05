@@ -51,7 +51,38 @@ void level_zero_gc_probe::setup_internal_metrics(bool disable) {
           sm::description(
             "Number of DELETE errors during L0 garbage collection."),
           labels),
+        sm::make_gauge(
+          "epoch_lag",
+          [this] { return epoch_lag(); },
+          sm::description(
+            "Difference between max GC eligible epoch and oldest epoch being "
+            "deleted."),
+          labels),
       });
+}
+
+void level_zero_gc_probe::report_deletion_epoch(cluster_epoch epoch) {
+    if (reset_deletion_epoch_) {
+        min_deletion_epoch_ = epoch;
+        reset_deletion_epoch_ = false;
+    } else {
+        min_deletion_epoch_ = std::min(
+          min_deletion_epoch_.value_or(epoch), epoch);
+    }
+}
+
+cloud_topics::cluster_epoch::type level_zero_gc_probe::epoch_lag() const {
+    // If max_gc_eligible_epoch_ is:
+    //   - negative: no epoch is GC eligible, globally
+    //   - nullopt: we haven't made a GC pass yet to populate it
+    // in either case, there is no lag to compute as such, so we call it 0 lag
+    if (max_gc_eligible_epoch_ < cloud_topics::cluster_epoch{0}) {
+        return 0;
+    }
+    if (!min_deletion_epoch_.has_value()) {
+        return max_gc_eligible_epoch_.value()();
+    }
+    return max_gc_eligible_epoch_.value()() - min_deletion_epoch_.value()();
 }
 
 } // namespace cloud_topics

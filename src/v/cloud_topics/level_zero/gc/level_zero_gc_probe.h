@@ -9,10 +9,13 @@
  */
 #pragma once
 
+#include "cloud_topics/types.h"
 #include "metrics/metrics.h"
 
 #include <seastar/core/metrics_registration.hh>
 #include <seastar/core/metrics_types.hh>
+
+#include <optional>
 
 namespace cloud_topics {
 
@@ -23,13 +26,26 @@ public:
     void objects_deleted(uint64_t count = 1) { objects_deleted_ += count; }
     void list_error() { list_errors_++; }
     void delete_error() { delete_errors_++; }
+    void set_max_gc_eligible_epoch(cluster_epoch epoch) {
+        max_gc_eligible_epoch_ = epoch;
+    }
+    void report_deletion_epoch(cluster_epoch epoch);
+    /// Accept the next deletion epoch, unconditionally, but don't reset the
+    /// currently cached value yet. This way we won't see little spikes in lag
+    /// between GC iterations.
+    void reset_deletion_epoch() { reset_deletion_epoch_ = true; }
 
 private:
     void setup_internal_metrics(bool disable);
+    cloud_topics::cluster_epoch::type epoch_lag() const;
 
     uint64_t objects_deleted_{0};
     uint64_t list_errors_{0};
     uint64_t delete_errors_{0};
+
+    std::optional<cluster_epoch> max_gc_eligible_epoch_;
+    std::optional<cluster_epoch> min_deletion_epoch_;
+    bool reset_deletion_epoch_{true};
 
     metrics::internal_metric_groups _metrics;
 };

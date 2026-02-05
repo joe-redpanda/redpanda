@@ -724,6 +724,7 @@ level_zero_gc::try_to_collect() {
     // per collection loop.
     std::optional<cluster_epoch> max_gc_epoch;
     size_t total_eligible{0};
+    probe_.reset_deletion_epoch();
     while (delete_worker_->has_capacity()) {
         auto res = co_await do_try_to_collect(std::ref(max_gc_epoch));
         if (!res.has_value()) {
@@ -766,6 +767,7 @@ level_zero_gc::do_try_to_collect(std::optional<cluster_epoch>& max_gc_epoch) {
         vlog(cd_log.info, "No GC eligible epoch currently exists");
         co_return std::unexpected(collection_error::no_collectible_epoch);
     }
+    probe_.set_max_gc_eligible_epoch(max_gc_epoch.value());
 
     const auto max_gc_birthday = std::chrono::system_clock::now()
                                  - config_.deletion_grace_period();
@@ -863,6 +865,7 @@ level_zero_gc::do_try_to_collect(std::optional<cluster_epoch>& max_gc_epoch) {
 
         object_keys_total_bytes += object.key.size();
         eligible_objects.push_back(object);
+        probe_.report_deletion_epoch(object_epoch.value());
     }
 
     co_return delete_worker_->delete_objects(
