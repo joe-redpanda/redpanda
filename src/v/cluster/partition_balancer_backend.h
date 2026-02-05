@@ -78,7 +78,7 @@ public:
     ss::future<std::error_code> request_rebalance();
 
 private:
-    void tick();
+    ss::future<> tick();
     ss::future<> do_tick();
 
     /// If now, rearms to run immediately, else rearms to _tick_interval or

@@ -28,6 +28,7 @@
 #include "features/feature_table.h"
 #include "model/metadata.h"
 #include "random/generators.h"
+#include "ssx/future-util.h"
 #include "ssx/minimum_interval_timer.h"
 #include "utils/stable_iterator_adaptor.h"
 
@@ -35,6 +36,7 @@
 #include <seastar/core/shared_ptr.hh>
 
 #include <chrono>
+#include <exception>
 #include <optional>
 #include <utility>
 
@@ -92,7 +94,7 @@ partition_balancer_backend::partition_balancer_backend(
   , _raft_learner_recovery_rate(std::move(raft_learner_recovery_rate))
   , _topic_aware(std::move(topic_aware))
   , _health_monitor_max_metadata_age(std::move(health_monitor_max_metadata_age))
-  , _timer{_health_monitor_max_metadata_age(), [this] { tick(); }} {
+  , _timer{_health_monitor_max_metadata_age(), [this]() { return tick(); }} {
     // if the minimum interval changes, quick update the timer accordingly
     _health_monitor_max_metadata_age.watch([this] {
         if (_gate.is_closed()) {
@@ -291,47 +293,45 @@ void partition_balancer_backend::on_health_monitor_update(
     }
 }
 
-void partition_balancer_backend::tick() {
-    ssx::background
-      = ssx::spawn_with_gate_then(
-          _gate,
-          [this] {
-              if (_tick_in_progress) {
-                  vlog(
-                    clusterlog.debug,
-                    "skipping tick, tick already in progress");
-                  return ss::now();
-              }
+ss::future<> partition_balancer_backend::tick() {
+    if (_gate.is_closed()) {
+        vlog(clusterlog.debug, "skipping tick, shutting down");
+        co_return;
+    }
 
-              _tick_in_progress = ss::abort_source{};
-              return do_tick().finally([this] {
-                  _tick_in_progress = {};
-                  maybe_rearm_timer(
-                    _cur_term && _cur_term->_force_health_report_refresh);
-              });
-          })
-          .handle_exception_type([](balancer_tick_aborted_exception& e) {
-              vlog(clusterlog.info, "tick aborted, reason: {}", e.what());
-          })
-          .handle_exception_type(
-            [this](topic_table::concurrent_modification_error& e) {
-                vlog(
-                  clusterlog.debug,
-                  "concurrent modification of topics table: {}, rescheduling "
-                  "tick",
-                  e.what());
-                maybe_rearm_timer(true);
-            })
-          .handle_exception_type([this](iterator_stability_violation& e) {
-              vlog(
-                clusterlog.debug,
-                "iterator_stability_violation: {}, rescheduling tick",
-                e.what());
-              maybe_rearm_timer(true);
-          })
-          .handle_exception([](const std::exception_ptr& e) {
-              vlog(clusterlog.warn, "tick error: {}", e);
-          });
+    auto holder = _gate.hold();
+    auto units = co_await _lock.get_units();
+
+    vassert(
+      !_tick_in_progress,
+      "invariant violated, there should only ever be one tick in progress");
+
+    _tick_in_progress = ss::abort_source{};
+    auto cleanup_holder = ss::defer([this] {
+        _tick_in_progress = std::nullopt;
+        maybe_rearm_timer(_cur_term && _cur_term->_force_health_report_refresh);
+    });
+
+    try {
+        co_await do_tick();
+    } catch (const balancer_tick_aborted_exception& e) {
+        vlog(clusterlog.info, "tick aborted, reason: {}", e.what());
+    } catch (const topic_table::concurrent_modification_error& e) {
+        vlog(
+          clusterlog.debug,
+          "concurrent modification of topics table: {}, rescheduling "
+          "tick",
+          e.what());
+        maybe_rearm_timer(true);
+    } catch (const iterator_stability_violation& e) {
+        vlog(
+          clusterlog.debug,
+          "iterator_stability_violation: {}, rescheduling tick",
+          e.what());
+        maybe_rearm_timer(true);
+    } catch (...) {
+        vlog(clusterlog.warn, "tick error: {}", std::current_exception());
+    }
 }
 
 ss::future<> partition_balancer_backend::stop() {
@@ -353,8 +353,6 @@ ss::future<> partition_balancer_backend::do_tick() {
         vlog(clusterlog.debug, "not leader, skipping tick");
         co_return;
     }
-
-    auto units = co_await _lock.get_units();
 
     if (!_raft0->is_leader()) {
         vlog(clusterlog.debug, "lost leadership, exiting");
@@ -379,6 +377,7 @@ ss::future<> partition_balancer_backend::do_tick() {
 
     const bool force_refresh_this_tick
       = _cur_term->_force_health_report_refresh;
+
     auto health_report = co_await _health_monitor.get_cluster_health(
       cluster_report_filter{},
       force_refresh(force_refresh_this_tick),
