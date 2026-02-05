@@ -28,6 +28,7 @@
 #include "features/feature_table.h"
 #include "model/metadata.h"
 #include "random/generators.h"
+#include "ssx/minimum_interval_timer.h"
 #include "utils/stable_iterator_adaptor.h"
 
 #include <seastar/core/coroutine.hh>
@@ -35,6 +36,7 @@
 
 #include <chrono>
 #include <optional>
+#include <utility>
 
 using namespace std::chrono_literals;
 using planner_status = cluster::partition_balancer_planner::status;
@@ -64,7 +66,8 @@ partition_balancer_backend::partition_balancer_backend(
   config::binding<std::optional<size_t>> min_partition_size_threshold,
   config::binding<std::chrono::milliseconds> node_status_interval,
   config::binding<size_t> raft_learner_recovery_rate,
-  config::binding<bool> topic_aware)
+  config::binding<bool> topic_aware,
+  config::binding<std::chrono::milliseconds> health_monitor_max_metadata_age)
   : _raft0(std::move(raft0))
   , _controller_stm(controller_stm.local())
   , _feature_table(feature_table.local())
@@ -88,7 +91,16 @@ partition_balancer_backend::partition_balancer_backend(
   , _node_status_interval(std::move(node_status_interval))
   , _raft_learner_recovery_rate(std::move(raft_learner_recovery_rate))
   , _topic_aware(std::move(topic_aware))
-  , _timer([this] { tick(); }) {}
+  , _health_monitor_max_metadata_age(std::move(health_monitor_max_metadata_age))
+  , _timer{_health_monitor_max_metadata_age(), [this] { tick(); }} {
+    // if the minimum interval changes, quick update the timer accordingly
+    _health_monitor_max_metadata_age.watch([this] {
+        if (_gate.is_closed()) {
+            return;
+        }
+        _timer.set_minimum_interval(_health_monitor_max_metadata_age());
+    });
+}
 
 bool partition_balancer_backend::is_enabled() const {
     return is_leader() && !config::node().recovery_mode_enabled();
@@ -155,26 +167,24 @@ void partition_balancer_backend::maybe_rearm_timer(bool now) {
     if (config::node().recovery_mode_enabled()) {
         return;
     }
-    auto schedule_at = now ? clock_t::now() : clock_t::now() + _tick_interval();
-    auto duration_ms = [](clock_t::time_point time_point) {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(
-                 time_point - clock_t::now())
-          .count();
-    };
-    if (_timer.armed()) {
-        schedule_at = std::min(schedule_at, _timer.get_timeout());
-        _timer.rearm(schedule_at);
-        vlog(
-          clusterlog.debug,
-          "Tick rescheduled to run in: {}ms",
-          duration_ms(schedule_at));
-    } else if (_lock.waiters() == 0) {
-        _timer.arm(schedule_at);
-        vlog(
-          clusterlog.debug,
-          "Tick scheduled to run in: {}ms",
-          duration_ms(schedule_at));
-    }
+
+    const auto now_timepoint = ss::lowres_clock::now();
+    auto to_schedule_at = now ? now_timepoint
+                              : now_timepoint + _tick_interval();
+    _timer.request_tick(to_schedule_at);
+
+    auto calculate_readable_delta =
+      [&now_timepoint](ss::lowres_clock::time_point later) {
+          return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   later - now_timepoint)
+            .count();
+      };
+
+    vlog(
+      clusterlog.debug,
+      "partition_balancer tick requested in {}ms, maybe scheduled in: {}ms",
+      calculate_readable_delta(to_schedule_at),
+      _timer.get_scheduled_time().transform(calculate_readable_delta));
 }
 
 void partition_balancer_backend::on_members_update(
