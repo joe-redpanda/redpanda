@@ -1115,7 +1115,9 @@ configuration::configuration()
       "delete.retention.ms, and only if the topic's cleanup.policy "
       "allows compaction.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
-      false)
+      true,
+      property<bool>::noop_validator,
+      legacy_default<bool>(false, legacy_version{17}))
   , retention_bytes(
       *this,
       "retention_bytes",
