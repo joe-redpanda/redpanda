@@ -623,6 +623,13 @@
             "in": "query",
             "required": false,
             "type": "boolean"
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "description": "Optional qualified subject to search for the schema under. Use <:.context:> for context-only lookup, or <:.context:subject> to also verify the schema is associated with that subject. Defaults to searching the default context if unspecified."
           }
         ],
         "produces": [
