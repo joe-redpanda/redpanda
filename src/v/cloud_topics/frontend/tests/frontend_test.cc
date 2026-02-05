@@ -80,6 +80,12 @@ public:
 
     MOCK_METHOD(size_t, materialize_max_bytes, (), (const, override));
 
+    MOCK_METHOD(
+      ss::future<std::optional<cloud_topics::cluster_epoch>>,
+      get_current_epoch,
+      (ss::abort_source*),
+      (noexcept, override));
+
     MOCK_METHOD(ss::future<>, start, (), (override));
 
     MOCK_METHOD(ss::future<>, stop, (), (override));
