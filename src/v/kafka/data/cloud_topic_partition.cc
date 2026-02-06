@@ -230,7 +230,8 @@ size_t cloud_topic_partition::local_size_bytes() const {
     return _partition->size_bytes();
 }
 
-ss::future<std::optional<size_t>> cloud_topic_partition::cloud_size_bytes() {
+ss::future<std::optional<size_t>>
+cloud_topic_partition::cloud_size_bytes() const {
     co_return co_await _fe->size_bytes();
 }
 
