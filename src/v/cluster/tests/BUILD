@@ -251,6 +251,20 @@ redpanda_cc_btest(
     ],
 )
 
+redpanda_cc_gtest(
+    name = "leader_balancer_simulation_test",
+    timeout = "short",
+    srcs = [
+        "leader_balancer_simulation_test.cc",
+    ],
+    deps = [
+        ":leader_balancer_test_utils",
+        "//src/v/cluster",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+    ],
+)
+
 redpanda_cc_btest(
     name = "metrics_reporter_test",
     timeout = "short",
