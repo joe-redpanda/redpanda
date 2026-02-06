@@ -844,6 +844,11 @@ def get_normalize_dataset(type: SchemaType) -> TestNormalizeDataset:
     assert False, f"Unsupported schema {type=}"
 
 
+class ReferenceFormat(str, Enum):
+    NONE = ""
+    QUALIFIED = "qualified"
+
+
 class SchemaRegistryRedpandaClient:
     """
     A client for acessing the schema registry.
@@ -1107,11 +1112,19 @@ class SchemaRegistryRedpandaClient:
         )
 
     def get_subjects_subject_versions_version(
-        self, subject, version, format=None, headers=HTTP_GET_HEADERS, **kwargs
+        self,
+        subject,
+        version,
+        format=None,
+        reference_format: ReferenceFormat | None = None,
+        headers=HTTP_GET_HEADERS,
+        **kwargs,
     ):
         params = {}
         if format is not None:
             params["format"] = format
+        if reference_format and reference_format != ReferenceFormat.NONE:
+            params["referenceFormat"] = reference_format.value
         return self.request(
             "GET",
             f"subjects/{subject}/versions/{version}",
