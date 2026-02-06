@@ -175,18 +175,6 @@ struct context_subject {
       : ctx{std::move(c)}
       , sub{std::move(s)} {}
 
-    // TODO: remove this, it is only for gradual commit-by-commit source code
-    // migration
-    context_subject(subject sub)
-      : ctx{default_context}
-      , sub{std::move(sub)} {}
-
-    // TODO: remove this, it is only for gradual commit-by-commit source code
-    // migration
-    context_subject(ss::sstring sub)
-      : ctx{default_context}
-      , sub{std::move(sub)} {}
-
     friend auto
     operator<=>(const context_subject& lhs, const context_subject& rhs)
       = default;
@@ -572,12 +560,6 @@ inline constexpr schema_id invalid_schema_id{-1};
 
 // A schema id that is valid within a context.
 struct context_schema_id {
-    // TODO: remove this, it is only for gradual commit-by-commit source code
-    // migration
-    context_schema_id(schema_id id)
-      : ctx{default_context}
-      , id{id} {}
-
     context_schema_id(context c, schema_id s)
       : ctx{std::move(c)}
       , id{s} {}
