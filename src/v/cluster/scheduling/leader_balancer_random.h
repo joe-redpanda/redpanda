@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <variant>
 
 namespace cluster::leader_balancer_types {
 
@@ -82,9 +83,11 @@ public:
         return std::nullopt;
     }
 
+    void reset() { _replicas_begin = 0; }
+
     void update_index(const reassignment& r) {
         _current_leaders[r.group] = r.to;
-        _replicas_begin = 0;
+        reset();
     }
 
 private:
@@ -99,9 +102,22 @@ private:
     size_t _replicas_begin{0};
 };
 
-class random_hill_climbing_strategy final : public leader_balancer_strategy {
+template<typename T>
+concept climbing_strategy_impl = requires(T& t, const reassignment& r) {
+    typename T::reassignment_score;
+    {
+        t.get_reassignment_score(r)
+    } -> std::same_as<std::optional<typename T::reassignment_score>>;
+    { t.generate_reassignment() } -> std::same_as<std::optional<reassignment>>;
+};
+
+template<typename Impl>
+class climbing_strategy_base : public leader_balancer_strategy {
+protected:
+    using base = climbing_strategy_base<Impl>;
+
 public:
-    random_hill_climbing_strategy(
+    climbing_strategy_base(
       index_type index,
       group_id_to_topic_id g_to_topic,
       muted_index mi,
@@ -114,6 +130,9 @@ public:
       , _etdc(*_group2topic, *_si, *_mi)
       , _eslc(*_si, *_mi)
       , _enlc(*_si) {
+        static_assert(
+          climbing_strategy_impl<Impl>,
+          "Impl must satisfy climbing_strategy_impl concept");
         if (preference_idx) {
             _pinning_constr.emplace(
               *_group2topic, std::move(preference_idx.value()));
@@ -121,60 +140,6 @@ public:
     }
 
     double error() const override { return _eslc.error() + _etdc.error(); }
-
-    /*
-     * Find a group reassignment that reduces total error.
-     */
-    std::optional<reassignment>
-    find_movement(const leader_balancer_types::muted_groups_t& skip) override {
-        for (;;) {
-            auto reassignment_opt = _reassignments.generate_reassignment();
-
-            if (!reassignment_opt) {
-                break;
-            }
-
-            auto reassignment = *reassignment_opt;
-            if (
-              skip.contains(static_cast<uint64_t>(reassignment.group))
-              || _mi->muted_nodes().contains(reassignment.from.node_id)
-              || _mi->muted_nodes().contains(reassignment.to.node_id)) {
-                continue;
-            }
-
-            // Hierarchical optimization: first check if the proposed
-            // reassignment improves the pinning objective (makes the leaders
-            // distribution better conform to the provided pinning
-            // configuration). If the pinning objective remains at the same
-            // level, check balancing objectives.
-
-            if (_pinning_constr) {
-                auto pinning_diff = _pinning_constr->evaluate(reassignment);
-                if (pinning_diff < -error_jitter) {
-                    continue;
-                } else if (pinning_diff > error_jitter) {
-                    return reassignment_opt;
-                }
-            }
-
-            auto shard_load_diff = _etdc.evaluate(reassignment)
-                                   + _eslc.evaluate(reassignment);
-            if (shard_load_diff < -error_jitter) {
-                continue;
-            } else if (shard_load_diff > error_jitter) {
-                return reassignment_opt;
-            }
-
-            auto node_load_diff = _enlc.evaluate(reassignment);
-            if (node_load_diff < -error_jitter) {
-                continue;
-            } else if (node_load_diff > error_jitter) {
-                return reassignment_opt;
-            }
-        }
-
-        return std::nullopt;
-    }
 
     void apply_movement(const reassignment& reassignment) override {
         _etdc.update_index(reassignment);
@@ -190,18 +155,124 @@ public:
      */
     std::vector<shard_load> stats() const override { return _eslc.stats(); }
 
-private:
+protected:
     static constexpr double error_jitter = 0.000001;
 
+    struct reassignment_with_score {
+        reassignment reassignment;
+        Impl::reassignment_score score;
+    };
+
+    std::optional<reassignment> do_find_movement_without_score(
+      const leader_balancer_types::muted_groups_t& skip) {
+        return do_find_movement_with_score(skip).transform(
+          [](auto&& s) { return s.reassignment; });
+    }
+
+    std::optional<reassignment_with_score> do_find_movement_with_score(
+      const leader_balancer_types::muted_groups_t& skip) {
+        for (;;) {
+            auto reassignment_opt
+              = static_cast<Impl&>(*this).generate_reassignment();
+
+            if (!reassignment_opt) {
+                return std::nullopt;
+            }
+
+            auto reassignment = *reassignment_opt;
+            if (
+              skip.contains(static_cast<uint64_t>(reassignment.group))
+              || _mi->muted_nodes().contains(reassignment.from.node_id)
+              || _mi->muted_nodes().contains(reassignment.to.node_id)) {
+                continue;
+            }
+
+            if (
+              auto maybe_score = static_cast<Impl&>(*this)
+                                   .get_reassignment_score(reassignment)) {
+                return {{reassignment, *maybe_score}};
+            }
+        }
+
+        return std::nullopt;
+    }
+
+private:
     std::unique_ptr<muted_index> _mi;
     std::unique_ptr<group_id_to_topic_id> _group2topic;
     std::unique_ptr<shard_index> _si;
-    random_reassignments _reassignments;
 
+protected:
+    random_reassignments _reassignments;
     std::optional<pinning_constraint> _pinning_constr;
     even_topic_distribution_constraint _etdc;
     even_shard_load_constraint _eslc;
     even_node_load_constraint _enlc;
+};
+
+/// A greedy random-walk hill-climbing strategy for leader rebalancing.
+///
+/// On each call to find_movement the strategy draws a random leader
+/// reassignment from the full set of possible moves and returns the first one
+/// that strictly reduces the combined error across a hierarchy of scores:
+///   1. Pinning (leader-preference compliance)
+///   2. Shard-level load balance (even topic distribution + even shard load)
+///   3. Node-level load balance
+/// Each score is only considered if all higher-level scores are not impacted by
+/// the move (i.e. changes are within a small jitter threshold).
+/// Each reassignment is only considered once.
+class random_hill_climbing_strategy final
+  : public climbing_strategy_base<random_hill_climbing_strategy> {
+    friend base;
+
+public:
+    using base::base;
+
+    std::optional<reassignment>
+    find_movement(const leader_balancer_types::muted_groups_t& skip) override {
+        return do_find_movement_without_score(skip);
+    }
+
+private:
+    using reassignment_score = std::monostate;
+
+    // returns score if reassignment is acceptable, nullopt otherwise
+    std::optional<reassignment_score>
+    get_reassignment_score(const reassignment& r) {
+        // Hierarchical optimization: first check if the proposed
+        // reassignment improves the pinning objective (makes the leaders
+        // distribution better conform to the provided pinning
+        // configuration). If the pinning objective remains at the same
+        // level, check balancing objectives.
+        if (_pinning_constr) {
+            auto pinning_diff = _pinning_constr->evaluate(r);
+            if (pinning_diff < -error_jitter) {
+                return std::nullopt;
+            } else if (pinning_diff > error_jitter) {
+                return std::monostate{};
+            }
+        }
+
+        auto shard_load_diff = _etdc.evaluate(r) + _eslc.evaluate(r);
+        if (shard_load_diff < -error_jitter) {
+            return std::nullopt;
+        } else if (shard_load_diff > error_jitter) {
+            return std::monostate{};
+        }
+
+        auto node_load_diff = _enlc.evaluate(r);
+        if (node_load_diff < -error_jitter) {
+            return std::nullopt;
+        } else if (node_load_diff > error_jitter) {
+            return std::monostate{};
+        }
+
+        return std::nullopt;
+    }
+
+    std::optional<reassignment> generate_reassignment() {
+        return this->_reassignments.generate_reassignment();
+    }
 };
 
 } // namespace cluster::leader_balancer_types
