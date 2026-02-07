@@ -734,6 +734,14 @@ configuration::configuration()
       "minimum bytes was not reached.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       1ms)
+  , kafka_fetch_request_timeout_ms(
+      *this,
+      "kafka_fetch_request_timeout_ms",
+      "Broker-side target for the duration of a single fetch request. The "
+      "broker will try to complete fetches within the specified duration, even "
+      "if it means returning less bytes in the fetch than are available.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      5s)
   , fetch_read_strategy(
       *this,
       "fetch_read_strategy",
@@ -1158,11 +1166,14 @@ configuration::configuration()
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       std::nullopt)
   , log_compaction_disable_tx_batch_removal(
+      *this, "log_compaction_disable_tx_batch_removal")
+  , log_compaction_tx_batch_removal_enabled(
       *this,
-      "log_compaction_disable_tx_batch_removal",
-      "Disable removal of transactional control batches. This should only be "
-      "toggled to `true` in extreme cases of proven instability due to issues "
-      "with transactional control batch removal.",
+      "log_compaction_tx_batch_removal_enabled",
+      "Enables removal of transactional control batches during compaction. "
+      "These batches are removed according to a topic's configured "
+      "delete.retention.ms, and only if the topic's cleanup.policy "
+      "allows compaction.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       false)
   , retention_bytes(
@@ -4409,6 +4420,18 @@ configuration::configuration()
       {.needs_restart = needs_restart::no, .visibility = visibility::user},
       "~dlq",
       &validate_non_empty_string_opt)
+  , iceberg_default_catalog_namespace(
+      *this,
+      "iceberg_default_catalog_namespace",
+      "The default namespace (database name) for Iceberg tables. All tables "
+      "created by Redpanda will be placed in this namespace within the Iceberg "
+      "catalog. Supports nested namespaces as an array of strings. IMPORTANT: "
+      "This value must be configured before enabling Iceberg and must not be "
+      "changed afterward. Changing it will cause Redpanda to lose track of "
+      "existing tables.",
+      {.needs_restart = needs_restart::yes, .visibility = visibility::user},
+      {"redpanda"},
+      &validate_iceberg_default_catalog_namespace)
   , enable_host_metrics(
       *this,
       "enable_host_metrics",
@@ -4574,6 +4597,27 @@ configuration::configuration()
       *this,
       "cloud_topics_epoch_service_local_epoch_cache_duration",
       "The local cache duration of a cluster wide epoch.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      1min)
+  , cloud_topics_short_term_gc_minimum_object_age(
+      *this,
+      "cloud_topics_short_term_gc_minimum_object_age",
+      "The minimum age of an L0 object before it becomes eligible for garbage "
+      "collection.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      12h)
+  , cloud_topics_short_term_gc_interval(
+      *this,
+      "cloud_topics_short_term_gc_interval",
+      "The interval between invocations of the L0 garbage collection work loop "
+      "when progress is being made.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      10s)
+  , cloud_topics_short_term_gc_backoff_interval(
+      *this,
+      "cloud_topics_short_term_gc_backoff_interval",
+      "The interval between invocations of the L0 garbage collection work loop "
+      "when no progress is being made or errors are occurring.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       1min)
   , development_feature_property_testing_only(

@@ -100,9 +100,9 @@ def data_dependency():
     http_archive(
         name = "libxml2",
         build_file = "//bazel/thirdparty:libxml2.BUILD",
-        sha256 = "f52638e4d67135c49f676d1c8fcc4f9f35afb7ec9bfb4aee743e2e86d56e006b",
-        strip_prefix = "libxml2-2.14.5",
-        url = "https://vectorized-public.s3.us-west-2.amazonaws.com/dependencies/libxml2-v2.14.5.tar.gz",
+        sha256 = "546ab74561c040df210c88dbd3c652bf509d826954ab2002c8973f1fa8d10130",
+        strip_prefix = "libxml2-2.14.6",
+        url = "https://vectorized-public.s3.us-west-2.amazonaws.com/dependencies/libxml2-v2.14.6.tar.gz",
     )
 
     http_archive(
@@ -111,6 +111,14 @@ def data_dependency():
         sha256 = "0c8fac0a5c66eea339dce6be857101b308ce1064c838b81125b0dde3901e8032",
         strip_prefix = "lksctp-tools-lksctp-tools-1.0.19",
         url = "https://vectorized-public.s3.amazonaws.com/dependencies/lksctp-tools-1.0.19.tar.gz",
+    )
+
+    http_archive(
+        name = "ragel",
+        build_file = "//bazel/thirdparty:ragel.BUILD",
+        sha256 = "5f156edb65d20b856d638dd9ee2dfb43285914d9aa2b6ec779dac0270cd56c3f",
+        strip_prefix = "ragel-6.10",
+        url = "http://www.colm.net/files/ragel/ragel-6.10.tar.gz",
     )
 
     #
@@ -130,9 +138,9 @@ def data_dependency():
     http_archive(
         name = "openssl",
         build_file = "//bazel/thirdparty:openssl.BUILD",
-        sha256 = "d80c34f5cf902dccf1f1b5df5ebb86d0392e37049e5d73df1b3abae72e4ffe8b",
-        strip_prefix = "openssl-3.0.18",
-        url = "https://github.com/openssl/openssl/releases/download/openssl-3.0.18/openssl-3.0.18.tar.gz",
+        sha256 = "fa5a4143b8aae18be53ef2f3caf29a2e0747430b8bc74d32d88335b94ab63072",
+        strip_prefix = "openssl-3.0.19",
+        url = "https://github.com/openssl/openssl/releases/download/openssl-3.0.19/openssl-3.0.19.tar.gz",
     )
 
     http_archive(
@@ -162,9 +170,9 @@ def data_dependency():
     http_archive(
         name = "seastar",
         build_file = "//bazel/thirdparty:seastar.BUILD",
-        sha256 = "73fecd1f4d73ed72e8048de07636652dd15a6970acfacf72a95cc3819398362a",
-        strip_prefix = "seastar-81284fb0f209380b0c537e98ec9cb8ef5a4ebfa2",
-        url = "https://github.com/redpanda-data/seastar/archive/81284fb0f209380b0c537e98ec9cb8ef5a4ebfa2.tar.gz",
+        sha256 = "1ef450a3fddb9c06c87dfbec7b431a8abd7f545cb94964f12c822568992e750c",
+        strip_prefix = "seastar-bb19ecd39a1f97bc777cc075be9d9026feedd63e",
+        url = "https://github.com/redpanda-data/seastar/archive/bb19ecd39a1f97bc777cc075be9d9026feedd63e.tar.gz",
     )
 
     http_archive(

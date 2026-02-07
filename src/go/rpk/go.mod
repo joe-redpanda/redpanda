@@ -20,6 +20,7 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/aws/aws-sdk-go v1.55.6
 	github.com/beevik/ntp v1.5.0
+	github.com/briandowns/spinner v1.23.2
 	github.com/bufbuild/protocompile v0.14.1
 	github.com/cespare/xxhash v1.1.0
 	github.com/containerd/errdefs v1.0.0
@@ -47,7 +48,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.65.0
 	github.com/redpanda-data/common-go/proto v0.0.0-20250820120127-9b518fca5ecf
-	github.com/redpanda-data/common-go/rpadmin v0.2.0
+	github.com/redpanda-data/common-go/rpadmin v0.2.1
 	github.com/redpanda-data/common-go/rpsr v0.1.2
 	github.com/redpanda-data/protoc-gen-go-mcp v0.0.0-20250812151819-7e5d5fef8241
 	github.com/rs/xid v1.6.0

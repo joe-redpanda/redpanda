@@ -51,6 +51,7 @@ SEASTAR_THREAD_TEST_CASE(test_lt) {
     BOOST_CHECK_LT(iobuf::from(""), iobuf::from("cat"));
     BOOST_CHECK_LT(iobuf::from("cat"), iobuf::from("dog"));
     BOOST_CHECK_LT(iobuf::from("cat"), iobuf::from("catastrophe"));
+    BOOST_CHECK_LT(iobuf::from("\x01"), iobuf::from("\xFF"));
     BOOST_CHECK_EQUAL(false, iobuf::from("cat") < iobuf::from("cat"));
     BOOST_CHECK_EQUAL(false, iobuf{} < iobuf{});
     BOOST_CHECK(std::strong_ordering::equal == (iobuf{} <=> iobuf{}));
@@ -99,6 +100,10 @@ SEASTAR_THREAD_TEST_CASE(test_cmp_str_view) {
       std::strong_ordering::equal, (multiple_frags.share(0, 3) <=> "cat"));
     BOOST_CHECK_LT(iobuf::from(""), iobuf::from("cat"));
     BOOST_CHECK_GT(iobuf::from("cat"), iobuf::from(""));
+    auto multi_frags = iobuf::from("ab");
+    multi_frags.append_fragments(iobuf::from("d"));
+    BOOST_CHECK_EQUAL(
+      true, (iobuf::from("abc") <=> multi_frags) == std::strong_ordering::less);
 }
 
 SEASTAR_THREAD_TEST_CASE(test_appended_data_is_retained) {
@@ -850,4 +855,69 @@ SEASTAR_THREAD_TEST_CASE(iobuf_linearize) {
     BOOST_CHECK_EQUAL(iobuf{}.linearize_to_string(), "");
     iobuf large = iobuf::from(std::string(128_KiB + 1, 'a'));
     BOOST_CHECK_THROW(large.linearize_to_string(), std::runtime_error);
+}
+
+SEASTAR_THREAD_TEST_CASE(iobuf_spaceship_string_view) {
+    // Multi-fragment iobuf compared against string_view, these are potential
+    // sources of bugs as the comparison is done fragment by fragment.
+    iobuf buf = iobuf::from("ab");
+    buf.append_fragments(iobuf::from("cd"));
+
+    // Equal comparison
+    BOOST_CHECK(
+      (buf <=> std::string_view("abcd")) == std::strong_ordering::equal);
+
+    // Less than - iobuf is less
+    BOOST_CHECK(
+      (buf <=> std::string_view("abce")) == std::strong_ordering::less);
+
+    // Greater than - iobuf is greater
+    BOOST_CHECK(
+      (buf <=> std::string_view("abcc")) == std::strong_ordering::greater);
+
+    // Size difference - iobuf shorter
+    BOOST_CHECK(
+      (buf <=> std::string_view("abcde")) == std::strong_ordering::less);
+
+    // Size difference - iobuf longer
+    BOOST_CHECK(
+      (buf <=> std::string_view("abc")) == std::strong_ordering::greater);
+
+    // Test with many small fragments - difference in second fragment
+    iobuf buf2;
+    buf2.append_fragments(iobuf::from("a"));
+    buf2.append_fragments(iobuf::from("b"));
+    buf2.append_fragments(iobuf::from("c"));
+
+    BOOST_CHECK(
+      (buf2 <=> std::string_view("abc")) == std::strong_ordering::equal);
+    BOOST_CHECK(
+      (buf2 <=> std::string_view("abd")) == std::strong_ordering::less);
+    BOOST_CHECK(
+      (buf2 <=> std::string_view("abb")) == std::strong_ordering::greater);
+
+    // Test mismatch in middle of second fragment
+    iobuf buf3;
+    buf3.append_fragments(iobuf::from("xx"));
+    buf3.append_fragments(iobuf::from("yy"));
+
+    BOOST_CHECK(
+      (buf3 <=> std::string_view("xxyy")) == std::strong_ordering::equal);
+    BOOST_CHECK(
+      (buf3 <=> std::string_view("xxyz")) == std::strong_ordering::less);
+    BOOST_CHECK(
+      (buf3 <=> std::string_view("xxyx")) == std::strong_ordering::greater);
+
+    // Past bug reproducers
+    iobuf buf4;
+    buf4.append_fragments(iobuf::from("b"));
+    buf4.append_fragments(iobuf::from("a"));
+    BOOST_CHECK(
+      (buf4 <=> std::string_view("ax")) == std::strong_ordering::greater);
+
+    iobuf buf5;
+    buf5.append_fragments(iobuf::from("a"));
+    buf5.append_fragments(iobuf::from("z"));
+    BOOST_CHECK(
+      (buf5 <=> std::string_view("bx")) == std::strong_ordering::less);
 }

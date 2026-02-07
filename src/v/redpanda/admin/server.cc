@@ -147,6 +147,7 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <ranges>
 #include <stdexcept>
 #include <system_error>
 #include <type_traits>
@@ -1186,6 +1187,63 @@ fill_maintenance_status(const cluster::broker_state& b_state) {
     return ret;
 }
 
+ss::httpd::broker_json::broker get_broker_info(
+  model::node_id node_id,
+  const cluster::node_metadata& node_metadata,
+  const cluster::health_monitor_frontend& health_monitor,
+  const cluster::members_table& members_table,
+  const cluster::cluster_health_report& health_report) {
+    ss::httpd::broker_json::broker b;
+
+    // Populate basic fields from node metadata
+    b.node_id = node_id;
+    b.num_cores = node_metadata.broker.properties().cores;
+    if (node_metadata.broker.rack()) {
+        b.rack = *node_metadata.broker.rack();
+    }
+    b.membership_status = fmt::format(
+      "{}", node_metadata.state.get_membership_state());
+    b.is_alive = health_monitor.is_alive(node_id) == cluster::alive::yes;
+    b.maintenance_status = fill_maintenance_status(node_metadata.state);
+    b.internal_rpc_address = node_metadata.broker.rpc_address().host();
+    b.internal_rpc_port = node_metadata.broker.rpc_address().port();
+    b.in_fips_mode = fmt::format(
+      "{}", node_metadata.broker.properties().in_fips_mode);
+
+    // Enrich with data from health report
+    auto node_report_it = std::ranges::find_if(
+      health_report.node_reports.begin(),
+      health_report.node_reports.end(),
+      [node_id](const auto& report) { return report->id == node_id; });
+
+    if (node_report_it != health_report.node_reports.end()) {
+        const auto& node_report = *node_report_it;
+        b.version = node_report->local_state.redpanda_version;
+        b.recovery_mode_enabled
+          = node_report->local_state.recovery_mode_enabled;
+
+        auto nm = members_table.get_node_metadata_ref(node_id);
+        if (nm && node_report->drain_status) {
+            b.maintenance_status = fill_maintenance_status(
+              nm.value().get().state, node_report->drain_status.value());
+        }
+
+        auto add_disk = [&ds_list = b.disk_space](const storage::disk& ds) {
+            ss::httpd::broker_json::disk_space_info dsi;
+            dsi.path = ds.path;
+            dsi.free = ds.free;
+            dsi.total = ds.total;
+            ds_list.push(dsi);
+        };
+        add_disk(node_report->local_state.data_disk);
+        if (!node_report->local_state.shared_disk()) {
+            add_disk(node_report->local_state.get_cache_disk());
+        }
+    }
+
+    return b;
+}
+
 // Fetch brokers from the members table and enrich with
 // metadata from the health monitor.
 ss::future<std::vector<ss::httpd::broker_json::broker>>
@@ -1210,71 +1268,18 @@ get_brokers(cluster::controller* const controller) {
                 ss::http::reply::status_type::service_unavailable);
           }
 
-          std::map<model::node_id, ss::httpd::broker_json::broker> broker_map;
-
-          // Collect broker information from the members table.
-          auto& members_table = controller->get_members_table().local();
-          for (auto& [id, nm] : members_table.nodes()) {
-              ss::httpd::broker_json::broker b;
-              b.node_id = id;
-              b.num_cores = nm.broker.properties().cores;
-              if (nm.broker.rack()) {
-                  b.rack = *nm.broker.rack();
-              }
-              b.membership_status = fmt::format(
-                "{}", nm.state.get_membership_state());
-              b.is_alive = controller->get_health_monitor().local().is_alive(id)
-                           == cluster::alive::yes;
-
-              // These fields are defaults that will be overwritten with
-              // data from the health report.
-              b.maintenance_status = fill_maintenance_status(nm.state);
-              b.internal_rpc_address = nm.broker.rpc_address().host();
-              b.internal_rpc_port = nm.broker.rpc_address().port();
-              b.in_fips_mode = fmt::format(
-                "{}", nm.broker.properties().in_fips_mode);
-
-              broker_map[id] = b;
-          }
-
-          // Enrich the broker information with data from the health report.
-          for (auto& node_report : h_report.value().node_reports) {
-              auto it = broker_map.find(node_report->id);
-              if (it == broker_map.end()) {
-                  continue;
-              }
-
-              it->second.version = node_report->local_state.redpanda_version;
-              it->second.recovery_mode_enabled
-                = node_report->local_state.recovery_mode_enabled;
-              auto nm = members_table.get_node_metadata_ref(node_report->id);
-              if (nm && node_report->drain_status) {
-                  it->second.maintenance_status = fill_maintenance_status(
-                    nm.value().get().state, node_report->drain_status.value());
-              }
-
-              auto add_disk =
-                [&ds_list = it->second.disk_space](const storage::disk& ds) {
-                    ss::httpd::broker_json::disk_space_info dsi;
-                    dsi.path = ds.path;
-                    dsi.free = ds.free;
-                    dsi.total = ds.total;
-                    ds_list.push(dsi);
-                };
-              add_disk(node_report->local_state.data_disk);
-              if (!node_report->local_state.shared_disk()) {
-                  add_disk(node_report->local_state.get_cache_disk());
-              }
-          }
-
           std::vector<ss::httpd::broker_json::broker> brokers;
-          brokers.reserve(broker_map.size());
+          auto& members_table = controller->get_members_table().local();
+          auto& health_monitor = controller->get_health_monitor().local();
 
-          for (auto&& broker : broker_map) {
-              brokers.push_back(std::move(broker.second));
+          brokers.reserve(members_table.nodes().size());
+
+          for (auto& [id, nm] : members_table.nodes()) {
+              brokers.push_back(get_broker_info(
+                id, nm, health_monitor, members_table, h_report.value()));
           }
 
-          return ss::make_ready_future<decltype(brokers)>(std::move(brokers));
+          return ssx::now(std::move(brokers));
       });
 };
 
@@ -2800,30 +2805,29 @@ admin_server::get_broker_handler(std::unique_ptr<ss::http::request> req) {
           fmt::format("broker with id: {} not found", id));
     }
 
-    auto maybe_drain_status = co_await _controller->get_health_monitor()
-                                .local()
-                                .get_node_drain_status(
-                                  id, model::time_from_now(5s));
+    cluster::node_report_filter filter;
+    filter.include_partitions = cluster::include_partitions_info::no;
 
-    ss::httpd::broker_json::broker ret;
-    ret.node_id = node_meta->broker.id();
-    ret.internal_rpc_address = node_meta->broker.rpc_address().host();
-    ret.internal_rpc_port = node_meta->broker.rpc_address().port();
-    ret.num_cores = node_meta->broker.properties().cores;
-    if (node_meta->broker.rack()) {
-        ret.rack = node_meta->broker.rack().value();
-    }
-    ret.membership_status = fmt::format(
-      "{}", node_meta->state.get_membership_state());
-    ret.maintenance_status = fill_maintenance_status(node_meta->state);
-    if (
-      !maybe_drain_status.has_error()
-      && maybe_drain_status.value().has_value()) {
-        ret.maintenance_status = fill_maintenance_status(
-          node_meta->state, *maybe_drain_status.value());
+    auto h_report
+      = co_await _controller->get_health_monitor().local().get_cluster_health(
+        cluster::cluster_report_filter{
+          .node_report_filter = std::move(filter),
+        },
+        cluster::force_refresh::no,
+        model::time_from_now(5s));
+
+    if (h_report.has_error()) {
+        throw ss::httpd::base_exception(
+          fmt::format(
+            "Unable to get cluster health: {}", h_report.error().message()),
+          ss::http::reply::status_type::internal_server_error);
     }
 
-    co_return ret;
+    const auto& members_table = _controller->get_members_table().local();
+    const auto& health_monitor = _controller->get_health_monitor().local();
+
+    co_return get_broker_info(
+      id, *node_meta, health_monitor, members_table, h_report.value());
 }
 
 ss::future<ss::json::json_return_type>
@@ -4060,12 +4064,15 @@ void admin_server::register_cluster_routes() {
                 ret.unhealthy_reasons._set = true;
                 ret.all_nodes._set = true;
                 ret.nodes_down._set = true;
+                ret.high_disk_usage_nodes._set = true;
                 ret.leaderless_partitions._set = true;
                 ret.under_replicated_partitions._set = true;
 
                 ret.unhealthy_reasons = health_overview.unhealthy_reasons;
                 ret.all_nodes = health_overview.all_nodes;
                 ret.nodes_down = health_overview.nodes_down;
+                ret.high_disk_usage_nodes
+                  = health_overview.high_disk_usage_nodes;
                 ret.nodes_in_recovery_mode
                   = health_overview.nodes_in_recovery_mode;
 
@@ -4663,8 +4670,8 @@ admin_server::get_cloud_storage_lifecycle(std::unique_ptr<ss::http::request>) {
 
     auto& topic_table = _controller->get_topics_state().local();
 
-    cluster::topic_table::lifecycle_markers_t markers
-      = topic_table.get_lifecycle_markers();
+    chunked_vector<cluster::topic_table::lifecycle_markers_t::value_type>
+      markers{std::from_range, topic_table.get_lifecycle_markers()};
 
     // Hack: persuade json response to always include the field even if empty
     response.markers._set = true;
@@ -5091,6 +5098,8 @@ admin_server::restart_service_handler(std::unique_ptr<ss::http::request> req) {
 
     vlog(
       adminlog.info, "Restart redpanda service: {}", to_string_view(*service));
-    co_await restart_redpanda_service(*service);
+    co_await container().invoke_on(0, [service](admin_server& server) {
+        return server.restart_redpanda_service(*service);
+    });
     co_return ss::json::json_return_type(ss::json::json_void());
 }

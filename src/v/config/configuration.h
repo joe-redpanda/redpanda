@@ -220,6 +220,7 @@ struct configuration final : public config_store {
     property<std::chrono::milliseconds> tx_timeout_delay_ms;
     deprecated_property rm_violation_recovery_policy;
     property<std::chrono::milliseconds> fetch_reads_debounce_timeout;
+    property<std::chrono::milliseconds> kafka_fetch_request_timeout_ms;
     enum_property<model::fetch_read_strategy> fetch_read_strategy;
     bounded_property<size_t> fetch_max_read_concurrency;
     bounded_property<double, numeric_bounds> fetch_pid_p_coeff;
@@ -273,7 +274,8 @@ struct configuration final : public config_store {
     property<std::optional<uint32_t>>
       log_compaction_merge_max_segments_per_range;
     property<std::optional<uint32_t>> log_compaction_merge_max_ranges;
-    property<bool> log_compaction_disable_tx_batch_removal;
+    deprecated_property log_compaction_disable_tx_batch_removal;
+    property<bool> log_compaction_tx_batch_removal_enabled;
     // same as retention.size in kafka - TODO: size not implemented
     property<std::optional<size_t>> retention_bytes;
     property<int32_t> group_topic_partitions;
@@ -786,6 +788,7 @@ struct configuration final : public config_store {
     property<bool> iceberg_disable_automatic_snapshot_expiry;
     property<std::optional<ss::sstring>> iceberg_topic_name_dot_replacement;
     property<ss::sstring> iceberg_dlq_table_suffix;
+    property<std::vector<ss::sstring>> iceberg_default_catalog_namespace;
 
     property<bool> enable_host_metrics;
 
@@ -822,6 +825,12 @@ public:
       cloud_topics_epoch_service_epoch_increment_interval;
     property<std::chrono::milliseconds>
       cloud_topics_epoch_service_local_epoch_cache_duration;
+
+    property<std::chrono::milliseconds>
+      cloud_topics_short_term_gc_minimum_object_age;
+    property<std::chrono::milliseconds> cloud_topics_short_term_gc_interval;
+    property<std::chrono::milliseconds>
+      cloud_topics_short_term_gc_backoff_interval;
 
     development_feature_property<int> development_feature_property_testing_only;
 

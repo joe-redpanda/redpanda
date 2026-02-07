@@ -111,6 +111,7 @@ public:
                       std::nullopt,
                       log->stm_manager()->max_removable_local_log_offset(),
                       log->stm_manager()->max_tombstone_remove_offset(),
+                      log->stm_manager()->max_tx_end_remove_offset(),
                       std::nullopt,
                       std::nullopt,
                       std::chrono::milliseconds{0},
@@ -138,7 +139,7 @@ public:
         auto batches = co_await copy_to_mem(reader);
 
         // Ensure there are no aborted keys (tracked in _aborted_xxx)
-        // int fence_batch_count = 0;
+        int fence_batch_count = 0;
         for (auto& batch : batches) {
             auto type = batch.header().type;
             RPTEST_REQUIRE_NE_CORO(type, model::record_batch_type::tx_prepare);
@@ -153,14 +154,13 @@ public:
                 RPTEST_REQUIRE_CORO(_committed_pids.contains(pid));
                 RPTEST_REQUIRE_CORO(!_aborted_pids.contains(pid));
             }
-            // if (type == model::record_batch_type::tx_fence) {
-            //     fence_batch_count++;
-            // }
+            if (type == model::record_batch_type::tx_fence) {
+                fence_batch_count++;
+            }
         }
 
-        // TODO(tx_compact): Re-enable this when transactional control batch
-        // feature is added. Fence batches should be removed.
-        // RPTEST_REQUIRE_CORO(fence_batch_count == 0);
+        // Fence batches should be removed.
+        RPTEST_REQUIRE_CORO(fence_batch_count == 0);
     }
 
     void run_random_workload(
@@ -241,6 +241,7 @@ public:
         storage::housekeeping_config ccfg(
           model::timestamp::min(),
           std::nullopt,
+          model::offset::max(),
           model::offset::max(),
           model::offset::max(),
           std::nullopt,

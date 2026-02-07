@@ -10,21 +10,26 @@
 #include "raft/compaction_coordinator.h"
 #include "raft/tests/raft_fixture.h"
 #include "raft/tests/raft_fixture_retry_policy.h"
+#include "storage/disk_log_impl.h"
 #include "test_utils/async.h"
 #include "test_utils/test.h"
 
-#include <seastar/core/circular_buffer.hh>
 #include <seastar/core/loop.hh>
 
 #include <fmt/ranges.h>
 
 #include <algorithm>
 #include <ranges>
+#include <system_error>
 #include <utility>
 
 using namespace raft;
 
 struct coco_fixture : raft_fixture {
+private:
+    ss::abort_source _as;
+
+public:
     coco_fixture() noexcept = default;
 
     seastar::future<> SetUpAsync() override {
@@ -43,21 +48,34 @@ struct coco_fixture : raft_fixture {
       size_t record_size,
       chunked_vector<model::offset>& last_data_offsets) {
         auto leader_id = co_await wait_for_leader(10s);
-        auto& leader_node = node(leader_id);
+        auto leader_node = &node(leader_id);
         for (int _ : std::views::iota(0, segments_count)) {
             vlog(logger().info, "Replicating...");
-            auto r = co_await leader_node.raft()->replicate(
-              make_batches(batches_per_segment, records_per_batch, record_size),
-              replicate_options(consistency_level::quorum_ack, 10s));
-            vlog(logger().info, "Replicated...");
-            ASSERT_FALSE_CORO(r.has_error());
-            auto last_data_offset = r.value().last_offset;
-            last_data_offsets.push_back(last_data_offset);
+
+            model::offset last_data_offset{};
+            for (int attempt = 0; attempt < 5; ++attempt) {
+                auto r = co_await leader_node->raft()->replicate(
+                  make_batches(
+                    batches_per_segment, records_per_batch, record_size),
+                  replicate_options(consistency_level::quorum_ack, 10s));
+                if (r.has_value()) {
+                    last_data_offset = r.value().last_offset;
+                    break;
+                }
+                ASSERT_EQ_CORO(r.error(), raft::errc::not_leader);
+                vlog(
+                  logger().info,
+                  "Not leader anymore while replicating, retrying...");
+                leader_id = co_await wait_for_leader(10s);
+                leader_node = &node(leader_id);
+            }
+            RPTEST_REQUIRE_NE_CORO(last_data_offset, model::offset{});
+
             vlog(
               logger().info,
               "last_data_offset: {}, dirty_offset: {}",
               last_data_offset,
-              leader_node.raft()->dirty_offset());
+              leader_node->raft()->dirty_offset());
 
             // make sure all fully replicated
             RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, last_data_offset] {
@@ -70,7 +88,7 @@ struct coco_fixture : raft_fixture {
                         "node {} committed_offset: {}",
                         node_id,
                         committed_offset);
-                      return committed_offset == last_data_offset;
+                      return committed_offset >= last_data_offset;
                   });
             });
 
@@ -80,15 +98,35 @@ struct coco_fixture : raft_fixture {
                   auto& n = node(node_id);
                   return n.raft()->log()->force_roll();
               });
+
+            last_data_offsets.push_back(last_data_offset);
         }
+    }
+
+    storage::housekeeping_config make_housekeeping_config(
+      raft_node_instance& n,
+      model::offset max_collect_offset = model::offset::max()) {
+        model::offset max_tombstone_remove_offset
+          = n.raft()->log()->stm_manager()->max_tombstone_remove_offset();
+        model::offset max_tx_end_remove_offset
+          = n.raft()->log()->stm_manager()->max_tx_end_remove_offset();
+        return {
+          model::timestamp::max(),
+          std::nullopt,
+          max_collect_offset,
+          max_tombstone_remove_offset,
+          max_tx_end_remove_offset,
+          0ms,
+          0ms,
+          0ms,
+          _as};
     }
 
     ss::future<> run_compaction(
       raft_node_instance& n,
       model::offset max_collect_offset = model::offset::max()) {
-        model::offset max_tombstone_remove_offset
-          = n.raft()->log()->stm_manager()->max_tombstone_remove_offset();
-        ss::abort_source as;
+        auto cfg = make_housekeeping_config(n, max_collect_offset);
+
         co_await n.raft()->log()->force_roll();
         for (const auto& seg : n.raft()->log()->segments()) {
             vlog(
@@ -98,53 +136,55 @@ struct coco_fixture : raft_fixture {
               seg->offsets().get_base_offset(),
               seg->has_appender());
         }
-        co_await n.raft()->log()->housekeeping(
-          storage::housekeeping_config(
-            model::timestamp::max(),
-            std::nullopt,
-            max_collect_offset,
-            max_tombstone_remove_offset,
-            0ms,
-            0ms,
-            0ms,
-            as));
+
+        co_await n.raft()->log()->housekeeping(std::move(cfg));
     }
 
-    template<typename Predicate>
-    bool check_mtro_on_all_nodes(Predicate&& pred) {
+    template<typename Range, typename MtroPredicate, typename MxroPredicate>
+    bool check_group_offsets_on_nodes(
+      Range&& ids, MtroPredicate&& mtro_pred, MxroPredicate&& mxro_pred) {
         return std::ranges::all_of(
-          all_ids(),
-          std::forward<Predicate>(pred),
-          [this](model::node_id node_id) {
-              auto mtro = node(node_id)
-                            .raft()
-                            ->get_compaction_coordinator()
-                            .get_max_tombstone_remove_offset();
+          std::forward<Range>(ids),
+          [this,
+           mtro_pred = std::forward<MtroPredicate>(mtro_pred),
+           mxro_pred = std::forward<MxroPredicate>(mxro_pred)](
+            model::node_id node_id) {
+              const auto& coco
+                = node(node_id).raft()->get_compaction_coordinator();
+              auto mtro = coco.get_max_tombstone_remove_offset();
+              auto mxro = coco.get_max_transaction_remove_offset();
               vlog(
                 logger().info,
-                "on node {} max tombstone remove offset: {}",
+                "on node {} max tombstone remove offset: {}, max transaction "
+                "remove offset: {}",
                 node_id,
-                mtro);
-              return mtro;
+                mtro,
+                mxro);
+              return mtro_pred(mtro) && mxro_pred(mxro);
           });
     }
 
+    template<typename Predicate>
+    bool check_group_offsets_on_all_nodes(Predicate&& pred) {
+        return check_group_offsets_on_nodes(all_ids(), pred, pred);
+    }
+
     ss::future<> transfer_leadership_to(model::node_id target) {
-        auto current_leader = co_await wait_for_leader(10s);
-        if (current_leader == target) {
-            co_return;
+        auto start = model::timeout_clock::now();
+        while (true) {
+            auto current_leader = co_await wait_for_leader(start + 30s);
+            if (current_leader == target) {
+                co_return;
+            }
+            vlog(
+              logger().info,
+              "Transferring leadership from {} to {}",
+              current_leader,
+              target);
+            auto raft = node(current_leader).raft();
+            std::ignore = co_await raft->transfer_leadership(
+              {.group = raft->group(), .target = target, .timeout = 10s});
         }
-        vlog(
-          logger().info,
-          "Transferring leadership from {} to {}",
-          current_leader,
-          target);
-        auto raft = node(current_leader).raft();
-        auto r = co_await raft->transfer_leadership(
-          {.group = raft->group(), .target = target, .timeout = 10s});
-        ASSERT_TRUE_CORO(r.success);
-        current_leader = co_await wait_for_leader(10s);
-        ASSERT_EQ_CORO(current_leader, target);
     }
 
     // does not support concurrent isolations of nodes or any other dispatch
@@ -196,13 +236,18 @@ struct coco_fixture : raft_fixture {
     }
 
     // sleep enough time for all coordinators to exchange MCCOs and MTROs
-    ss::future<> wait_for_coordination() {
+    auto coordination_delay() {
         auto& node0coco
           = node(model::node_id{0}).raft()->get_compaction_coordinator();
-        co_await ss::sleep(
-          compaction_coordinator::test_accessor::mcco_getting_delay(node0coco)
-          + compaction_coordinator::test_accessor::mtro_distribution_delay()
-          + 1s);
+        auto delay
+          = compaction_coordinator::test_accessor::local_offsets_getting_delay(
+              node0coco)
+            + compaction_coordinator::test_accessor::
+              group_offsets_distribution_delay();
+        // in case leader gets re-elected during the wait
+        delay = 2 * delay + 1s;
+        vlog(logger().info, "coordination delay is {}", delay);
+        return delay;
     }
 };
 
@@ -221,7 +266,7 @@ TEST_F_CORO(coco_fixture, test_stalled_recovery) {
     co_await added_node.init_and_start({});
 
     // allow to recover only up to offset 20
-    added_node.f_injectable_log()->set_append_delay([this, &added_node]() {
+    added_node.f_injectable_log()->set_append_delay([this, &added_node] {
         if (added_node.raft().get()->dirty_offset() >= model::offset{20}) {
             throw std::runtime_error("simulated failure");
         }
@@ -258,7 +303,7 @@ TEST_F_CORO(coco_fixture, test_stalled_recovery) {
           "Waiting for recovery, target_offset: {}, recovered_offset: {}",
           target_offset,
           recovered_offset);
-        return recovered_offset == target_offset;
+        return recovered_offset >= target_offset;
     });
 
     // cleanly compact the log on original nodes
@@ -268,27 +313,30 @@ TEST_F_CORO(coco_fixture, test_stalled_recovery) {
           return run_compaction(n);
       });
 
-    // make sure local mcco on each compaction coordinator is updated
-    RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, old_node_ids] {
-        return std::ranges::all_of(
-          old_node_ids, [this](model::node_id node_id) {
-              const auto& raft = node(node_id).raft();
-              const auto& coco = raft->get_compaction_coordinator();
-              auto mcco = coco.get_local_max_cleanly_compacted_offset();
-              auto committed_offset = raft->committed_offset();
-              vlog(
-                logger().info,
-                "on node {} max cleanly compacted offset: {}, "
-                "committed_offset: {}",
-                node_id,
-                mcco,
-                committed_offset);
-              return mcco >= model::next_offset(committed_offset);
-          });
-    });
+    // make sure local mcco & mxfo on each compaction coordinator are updated
+    RPTEST_REQUIRE_EVENTUALLY_CORO(
+      coordination_delay(), [this, old_node_ids, &last_data_offsets] {
+          return std::ranges::all_of(
+            old_node_ids, [this, &last_data_offsets](model::node_id node_id) {
+                const auto& raft = node(node_id).raft();
+                const auto& coco = raft->get_compaction_coordinator();
+                auto mcco = coco.get_local_max_cleanly_compacted_offset();
+                auto mxfo = coco.get_local_max_transaction_free_offset();
+                vlog(
+                  logger().info,
+                  "on node {} max cleanly compacted offset: {}, max tx free "
+                  "offset: {}, last_data_offsets[0]: {}",
+                  node_id,
+                  mcco,
+                  mxfo,
+                  last_data_offsets[0]);
+                return mcco > last_data_offsets[0]
+                       && mxfo >= last_data_offsets[0];
+            });
+      });
 
     // allow to fully recover
-    added_node.f_injectable_log()->set_append_delay([]() { return 0s; });
+    added_node.f_injectable_log()->set_append_delay([] { return 0s; });
 
     // wait until recovery fully catches up
     RPTEST_REQUIRE_EVENTUALLY_CORO(
@@ -305,20 +353,22 @@ TEST_F_CORO(coco_fixture, test_stalled_recovery) {
 
     // make sure MTRO remains min because the new node is uncompacted and
     // has been inited from uncompacted log
-    co_await wait_for_coordination();
-    ASSERT_TRUE_CORO(check_mtro_on_all_nodes(
-      [](model::offset mtro) { return mtro <= model::offset{0}; }));
+    RPTEST_REQUIRE_EVENTUALLY_CORO(coordination_delay(), [this] {
+        return check_group_offsets_on_all_nodes(
+          [](model::offset mtro) { return mtro <= model::offset{0}; });
+    });
 
     // run compaction on the new node
     co_await run_compaction(added_node);
 
     // make sure MTRO advanced to last_data_offset on all nodes
-    RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, &last_data_offsets] {
-        return check_mtro_on_all_nodes(
-          [&last_data_offsets](model::offset mtro) {
-              return mtro >= last_data_offsets.back();
-          });
-    });
+    RPTEST_REQUIRE_EVENTUALLY_CORO(
+      coordination_delay(), [this, &last_data_offsets] {
+          return check_group_offsets_on_all_nodes(
+            [&last_data_offsets](model::offset mtro) {
+                return mtro >= last_data_offsets.back();
+            });
+      });
 }
 
 TEST_F_CORO(coco_fixture, test_leadership_change) {
@@ -338,7 +388,7 @@ TEST_F_CORO(coco_fixture, test_leadership_change) {
 
     // make sure MTRO advanced to last_data_offset on all nodes
     RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, &last_data_offsets] {
-        return check_mtro_on_all_nodes(
+        return check_group_offsets_on_all_nodes(
           [&last_data_offsets](model::offset mtro) {
               return mtro == model::next_offset(last_data_offsets[0]);
           });
@@ -356,9 +406,54 @@ TEST_F_CORO(coco_fixture, test_leadership_change) {
 
     // make sure MTRO advanced to last_data_offset on all nodes
     RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, &last_data_offsets] {
-        return check_mtro_on_all_nodes(
+        return check_group_offsets_on_all_nodes(
           [&last_data_offsets](model::offset mtro) {
               return mtro == model::next_offset(last_data_offsets[1]);
+          });
+    });
+}
+
+TEST_F_CORO(coco_fixture, test_leadership_change_during_distribution) {
+    int initial_size = 3;
+    co_await create_simple_group(initial_size);
+    co_await transfer_leadership_to(model::node_id{1});
+
+    // replicate some data
+    chunked_vector<model::offset> last_data_offsets;
+    co_await make_batches_and_replicate(1, 1, 10, 128, last_data_offsets);
+
+    co_await run_compaction(node(model::node_id{0}), last_data_offsets[0]);
+    co_await run_compaction(node(model::node_id{1}), last_data_offsets[0]);
+    co_await run_compaction(node(model::node_id{2}), last_data_offsets[0]);
+
+    // make sure MTRO advanced to last_data_offset on the leader only
+    RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, &last_data_offsets] {
+        return retry_with_leader(
+          model::timeout_clock::now() + 10s,
+          [this, &last_data_offsets](raft_node_instance& leader_node) {
+              bool coordinated_on_leader = check_group_offsets_on_nodes(
+                std::views::single(leader_node.get_vnode().id()),
+                [&last_data_offsets](model::offset mtro) {
+                    return mtro >= model::next_offset(last_data_offsets[0]);
+                },
+                [&last_data_offsets](model::offset mxro) {
+                    return mxro >= model::next_offset(last_data_offsets[0]);
+                });
+              // and transfer leadership to another node before the old leader
+              // distributes MTRO/MXRO knowledge
+              if (coordinated_on_leader) {
+                  return leader_node.raft()->step_down("test").then_wrapped(
+                    [](auto) { return true; });
+              }
+              return ssx::now(false);
+          });
+    });
+
+    // make sure MTRO advanced to last_data_offset on all nodes
+    RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, &last_data_offsets] {
+        return check_group_offsets_on_all_nodes(
+          [&last_data_offsets](model::offset mtro) {
+              return mtro >= model::next_offset(last_data_offsets[0]);
           });
     });
 }
@@ -381,19 +476,21 @@ TEST_F_CORO(coco_fixture, test_node_isolation) {
     }
 
     // make sure MTRO remains min because one of the nodes is isolated
-    co_await wait_for_coordination();
-    ASSERT_TRUE_CORO(check_mtro_on_all_nodes(
-      [](model::offset mtro) { return mtro <= model::offset{0}; }));
+    RPTEST_REQUIRE_EVENTUALLY_CORO(coordination_delay(), [this] {
+        return check_group_offsets_on_all_nodes(
+          [](model::offset mtro) { return mtro <= model::offset{0}; });
+    });
 
     de_isolate_node(model::node_id{2});
 
     // make sure MTRO advanced to last_data_offset on all nodes
-    RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, &last_data_offsets] {
-        return check_mtro_on_all_nodes(
-          [&last_data_offsets](model::offset mtro) {
-              return mtro == model::next_offset(last_data_offsets[2]);
-          });
-    });
+    RPTEST_REQUIRE_EVENTUALLY_CORO(
+      coordination_delay(), [this, &last_data_offsets] {
+          return check_group_offsets_on_all_nodes(
+            [&last_data_offsets](model::offset mtro) {
+                return mtro == model::next_offset(last_data_offsets[2]);
+            });
+      });
 }
 
 TEST_F_CORO(coco_fixture, test_decommission) {
@@ -418,7 +515,7 @@ TEST_F_CORO(coco_fixture, test_decommission) {
 
     // make sure MTRO advanced to last_data_offset on all nodes
     RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, &last_data_offsets] {
-        return check_mtro_on_all_nodes(
+        return check_group_offsets_on_all_nodes(
           [&last_data_offsets](model::offset mtro) {
               return mtro >= last_data_offsets[2];
           });
@@ -440,9 +537,8 @@ TEST_F_CORO(coco_fixture, test_decommission2) {
     co_await run_compaction(node(model::node_id{2}), last_data_offsets[2]);
 
     // victim node prevents tombstone removal
-    co_await wait_for_coordination();
-    RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this] {
-        return check_mtro_on_all_nodes(
+    RPTEST_REQUIRE_EVENTUALLY_CORO(coordination_delay(), [this] {
+        return check_group_offsets_on_all_nodes(
           [](model::offset mtro) { return mtro <= model::offset{0}; });
     });
 
@@ -450,12 +546,13 @@ TEST_F_CORO(coco_fixture, test_decommission2) {
     co_await drop_node(model::node_id{3});
 
     // make sure MTRO advanced to last_data_offset on all nodes
-    RPTEST_REQUIRE_EVENTUALLY_CORO(10s, [this, &last_data_offsets] {
-        return check_mtro_on_all_nodes(
-          [&last_data_offsets](model::offset mtro) {
-              return mtro >= last_data_offsets[2];
-          });
-    });
+    RPTEST_REQUIRE_EVENTUALLY_CORO(
+      coordination_delay(), [this, &last_data_offsets] {
+          return check_group_offsets_on_all_nodes(
+            [&last_data_offsets](model::offset mtro) {
+                return mtro >= last_data_offsets[2];
+            });
+      });
 }
 
 TEST_F_CORO(coco_fixture, test_decommission_during_mtro_distribution) {
@@ -492,5 +589,34 @@ TEST_F_CORO(coco_fixture, test_decommission_during_mtro_distribution) {
     node(model::node_id{0}).reset_dispatch_handlers();
 
     // smoke test: make sure no exceptions are thrown and system is stable
-    co_await wait_for_coordination();
+    co_await ss::sleep(coordination_delay());
+}
+
+TEST_F_CORO(coco_fixture, unclean_compaction) {
+    int initial_size = 3;
+    co_await create_simple_group(initial_size);
+    co_await transfer_leadership_to(model::node_id{0});
+
+    // replicate some data
+    chunked_vector<model::offset> last_data_offsets;
+    co_await make_batches_and_replicate(2, 5, 10, 128, last_data_offsets);
+
+    // only self-compact, so no clean compaction set
+    for (auto& [id, node] : nodes()) {
+        auto log = node->underlying_log();
+        auto cfg = make_housekeeping_config(*node).compact;
+        auto disk_log_ptr = dynamic_cast<storage::disk_log_impl*>(log.get());
+        for (auto& seg :
+             log->segments() | std::views::reverse | std::views::drop(1)) {
+            co_await disk_log_ptr->segment_self_compact(cfg, seg);
+        }
+    }
+
+    // make sure MTRO remains min because no clean compaction happened
+    RPTEST_REQUIRE_EVENTUALLY_CORO(coordination_delay(), [this] {
+        return check_group_offsets_on_nodes(
+          all_ids(),
+          [](model::offset mtro) { return mtro <= model::offset{0}; },
+          [](model::offset mxro) { return mxro > model::offset{1}; });
+    });
 }
