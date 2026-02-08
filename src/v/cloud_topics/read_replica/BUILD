@@ -3,6 +3,48 @@ load("//bazel:build.bzl", "redpanda_cc_library")
 package(default_visibility = ["//src/v/cloud_topics/read_replica:__subpackages__"])
 
 redpanda_cc_library(
+    name = "metadata_provider",
+    hdrs = [
+        "metadata_provider.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":partition_metadata",
+        "//src/v/model",
+    ],
+)
+
+redpanda_cc_library(
+    name = "metadata_manager",
+    srcs = [
+        "metadata_manager.cc",
+    ],
+    hdrs = [
+        "metadata_manager.h",
+        "partition_metadata.h",
+    ],
+    implementation_deps = [
+        ":snapshot_manager",
+        ":state_refresh_loop",
+        ":stm",
+        "//src/v/cloud_topics:logger",
+        "//src/v/cloud_topics/level_one/metastore:manifest_io",
+        "//src/v/ssx:work_queue",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":metadata_provider",
+        ":partition_metadata",
+        "//src/v/cloud_storage:remote_label",
+        "//src/v/cluster",
+        "//src/v/cluster/utils:partition_change_notifier_api",
+        "//src/v/container:chunked_hash_map",
+        "//src/v/model",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "partition_metadata",
     hdrs = [
         "partition_metadata.h",
