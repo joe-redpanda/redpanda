@@ -575,6 +575,54 @@ BOOST_AUTO_TEST_CASE(test_store_get_subjects_prefix) {
     // Prefix with no matches
     subjects = s.get_subjects(pps::include_deleted::no, "zzz");
     BOOST_REQUIRE(subjects.empty());
+
+    // Wildcard prefix ":*:app" matches subjects named "app*" in all contexts
+    subjects = s.get_subjects(pps::include_deleted::no, ":*:app");
+    BOOST_REQUIRE_EQUAL(subjects.size(), 4);
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects,
+        pps::context_subject{pps::default_context, pps::subject{"apple"}}));
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects,
+        pps::context_subject{pps::default_context, pps::subject{"app"}}));
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects, pps::context_subject{ctx_test, pps::subject{"apple"}}));
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects, pps::context_subject{ctx_other, pps::subject{"apple"}}));
+
+    // Wildcard prefix ":*:apple" matches exact name "apple" across contexts
+    subjects = s.get_subjects(pps::include_deleted::no, ":*:apple");
+    BOOST_REQUIRE_EQUAL(subjects.size(), 3);
+
+    // Wildcard prefix ":*:banana" matches "banana" in default and .other
+    subjects = s.get_subjects(pps::include_deleted::no, ":*:banana");
+    BOOST_REQUIRE_EQUAL(subjects.size(), 2);
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects,
+        pps::context_subject{pps::default_context, pps::subject{"banana"}}));
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects, pps::context_subject{ctx_other, pps::subject{"banana"}}));
+
+    // Wildcard prefix ":*:avocado" matches only .test context
+    subjects = s.get_subjects(pps::include_deleted::no, ":*:avocado");
+    BOOST_REQUIRE_EQUAL(subjects.size(), 1);
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects, pps::context_subject{ctx_test, pps::subject{"avocado"}}));
+
+    // Wildcard prefix ":*:" with empty subject prefix matches all subjects
+    subjects = s.get_subjects(pps::include_deleted::no, ":*:");
+    BOOST_REQUIRE_EQUAL(subjects.size(), 7);
+
+    // Wildcard prefix with no matches
+    subjects = s.get_subjects(pps::include_deleted::no, ":*:zzz");
+    BOOST_REQUIRE(subjects.empty());
 }
 
 BOOST_AUTO_TEST_CASE(test_store_global_compat) {

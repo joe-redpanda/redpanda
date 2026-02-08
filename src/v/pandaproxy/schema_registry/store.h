@@ -182,8 +182,20 @@ public:
     chunked_vector<context_subject> get_subjects(
       include_deleted inc_del,
       std::optional<std::string_view> subject_prefix = std::nullopt) const {
+        const auto original_prefix = subject_prefix;
         chunked_vector<context_subject> res;
         res.reserve(_subjects.size());
+
+        constexpr std::string_view WILDCARD_CTX{":*:"};
+        const auto prefix_has_wildcard_ctx = subject_prefix.has_value()
+                                             && subject_prefix->starts_with(
+                                               WILDCARD_CTX);
+
+        if (prefix_has_wildcard_ctx) {
+            // If the prefix has a wildcard context, strip the wildcard context
+            // from the prefix for matching purposes
+            subject_prefix = subject_prefix->substr(WILDCARD_CTX.size());
+        }
 
         auto matching_subject_names
           = _subjects | std::views::filter([inc_del](const auto& s) {
@@ -198,11 +210,25 @@ public:
                   if (!subject_prefix.has_value()) {
                       return true;
                   }
-                  return s.first.starts_with(subject_prefix.value());
+
+                  if (prefix_has_wildcard_ctx) {
+                      // Wildcard context prefix: match subjects across all
+                      // contexts by subject name prefix
+                      return s.first.sub().starts_with(subject_prefix.value());
+                  } else {
+                      return s.first.starts_with(subject_prefix.value());
+                  }
               })
             | std::views::keys;
 
         std::ranges::copy(matching_subject_names, std::back_inserter(res));
+
+        vlog(
+          srlog.trace,
+          "Listing subjects with prefix=\"{}\", mode={}, matched={} subjects",
+          original_prefix.value_or("(none)"),
+          prefix_has_wildcard_ctx ? "wildcard" : "normal",
+          res.size());
 
         return res;
     }
