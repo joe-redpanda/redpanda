@@ -169,7 +169,7 @@ cluster::cloud_storage_mode partition::get_cloud_storage_mode() const {
 
     const auto& cfg = _raft->log_config();
 
-    if (cfg.is_read_replica_mode_enabled()) {
+    if (cfg.is_read_replica_mode_enabled() && !cfg.cloud_topic_enabled()) {
         return cluster::cloud_storage_mode::read_replica;
     }
     if (cfg.is_tiered_storage()) {
@@ -795,6 +795,7 @@ bool partition::should_construct_archiver() {
            // for it.
            && _raft->ntp().ns == model::kafka_namespace
            && _raft->ntp().tp.topic != model::kafka_consumer_offsets_topic
+           && !ntp_config.cloud_topic_enabled()
            && (ntp_config.is_archival_enabled() || ntp_config.is_read_replica_mode_enabled());
 }
 
