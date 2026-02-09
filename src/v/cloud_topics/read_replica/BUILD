@@ -3,6 +3,27 @@ load("//bazel:build.bzl", "redpanda_cc_library")
 package(default_visibility = ["//src/v/cloud_topics/read_replica:__subpackages__"])
 
 redpanda_cc_library(
+    name = "snapshot_metastore",
+    srcs = [
+        "snapshot_metastore.cc",
+    ],
+    hdrs = [
+        "snapshot_metastore.h",
+    ],
+    implementation_deps = [
+        "//src/v/cloud_topics:logger",
+        "//src/v/cloud_topics/level_one/metastore/lsm:keys",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/v/cloud_topics/level_one/metastore",
+        "//src/v/cloud_topics/level_one/metastore/lsm:state_reader",
+        "//src/v/lsm",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "stm",
     srcs = [
         "stm.cc",
