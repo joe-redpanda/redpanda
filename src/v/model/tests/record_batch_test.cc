@@ -111,6 +111,38 @@ TEST_F(RecordBatchTest, TestCorruptedRecordBytes) {
     EXPECT_THROW(f.get(), std::out_of_range);
 }
 
+namespace {
+void check_parse_record_metadata(bool fully_parse) {
+    constexpr int num_records = 10;
+    auto b = model::test::make_random_batch(
+      model::offset(0), num_records, false);
+
+    std::vector<std::pair<int64_t, int32_t>> expected;
+    auto it = model::record_batch_iterator::create(b);
+    while (it.has_next()) {
+        auto r = it.next();
+        expected.emplace_back(r.timestamp_delta(), r.offset_delta());
+    }
+    ASSERT_EQ(expected.size(), num_records);
+
+    auto parser = iobuf_const_parser(b.data());
+    for (int i = 0; i < num_records; ++i) {
+        auto r = model::parse_record_metadata_from_buffer(parser, fully_parse);
+        EXPECT_EQ(r.timestamp_delta(), expected[i].first);
+        EXPECT_EQ(r.offset_delta(), expected[i].second);
+    }
+    EXPECT_EQ(parser.bytes_left(), 0);
+}
+} // namespace
+
+TEST_F(RecordBatchTest, ParseRecordMetadataSkipFields) {
+    check_parse_record_metadata(false);
+}
+
+TEST_F(RecordBatchTest, ParseRecordMetadataFullParse) {
+    check_parse_record_metadata(true);
+}
+
 class RecordBatchCompressionTest
   : public ::testing::TestWithParam<model::compression> {};
 

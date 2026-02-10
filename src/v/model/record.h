@@ -136,6 +136,32 @@ private:
     iobuf _value;
 };
 
+/// \brief A lightweight view of a record's metadata fields (attributes,
+/// timestamp_delta, offset_delta) without key, value, or headers.
+class record_metadata {
+public:
+    record_metadata(
+      int32_t size_bytes,
+      record_attributes attributes,
+      int64_t timestamp_delta,
+      int32_t offset_delta) noexcept
+      : _size_bytes(size_bytes)
+      , _attributes(attributes)
+      , _timestamp_delta(timestamp_delta)
+      , _offset_delta(offset_delta) {}
+
+    int32_t size_bytes() const { return _size_bytes; }
+    record_attributes attributes() const { return _attributes; }
+    int64_t timestamp_delta() const { return _timestamp_delta; }
+    int32_t offset_delta() const { return _offset_delta; }
+
+private:
+    int32_t _size_bytes;
+    record_attributes _attributes;
+    int64_t _timestamp_delta;
+    int32_t _offset_delta;
+};
+
 /// \brief
 // DefaultRecord(int sizeInBytes,
 //               byte attributes,
@@ -886,6 +912,36 @@ public:
                     return;
                 }
             }
+        }
+    }
+
+    /**
+     * Iterate over record metadata.
+     *
+     * Note that we don't need to fully parse a record to get the information in
+     * `record_metadata`. Hence its optional here and only used in cases where a
+     * user wants to validate that the entire record is correctly formatted.
+     */
+    template<typename Func>
+    void
+    for_each_record_metadata(Func f, bool fully_parse_records = false) const {
+        const auto rc = record_count();
+        auto parser = iobuf_const_parser(data());
+        int32_t i = 0;
+        for (; i < rc; ++i) {
+            auto res = f(
+              model::parse_record_metadata_from_buffer(
+                parser, fully_parse_records));
+            if (res == ss::stop_iteration::yes) {
+                break;
+            }
+        }
+
+        if (i == rc && parser.bytes_left()) [[unlikely]] {
+            throw std::out_of_range(
+              fmt::format(
+                "Record metadata iteration stopped with {} bytes remaining",
+                parser.bytes_left()));
         }
     }
 
