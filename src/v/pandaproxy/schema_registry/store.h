@@ -181,7 +181,7 @@ public:
     ///\brief Return a list of subjects.
     chunked_vector<context_subject> get_subjects(
       include_deleted inc_del,
-      const std::optional<ss::sstring>& subject_prefix = std::nullopt) const {
+      std::optional<std::string_view> subject_prefix = std::nullopt) const {
         chunked_vector<context_subject> res;
         res.reserve(_subjects.size());
 
