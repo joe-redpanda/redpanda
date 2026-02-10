@@ -187,14 +187,20 @@ public:
         res.reserve(_subjects.size());
 
         constexpr std::string_view WILDCARD_CTX{":*:"};
+        constexpr std::string_view DEFAULT_CTX{":.:"};
         const auto prefix_has_wildcard_ctx = subject_prefix.has_value()
                                              && subject_prefix->starts_with(
                                                WILDCARD_CTX);
+        const auto prefix_has_default_ctx = subject_prefix.has_value()
+                                            && subject_prefix->starts_with(
+                                              DEFAULT_CTX);
 
+        // If the prefix has a wildcard or qualified default context, strip it
+        // for matching purposes
         if (prefix_has_wildcard_ctx) {
-            // If the prefix has a wildcard context, strip the wildcard context
-            // from the prefix for matching purposes
             subject_prefix = subject_prefix->substr(WILDCARD_CTX.size());
+        } else if (prefix_has_default_ctx) {
+            subject_prefix = subject_prefix->substr(DEFAULT_CTX.size());
         }
 
         auto matching_subject_names
@@ -215,6 +221,13 @@ public:
                       // Wildcard context prefix: match subjects across all
                       // contexts by subject name prefix
                       return s.first.sub().starts_with(subject_prefix.value());
+                  } else if (prefix_has_default_ctx) {
+                      // Qualified default context prefix: match only against
+                      // subjects in the default context, which have no context
+                      // prefix in their name
+                      return s.first.ctx == default_context
+                             && s.first.sub().starts_with(
+                               subject_prefix.value());
                   } else {
                       return s.first.starts_with(subject_prefix.value());
                   }
@@ -227,7 +240,9 @@ public:
           srlog.trace,
           "Listing subjects with prefix=\"{}\", mode={}, matched={} subjects",
           original_prefix.value_or("(none)"),
-          prefix_has_wildcard_ctx ? "wildcard" : "normal",
+          (prefix_has_wildcard_ctx  ? "wildcard"
+           : prefix_has_default_ctx ? "default_ctx"
+                                    : "normal"),
           res.size());
 
         return res;

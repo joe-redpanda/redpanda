@@ -505,25 +505,22 @@ BOOST_AUTO_TEST_CASE(test_store_get_subjects_prefix) {
       std::ranges::contains(
         subjects, pps::context_subject{ctx_other, pps::subject{"banana"}}));
 
-    // TODO: this portion is disabled because the current implementation of
-    // get_subjects does not support explicit default context prefix matching.
-    // Once implemented, re-enable this portion of the test.
-    // // Explicit default context prefix ":.:" matches all default context
-    // // subjects
-    // subjects = s.get_subjects(pps::include_deleted::no, ":.:");
-    // BOOST_REQUIRE_EQUAL(subjects.size(), 3);
-    // BOOST_REQUIRE(
-    //   std::ranges::contains(
-    //     subjects,
-    //     pps::context_subject{pps::default_context, pps::subject{"apple"}}));
-    // BOOST_REQUIRE(
-    //   std::ranges::contains(
-    //     subjects,
-    //     pps::context_subject{pps::default_context, pps::subject{"app"}}));
-    // BOOST_REQUIRE(
-    //   std::ranges::contains(
-    //     subjects,
-    //     pps::context_subject{pps::default_context, pps::subject{"banana"}}));
+    // Explicit default context prefix ":.:" matches all default context
+    // subjects
+    subjects = s.get_subjects(pps::include_deleted::no, ":.:");
+    BOOST_REQUIRE_EQUAL(subjects.size(), 3);
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects,
+        pps::context_subject{pps::default_context, pps::subject{"apple"}}));
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects,
+        pps::context_subject{pps::default_context, pps::subject{"app"}}));
+    BOOST_REQUIRE(
+      std::ranges::contains(
+        subjects,
+        pps::context_subject{pps::default_context, pps::subject{"banana"}}));
 
     // Prefix "app" matches default context "apple" and "app"
     subjects = s.get_subjects(pps::include_deleted::no, "app");
