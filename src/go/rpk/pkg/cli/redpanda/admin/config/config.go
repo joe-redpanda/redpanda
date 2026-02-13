@@ -120,6 +120,7 @@ You can use --help-loggers to display available loggers:
 		Run: func(cmd *cobra.Command, loggers []string) {
 			p, err := p.LoadVirtualProfile(fs)
 			out.MaybeDie(err, "rpk unable to load config: %v", err)
+			config.CheckExitCloudAdmin(p)
 
 			if helpLoggers {
 				printLoggers(cmd.Context(), fs, p, host)
