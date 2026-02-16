@@ -3,10 +3,12 @@ load("//bazel:test.bzl", "redpanda_cc_bench", "redpanda_cc_gtest", "redpanda_tes
 
 redpanda_cc_binary(
     name = "db_bench",
+    testonly = True,
     srcs = [
         "db_bench.cc",
     ],
     deps = [
+        ":immutable_tree",
         "//src/v/base",
         "//src/v/bytes:iobuf",
         "//src/v/lsm/core:compression",
