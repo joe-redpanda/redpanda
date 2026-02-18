@@ -1164,3 +1164,51 @@ FIXTURE_TEST(test_tx_compaction_last_producer_batch, rm_stm_test_fixture) {
         BOOST_REQUIRE(!seen_placeholder_batch_pid_zero);
     }
 }
+
+// Verifies that idempotent producer state survives a raft snapshot
+// roundtrip (take + apply). After restoring, the producers should be
+// present and the highest_producer_id should be derived from the
+// snapshot entries. Additionally, the restored producers should be able
+// to continue producing without sequence errors.
+FIXTURE_TEST(test_raft_snapshot_roundtrip, rm_stm_test_fixture) {
+    auto& stm = start_and_disable_auto_abort();
+
+    auto pid1 = model::producer_identity{1, 0};
+    auto pid2 = model::producer_identity{5, 0};
+    auto pid3 = model::producer_identity{10, 0};
+
+    for (auto pid : {pid1, pid2, pid3}) {
+        auto rreader = make_batches(pid, 0, 5, false);
+        auto offset_r = replicate_all(stm, std::move(rreader)).get();
+        BOOST_REQUIRE((bool)offset_r);
+    }
+
+    RPTEST_REQUIRE_EVENTUALLY(
+      1s, [&] { return stm.highest_producer_id() == pid3.get_id(); });
+    BOOST_REQUIRE_EQUAL(producers().size(), 3);
+
+    auto committed_offset = _raft->committed_offset();
+
+    // force a snapshot and restore from it.
+    _raft->snapshot_and_truncate_log(committed_offset).get();
+    auto snapshot = take_raft_snapshot(committed_offset).get();
+    apply_raft_snapshot(snapshot).get();
+
+    // All producers should be restored
+    BOOST_REQUIRE_EQUAL(producers().size(), 3);
+    BOOST_REQUIRE(producers().contains(pid1.get_id()));
+    BOOST_REQUIRE(producers().contains(pid2.get_id()));
+    BOOST_REQUIRE(producers().contains(pid3.get_id()));
+
+    // highest_producer_id should be derived from snapshot entries
+    BOOST_REQUIRE_EQUAL(stm.highest_producer_id(), pid3.get_id());
+
+    // Verify producers can continue producing after restore.
+    // Sequence numbers pick up where they left off (5), so producing
+    // with first_seq=5 should succeed.
+    for (auto pid : {pid1, pid2, pid3}) {
+        auto rreader = make_batches(pid, 5, 5, false);
+        auto offset_r = replicate_all(stm, std::move(rreader)).get();
+        BOOST_REQUIRE((bool)offset_r);
+    }
+}
