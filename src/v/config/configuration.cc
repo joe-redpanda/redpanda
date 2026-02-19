@@ -3767,15 +3767,7 @@ configuration::configuration()
        .aliases = {"schema_registry_normalize_on_startup"}},
       false)
   , schema_registry_avro_use_named_references(
-      *this,
-      "schema_registry_avro_use_named_references",
-      "When enabled, Avro schemas with external references are compiled using "
-      "named reference resolution instead of schema concatenation. This fixes "
-      "issues with compatibility checks and schema validation for schemas with "
-      "reference dependencies. This config will be deprecated and always "
-      "enabled in v26.1.1.",
-      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
-      false)
+      *this, "schema_registry_avro_use_named_references")
   , schema_registry_enable_qualified_subjects(
       *this,
       "schema_registry_enable_qualified_subjects",
