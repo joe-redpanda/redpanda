@@ -77,6 +77,7 @@ redpanda_cc_library(
     deps = [
         "//src/v/base",
         "//src/v/model",
+        "//src/v/serde",
         "@fmt",
     ],
 )
@@ -99,6 +100,7 @@ redpanda_cc_library(
         "//src/v/utils:to_string",
     ],
     deps = [
+        ":size_estimator",
         "//src/v/base",
         "//src/v/cloud_topics:types",
         "//src/v/model",
