@@ -57,7 +57,6 @@ class KubectlTool:
         namespace: str = "redpanda",
         cluster_id: str = "",
         cluster_provider: str = "aws",
-        cluster_region: str = "us-west-2",
         tp_proxy: str | None = None,
         tp_token: str | None = None,
     ):
@@ -72,7 +71,6 @@ class KubectlTool:
                 f"KubectlTool does not yet support '{self._provider}' cloud provider"
             )
 
-        self._region = cluster_region
         self._tp_proxy = tp_proxy
         self._tp_token = tp_token
         self._kubectl_installed = False
