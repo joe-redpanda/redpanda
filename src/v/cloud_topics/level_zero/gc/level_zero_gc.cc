@@ -359,6 +359,10 @@ level_zero_gc::epoch_source::max_gc_eligible_epoch(seastar::abort_source* as) {
         }
     }
 
+    if (probe_) {
+        probe_->set_min_partition_gc_epoch(result);
+    }
+
     co_return result;
 }
 
@@ -578,7 +582,9 @@ level_zero_gc::level_zero_gc(
   , probe_(config::shard_local_cfg().disable_metrics())
   , delete_worker_(
       std::make_unique<list_delete_worker>(
-        std::move(storage), std::move(node_info), probe_)) {}
+        std::move(storage), std::move(node_info), probe_)) {
+    epoch_source_->set_probe(&probe_);
+}
 
 level_zero_gc::level_zero_gc(
   model::node_id self,

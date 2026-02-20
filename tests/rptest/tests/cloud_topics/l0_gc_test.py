@@ -589,6 +589,15 @@ class CloudTopicsL0GCAdminTest(CloudTopicsL0GCTestBase):
         epochs = self.gc_get_epoch_info()
         self.check_epochs(epochs, produce_topics, [stalled_topic])
 
+        # While stuck, min_partition_gc_epoch should be <= 0.
+        min_epoch_metric = "vectorized_cloud_topics_l0_gc_min_partition_gc_epoch"
+        min_epoch_while_stuck = self._get_metric_max(min_epoch_metric)
+        self.logger.debug(f"While stuck: {min_epoch_while_stuck=}")
+        assert min_epoch_while_stuck <= 0, (
+            f"Expected min_partition_gc_epoch <= 0 while stalled "
+            f"topic blocks, got {min_epoch_while_stuck}"
+        )
+
         self.logger.debug(
             "Force the stalled topic's epoch up to the inactive epoch of the active topic. This should unstick GC"
         )
@@ -624,6 +633,15 @@ class CloudTopicsL0GCAdminTest(CloudTopicsL0GCTestBase):
             backoff_sec=5,
             retry_on_exc=True,
         )
+
+        # After unstick, min_partition_gc_epoch should be positive.
+        wait_until(
+            lambda: self._get_metric_max(min_epoch_metric) > 0,
+            timeout_sec=30,
+            backoff_sec=3,
+            retry_on_exc=True,
+        )
+        self.logger.debug("After unstick: min_partition_gc_epoch > 0")
 
 
 class CloudTopicsL0GCMetricsTest(CloudTopicsL0GCTestBase):
