@@ -28,6 +28,7 @@ from ducktape.tests.test import TestContext
 from rptest.clients.rpk import RpkTool
 from rptest.clients.types import TopicSpec
 from rptest.services.cluster import cluster
+from rptest.services.admin import Admin as RedpandaAdmin
 from rptest.services.redpanda import (
     SISettings,
     get_cloud_storage_type,
@@ -980,6 +981,71 @@ class CloudTopicsL0GCNodeFailureTest(CloudTopicsL0GCTestBase):
         wait_until(
             lambda: self.get_num_objects_deleted(nodes=[kill_node])
             > deleted_after_restart,
+            timeout_sec=30,
+            backoff_sec=3,
+            retry_on_exc=True,
+        )
+
+
+class CloudTopicsL0GCLeadershipTransferTest(CloudTopicsL0GCTestBase):
+    """
+    Integration: Verify GC continues making progress through leadership
+    transfers.
+    """
+
+    @cluster(num_nodes=4)
+    @matrix(
+        cloud_storage_type=get_cloud_storage_type(applies_only_on=[CloudStorageType.S3])
+    )
+    def test_leadership_transfer_during_gc(self, cloud_storage_type: CloudStorageType):
+        """
+        Produce records, let GC make progress, transfer partition
+        leadership, then verify GC continues deleting objects.
+        """
+        topic = TopicSpec(partition_count=1, replication_factor=3)
+        self.topics = [topic]
+        self.create_topics(self.topics)
+
+        self.produce_some(topics=[topic.name], n=300)
+
+        self.logger.info("Waiting for GC to start deleting")
+        wait_until(
+            lambda: self.get_num_objects_deleted() > 0,
+            timeout_sec=30,
+            backoff_sec=3,
+            retry_on_exc=True,
+        )
+
+        # Find current leader and pick a different target.
+        admin = RedpandaAdmin(self.redpanda)
+        leader_id = admin.get_partition_leader(
+            namespace="kafka", topic=topic.name, partition=0
+        )
+        target_id = next(
+            self.redpanda.node_id(n)
+            for n in self.redpanda.nodes
+            if self.redpanda.node_id(n) != leader_id
+        )
+        self.logger.info(f"Transferring leadership from {leader_id} to {target_id}")
+        admin.partition_transfer_leadership("kafka", topic.name, 0, target_id)
+
+        wait_until(
+            lambda: admin.get_partition_leader(
+                namespace="kafka", topic=topic.name, partition=0
+            )
+            == target_id,
+            timeout_sec=30,
+            backoff_sec=2,
+            retry_on_exc=True,
+        )
+        self.logger.info(f"Leadership transferred to {target_id}")
+
+        # Snapshot after transfer so we know progress is post-transfer.
+        deleted_before = self.get_num_objects_deleted()
+
+        # Verify GC continues to make progress post-transfer.
+        wait_until(
+            lambda: self.get_num_objects_deleted() > deleted_before,
             timeout_sec=30,
             backoff_sec=3,
             retry_on_exc=True,
