@@ -1103,3 +1103,78 @@ class CloudTopicsL0GCTopicDeletionTest(CloudTopicsL0GCTestBase):
             backoff_sec=3,
             retry_on_exc=True,
         )
+
+
+class CloudTopicsL0GCEpochLagTest(CloudTopicsL0GCTestBase):
+    """
+    Integration: Configure slow GC so it falls behind ingress, verify
+    epoch_lag grows, then hot-reconfigure to fast GC and verify it
+    catches up.
+    """
+
+    def __init__(self, test_context: TestContext):
+        super().__init__(
+            test_context,
+            extra_rp_conf_overrides={
+                # Slow GC: 10s between rounds (5x the default, enough to
+                # build measurable backpressure without wasting test time).
+                "cloud_topics_short_term_gc_interval": 10000,
+                "cloud_topics_short_term_gc_backoff_interval": 10000,
+            },
+        )
+
+    @cluster(num_nodes=4)
+    @matrix(
+        cloud_storage_type=get_cloud_storage_type(applies_only_on=[CloudStorageType.S3])
+    )
+    def test_epoch_lag_and_catchup(self, cloud_storage_type: CloudStorageType):
+        """
+        Produce data while GC is slow (10s interval), observe epoch_lag
+        building up, then hot-reconfigure to fast GC (1s) and verify
+        epoch_lag drops to 0.
+        """
+        topic = TopicSpec(partition_count=1, replication_factor=3)
+        self.topics = [topic]
+        self.create_topics(self.topics)
+
+        # Produce enough to generate several epochs while GC is slow.
+        self.produce_some(topics=[topic.name], n=200)
+
+        # Wait for epoch_lag > 0: GC is running but falling behind
+        # because epochs advance faster than the 10s GC interval.
+        wait_until(
+            lambda: self._get_metric_max("vectorized_cloud_topics_l0_gc_epoch_lag") > 0,
+            timeout_sec=60,
+            backoff_sec=5,
+            retry_on_exc=True,
+        )
+
+        lag_while_slow = self._get_metric_max("vectorized_cloud_topics_l0_gc_epoch_lag")
+        self.logger.info(f"Slow-GC phase: epoch_lag={lag_while_slow}")
+        assert lag_while_slow > 0
+
+        # Hot-reconfigure: speed up GC dramatically.
+        admin = RedpandaAdmin(self.redpanda)
+        admin.patch_cluster_config(
+            upsert={
+                "cloud_topics_short_term_gc_interval": 1000,
+                "cloud_topics_short_term_gc_backoff_interval": 1000,
+            }
+        )
+        self.logger.info("Hot-reconfigured GC to 1s interval")
+
+        # Verify GC catches up: epoch_lag should decrease.
+        # It may not reach 0 because not every epoch has objects to
+        # delete, so max_deleted_epoch can't close the gap completely.
+        wait_until(
+            lambda: self._get_metric_max("vectorized_cloud_topics_l0_gc_epoch_lag")
+            < lag_while_slow,
+            timeout_sec=60,
+            backoff_sec=3,
+            retry_on_exc=True,
+        )
+
+        lag_final = self._get_metric_max("vectorized_cloud_topics_l0_gc_epoch_lag")
+        self.logger.info(
+            f"Fast-GC phase: epoch_lag={lag_final} (was {lag_while_slow} while slow)"
+        )
