@@ -16,6 +16,8 @@
 
 namespace cloud_topics::l1 {
 
+static ss::logger fake_io_log("fake_io");
+
 // In-memory multipart upload state for testing.
 class fake_multipart_state final
   : public cloud_storage_clients::multipart_upload_state {
@@ -155,7 +157,7 @@ fake_io::create_multipart_upload(
   object_id oid, size_t part_size, ss::abort_source*) {
     auto state = ss::make_shared<fake_multipart_state>(oid, _storage);
     auto upload = ss::make_shared<cloud_storage_clients::multipart_upload>(
-      std::move(state), part_size);
+      std::move(state), part_size, fake_io_log);
     co_return upload;
 }
 

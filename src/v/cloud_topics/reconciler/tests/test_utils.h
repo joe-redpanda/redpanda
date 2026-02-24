@@ -20,12 +20,15 @@
 #include "model/tests/random_batch.h"
 
 #include <seastar/core/future.hh>
+#include <seastar/util/log.hh>
 
 #include <expected>
 #include <optional>
 #include <stdexcept>
 
 namespace cloud_topics::reconciler::test {
+
+static ss::logger test_log("reconciler_test");
 
 class fake_source : public source {
 public:
@@ -192,7 +195,7 @@ public:
         auto state = ss::make_shared<unreliable_multipart_state>(
           oid, *this, _fail_upload_part, _fail_complete, _fail_abort);
         auto upload = ss::make_shared<cloud_storage_clients::multipart_upload>(
-          std::move(state), part_size);
+          std::move(state), part_size, test_log);
         co_return upload;
     }
 
