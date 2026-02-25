@@ -903,6 +903,7 @@ class CloudTopicsL0GCDataIntegrityTest(CloudTopicsL0GCTestBase):
             msg_size=self.MSG_SIZE,
             loop=False,
             nodes=[producer.nodes[0]],
+            producer=producer,
         )
         consumer.start(clean=False)
         consumer.wait(timeout_sec=120)
@@ -1028,7 +1029,7 @@ class CloudTopicsL0GCNodeFailureTest(CloudTopicsL0GCTestBase):
 
         self.produce_some(topics=[topic.name], n=500)
 
-        self.logger.info("Waiting for GC to make meaningful progress")
+        self.logger.info("Waiting for GC kick in")
         wait_until(
             lambda: self.get_num_objects_deleted() > 0,
             timeout_sec=30,
