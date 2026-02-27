@@ -146,10 +146,11 @@ std::ostream& operator<<(std::ostream& o, const topic_purge_domain& d) {
         return o << "cloud_storage";
     case topic_purge_domain::iceberg:
         return o << "iceberg";
-    default:
-        fmt::print(o, "unknown({})", static_cast<int>(d));
-        return o;
+    case topic_purge_domain::cloud_topic:
+        return o << "cloud_topic";
     }
+    fmt::print(o, "unknown({})", static_cast<int>(d));
+    return o;
 }
 
 std::ostream& operator<<(std::ostream& o, const topic_result& r) {
