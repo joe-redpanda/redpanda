@@ -1169,10 +1169,11 @@ TEST_CORO(IcebergValues, ValueObjectOptionals) {
       "type": "object",
       "properties": {
           "key1": {"type": ["string", "null"]},
-          "key2": {"type": ["integer", "null"]}
+          "key2": {"type": ["integer", "null"]},
+          "nullkey": {"type": ["object", "null"]}
       }
     })";
-    auto value = R"({"key1": "value1", "key3": "extra-key"})";
+    auto value = R"({"key1": "value1", "nullkey": null, "key3": "extra-key"})";
 
     auto result = co_await to_iceberg_value(schema, value);
 
@@ -1183,7 +1184,9 @@ TEST_CORO(IcebergValues, ValueObjectOptionals) {
     EXPECT_THAT(
       result_value->fields,
       ElementsAre(
-        OptionalIcebergPrimitive<string_value>("value1"), Eq(std::nullopt)));
+        OptionalIcebergPrimitive<string_value>("value1"),
+        Eq(std::nullopt),
+        Eq(std::nullopt)));
 }
 
 TEST_CORO(IcebergValues, ValueObjectSpuriousCompoundMember) {

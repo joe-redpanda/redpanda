@@ -155,6 +155,14 @@ ss::future<> decode_field(
   std::optional<iceberg::value>& v,
   const field_type& ft,
   const json_conversion_ir::struct_field_map_t& field_map) {
+    // The JSON-to-Iceberg conversion assumes input has passed through a JSON
+    // schema validator, so we can be lax about validation. If we see null, we
+    // assume that schema allows null here.
+    if (p.token() == serde::json::token::value_null) {
+        v = std::nullopt;
+        co_return;
+    }
+
     struct field_decoder_visitor {
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         serde::json::parser& p;
