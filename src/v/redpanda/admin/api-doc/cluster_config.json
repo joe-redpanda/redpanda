@@ -99,6 +99,14 @@
           "nickname": "get_cluster_config_status",
           "produces": ["application/json"],
           "parameters": [
+            {
+              "name": "show_pending",
+              "in": "query",
+              "schema": {"type": "boolean"},
+              "required": false,
+              "allowMultiple": false,
+              "description": "If true, include the list of configs awaiting restart to apply pending values."
+            }
           ]
         }
       ]
@@ -153,6 +161,13 @@
             "type": "string"
           },
           "description": "List of properties unknown to this node"
+        },
+        "pending": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of properties with pending changes awaiting restart on the node serving the request."
         }
       }
     },
