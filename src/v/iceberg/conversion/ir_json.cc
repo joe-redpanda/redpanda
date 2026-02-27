@@ -22,6 +22,7 @@
 #include <array>
 #include <bitset>
 #include <map>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -39,15 +40,40 @@ constexpr allow_additional_properties_t allow_additional_properties{};
 struct forbid_additional_properties_t {};
 constexpr forbid_additional_properties_t forbid_additional_properties{};
 
-using additional_properties_policy
-  = std::variant<allow_additional_properties_t, forbid_additional_properties_t>;
+struct constraint;
+
+struct schema_additional_properties {
+    explicit schema_additional_properties(constraint&& schema);
+    ~schema_additional_properties();
+
+    schema_additional_properties(const schema_additional_properties&);
+    schema_additional_properties&
+    operator=(const schema_additional_properties&);
+
+    schema_additional_properties(schema_additional_properties&&) noexcept;
+    schema_additional_properties&
+    operator=(schema_additional_properties&&) noexcept;
+
+    std::unique_ptr<const constraint> schema;
+};
+
+using additional_properties_policy = std::variant<
+  allow_additional_properties_t,
+  forbid_additional_properties_t,
+  schema_additional_properties>;
 
 bool is_additional_properties_forbidden(
   const additional_properties_policy& policy) {
     return ss::visit(
       policy,
       [](allow_additional_properties_t) { return false; },
-      [](forbid_additional_properties_t) { return true; });
+      [](forbid_additional_properties_t) { return true; },
+      [](const schema_additional_properties&) { return false; });
+}
+
+const schema_additional_properties*
+as_schema_additional_properties(const additional_properties_policy& policy) {
+    return std::get_if<schema_additional_properties>(&policy);
 }
 
 /// Set of JSON value types for constraint tracking.
@@ -161,14 +187,17 @@ struct constraint {
             return conversion_exception(
               "Intersecting constraints with properties on both sides "
               "is not supported");
-        } else if (!other.properties.empty()) {
-            if (is_additional_properties_forbidden(additional_properties)) {
-                return conversion_exception(
-                  "additionalProperties: false conflicts with properties "
-                  "defined in another branch");
-            }
-            properties = other.properties;
-        } else if (
+        }
+
+        if (
+          !other.properties.empty()
+          && is_additional_properties_forbidden(additional_properties)) {
+            return conversion_exception(
+              "additionalProperties: false conflicts with properties "
+              "defined in another branch");
+        }
+
+        if (
           !properties.empty()
           && is_additional_properties_forbidden(other.additional_properties)) {
             return conversion_exception(
@@ -176,7 +205,45 @@ struct constraint {
               "defined in another branch");
         }
 
+        const auto* this_additional_properties_schema
+          = as_schema_additional_properties(additional_properties);
+        const auto* other_additional_properties_schema
+          = as_schema_additional_properties(other.additional_properties);
+
         if (
+          this_additional_properties_schema != nullptr
+          && other_additional_properties_schema != nullptr) {
+            return conversion_exception(
+              "Intersecting constraints with additionalProperties on both "
+              "sides is not supported");
+        }
+
+        if (
+          (!properties.empty() && other_additional_properties_schema != nullptr)
+          || (this_additional_properties_schema != nullptr && !other.properties.empty())) {
+            return conversion_exception(
+              "additionalProperties schema conflicts with properties "
+              "defined in another branch");
+        }
+
+        if (
+          (this_additional_properties_schema != nullptr
+           && is_additional_properties_forbidden(other.additional_properties))
+          || (other_additional_properties_schema != nullptr && is_additional_properties_forbidden(additional_properties))) {
+            return conversion_exception(
+              "additionalProperties: false conflicts with "
+              "additionalProperties schema defined in another branch");
+        }
+
+        if (!other.properties.empty()) {
+            properties = other.properties;
+        }
+
+        if (other_additional_properties_schema != nullptr) {
+            additional_properties = *other_additional_properties_schema;
+        } else if (this_additional_properties_schema != nullptr) {
+            // Keep existing schema-valued additionalProperties unchanged.
+        } else if (
           is_additional_properties_forbidden(additional_properties)
           || is_additional_properties_forbidden(other.additional_properties)) {
             additional_properties = forbid_additional_properties;
@@ -195,6 +262,31 @@ struct constraint {
         return outcome::success();
     }
 };
+
+schema_additional_properties::schema_additional_properties(constraint&& s)
+  : schema(std::make_unique<constraint>(std::move(s))) {}
+
+schema_additional_properties::schema_additional_properties(
+  const schema_additional_properties& other)
+  : schema(std::make_unique<constraint>(*other.schema)) {}
+
+schema_additional_properties& schema_additional_properties::operator=(
+  const schema_additional_properties& other) {
+    if (this != &other) {
+        schema = std::make_unique<constraint>(*other.schema);
+    }
+    return *this;
+}
+
+schema_additional_properties::schema_additional_properties(
+  schema_additional_properties&&) noexcept
+  = default;
+
+schema_additional_properties&
+schema_additional_properties::operator=(schema_additional_properties&&) noexcept
+  = default;
+
+schema_additional_properties::~schema_additional_properties() = default;
 
 /// Context for the resolution phase.
 struct resolution_context {
@@ -350,12 +442,27 @@ collect(collect_context& ctx, const conversion::json_schema::subschema& s) {
         }
 
         if (s.additional_properties()) {
-            if (s.additional_properties()->get().boolean_subschema() == false) {
+            const auto& additional_properties
+              = s.additional_properties()->get();
+            if (additional_properties.boolean_subschema() == false) {
                 c.additional_properties = forbid_additional_properties;
-            } else {
+            } else if (additional_properties.boolean_subschema() == true) {
                 return conversion_exception(
-                  "Only 'false' subschema is supported "
+                  "Only 'false' or object subschema is supported "
                   "for additionalProperties keyword");
+            } else {
+                if (!c.properties.empty()) {
+                    return conversion_exception(
+                      "Cannot convert object with both properties and "
+                      "schema-valued additionalProperties");
+                }
+                auto additional_properties_constraint = collect(
+                  ctx, additional_properties);
+                if (additional_properties_constraint.has_error()) {
+                    return additional_properties_constraint.error();
+                }
+                c.additional_properties = schema_additional_properties{
+                  std::move(additional_properties_constraint.value())};
             }
         }
     }
@@ -383,9 +490,29 @@ collect(collect_context& ctx, const conversion::json_schema::subschema& s) {
     return c;
 }
 
-/// Resolve object constraint to Iceberg struct.
-conversion_outcome<struct_type>
+/// Resolve object constraint to Iceberg struct or map.
+conversion_outcome<field_type>
 resolve_object(resolution_context& ctx, const constraint& c) {
+    if (const auto* additional_properties_schema
+        = as_schema_additional_properties(c.additional_properties);
+        additional_properties_schema != nullptr) {
+        vassert(
+          c.properties.empty(),
+          "Cannot resolve to map type with both properties and schema-valued "
+          "additionalProperties");
+
+        auto value_type = resolve(ctx, *additional_properties_schema->schema);
+        if (value_type.has_error()) {
+            return value_type.error();
+        }
+        return map_type::create(
+          placeholder_field_id,
+          string_type{},
+          placeholder_field_id,
+          field_required::no,
+          std::move(value_type.value()));
+    }
+
     struct_type result;
 
     // std::map iterates in sorted key order, giving deterministic field
@@ -430,7 +557,7 @@ resolve_object(resolution_context& ctx, const constraint& c) {
             std::move(*resolved_type)));
     }
 
-    return result;
+    return field_type(std::move(result));
 }
 
 /// Resolve array constraint to Iceberg list.
