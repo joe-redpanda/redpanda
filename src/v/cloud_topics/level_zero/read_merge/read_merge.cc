@@ -10,6 +10,7 @@
 #include "cloud_topics/level_zero/read_merge/read_merge.h"
 
 #include "cloud_topics/level_zero/pipeline/read_request.h"
+#include "config/configuration.h"
 #include "ssx/future-util.h"
 
 #include <algorithm>
@@ -22,6 +23,7 @@ constexpr size_t max_bytes_per_iter = 10_MiB;
 template<class Clock>
 read_merge<Clock>::read_merge(read_pipeline<Clock>::stage s)
   : _pipeline_stage(s)
+  , _probe(config::shard_local_cfg().disable_metrics())
   , _in_flight_sem(
       config::shard_local_cfg().cloud_storage_max_connections(),
       "l0/read_merge") {}
@@ -122,6 +124,8 @@ ss::future<> read_merge<Clock>::process_single_request(
         vassert(
           req->query.meta.size() > 0, "Empty read queries are not allowed");
 
+        _probe.register_request_in(req->query.output_size_estimate);
+
         // The request is expected to target a single L0 object
         // (read_fanout upstream splits multi-object requests).
         auto id = req->query.meta.front().id;
@@ -176,6 +180,7 @@ ss::future<> read_merge<Clock>::process_single_request(
           .meta = req->query.meta.copy(),
         };
 
+        auto size_estimate = query.output_size_estimate;
         auto proxy = ss::make_lw_shared<read_request<Clock>>(
           req->ntp,
           std::move(query),
@@ -183,6 +188,7 @@ ss::future<> read_merge<Clock>::process_single_request(
           &_pipeline_stage.get_root_rtc(),
           req->stage);
 
+        _probe.register_request_out(size_estimate);
         _pipeline_stage.push_next_stage(*proxy);
 
         using request_fut_t

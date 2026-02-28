@@ -11,6 +11,7 @@
 #pragma once
 
 #include "cloud_topics/errc.h"
+#include "cloud_topics/level_zero/common/level_zero_probe.h"
 #include "cloud_topics/level_zero/pipeline/read_pipeline.h"
 #include "cloud_topics/types.h"
 #include "container/chunked_hash_map.h"
@@ -44,6 +45,7 @@ private:
 
     ss::gate _gate;
     read_pipeline<Clock>::stage _pipeline_stage;
+    read_merge_probe _probe;
 
     /// Tracks in-flight downloads by object_id.
     /// The shared_promise resolves with std::nullopt on success,
