@@ -97,10 +97,12 @@ redpanda_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":domain_manager",
+        "//src/v/base",
         "//src/v/cloud_topics/level_one/common:abstract_io",
         "//src/v/cloud_topics/level_one/metastore:rpc_types",
         "//src/v/cloud_topics/level_one/metastore/lsm:replicated_db",
         "//src/v/cloud_topics/level_one/metastore/lsm:stm",
+        "//src/v/model",
         "//src/v/ssx:checkpoint_mutex",
         "@seastar",
     ],

@@ -12,8 +12,10 @@
 #include "cloud_topics/level_one/domain/domain_manager.h"
 #include "cloud_topics/level_one/metastore/lsm/replicated_db.h"
 #include "cloud_topics/level_one/metastore/lsm/stm.h"
+#include "model/timestamp.h"
 #include "ssx/checkpoint_mutex.h"
 
+#include <seastar/core/abort_source.hh>
 #include <seastar/core/rwlock.hh>
 
 namespace cloud_topics::l1 {
@@ -141,6 +143,8 @@ private:
 
     ss::future<rpc::get_compaction_info_reply> do_get_compaction_info(
       const gate_read_lock&, state_reader&, rpc::get_compaction_info_request);
+
+    ss::future<> expire_preregistered_objects(chunked_vector<object_id>);
 
     ss::gate gate_;
     ss::abort_source as_;

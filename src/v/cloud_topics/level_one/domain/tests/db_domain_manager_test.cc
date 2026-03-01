@@ -1064,3 +1064,36 @@ TEST_F(DbDomainManagerTest, TestGetSizeMissingPartition) {
     auto size_reply = initial_manager->get_size(std::move(size_req)).get();
     ASSERT_EQ(size_reply.ec, l1_rpc::errc::missing_ntp);
 }
+
+TEST_F(DbDomainManagerTest, TestPreregisteredObjectExpiry) {
+    cfg.get("cloud_topics_preregistered_object_ttl").set_value(1ms);
+    cfg.get("cloud_topics_long_term_garbage_collection_interval")
+      .set_value(100ms);
+
+    auto tp = make_tp();
+    auto prereg_reply = initial_manager
+                          ->preregister_objects({
+                            .metastore_partition = model::partition_id(0),
+                            .count = 1,
+                          })
+                          .get();
+    ASSERT_EQ(prereg_reply.ec, l1_rpc::errc::ok);
+
+    // Upload dummy objects to cloud storage so GC can physically delete them.
+    auto new_objects = make_new_objects_with_ids(
+      tp, kafka::offset(0), 1, prereg_reply.object_ids);
+    auto object_ids = put_dummy_objects(initial_leader->object_io, new_objects);
+    for (const auto& oid : object_ids) {
+        ASSERT_TRUE(object_exists(oid).get());
+    }
+
+    initial_manager->start();
+
+    // Eventually a flush should happen after expiry and the objects become
+    // eligible for removal.
+    RPTEST_REQUIRE_EVENTUALLY(30s, [&](this auto) -> ss::future<bool> {
+        co_await initial_manager->flush_domain({});
+
+        co_return co_await all_objects_missing(object_ids);
+    });
+}
