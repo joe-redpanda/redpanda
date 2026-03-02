@@ -135,7 +135,13 @@ std::expected<std::monostate, stm_update_error> add_objects_update::can_apply(
     }
     sorted_extents_by_tidp_t new_extents;
     for (const auto& o : new_objects) {
-        if (state.objects.contains(o.oid)) {
+        auto it = state.objects.find(o.oid);
+        if (it == state.objects.end()) {
+            return std::unexpected(
+              stm_update_error{
+                fmt::format("Object {} not pre-registered", o.oid)});
+        }
+        if (!it->second.is_preregistration) {
             return std::unexpected(
               stm_update_error{fmt::format("Object {} already exists", o.oid)});
         }
@@ -361,7 +367,13 @@ replace_objects_update::can_apply(const state& state) {
     }
     sorted_extents_by_tidp_t new_extents_by_tp;
     for (const auto& o : new_objects) {
-        if (state.objects.contains(o.oid)) {
+        auto it = state.objects.find(o.oid);
+        if (it == state.objects.end()) {
+            return std::unexpected(
+              stm_update_error{
+                fmt::format("Object {} not pre-registered", o.oid)});
+        }
+        if (!it->second.is_preregistration) {
             return std::unexpected(
               stm_update_error{fmt::format("Object {} already exists", o.oid)});
         }

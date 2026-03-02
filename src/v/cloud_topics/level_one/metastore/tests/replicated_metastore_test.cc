@@ -52,6 +52,7 @@ public:
         };
     }
     void SetUp() override {
+        set_configuration("enable_leader_balancer", false);
         for (size_t i = 0; i < num_brokers; i++) {
             add_node(fixture_cfg());
         }
@@ -237,11 +238,15 @@ TEST_P(ReplicatedMetastoreTest, TestMissingMetastore) {
     ASSERT_FALSE(add_res.has_value());
 
     // Creating an object builder should attempt to create the metastore topic
-    // since it doesn't exist.
+    // since it doesn't exist. After the topic is recreated, leader election may
+    // not have completed yet, so retry until get_or_create_object_for succeeds.
     auto builder_res = meta.object_builder().get();
     ASSERT_TRUE(builder_res.has_value());
-    oid = builder_res.value()->get_or_create_object_for(tp).get();
-    ASSERT_TRUE(oid.has_value());
+    auto new_builder = std::move(builder_res).value();
+    RPTEST_REQUIRE_EVENTUALLY(10s, [&new_builder, &tp] {
+        return new_builder->get_or_create_object_for(tp).then(
+          [](auto r) { return r.has_value(); });
+    });
 }
 
 TEST_P(ReplicatedMetastoreTest, TestAddNotFinished) {

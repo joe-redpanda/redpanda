@@ -279,6 +279,15 @@ db_domain_manager::get_first_offset_ge(rpc::get_first_offset_ge_request req) {
         };
     }
     const auto& object = object_res.value().value();
+    if (object.is_preregistration) {
+        co_return rpc::get_first_offset_ge_reply{
+          .ec = log_and_convert(
+            state_reader::error(
+              state_reader::errc::corruption,
+              "Extent refers to a preregistered object"),
+            "Error getting object"),
+        };
+    }
     co_return rpc::get_first_offset_ge_reply{
       .ec = rpc::errc::ok,
       .object = rpc::object_metadata{
@@ -351,6 +360,15 @@ db_domain_manager::get_first_timestamp_ge(
             }
             auto key = extent_row_key::decode(extent.key);
             const auto& object = object_res.value().value();
+            if (object.is_preregistration) {
+                co_return rpc::get_first_timestamp_ge_reply{
+                  .ec = log_and_convert(
+                    state_reader::error(
+                      state_reader::errc::corruption,
+                      "Extent refers to a preregistered object"),
+                    "Error getting object"),
+                };
+            }
             co_return rpc::get_first_timestamp_ge_reply{
               .ec = rpc::errc::ok,
               .object = rpc::object_metadata{

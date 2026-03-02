@@ -38,9 +38,11 @@ db_update_error wrap_read_err(
     }
 }
 
-// Checks the input new objects and ensures that they don't already exist in
-// the state. Collects the input extents and objects into the input maps.
-ss::future<std::expected<void, db_update_error>> validate_new_objects_missing(
+// Checks that each new object is pre-registered (exists with
+// is_preregistration=true), then collects extents and committed object
+// entries into the output maps.
+ss::future<std::expected<void, db_update_error>>
+validate_preregistered_and_collect(
   const chunked_vector<new_object>& new_objects,
   state_reader& state,
   sorted_extents_by_tidp_t& out_extents,
@@ -51,9 +53,11 @@ ss::future<std::expected<void, db_update_error>> validate_new_objects_missing(
             co_return std::unexpected(db_update_error(
               invalid_update, fmt::format("Error getting object {}", o.oid)));
         }
-        if (object_res->has_value()) {
+        if (
+          !object_res->has_value() || !object_res->value().is_preregistration) {
             co_return std::unexpected(db_update_error(
-              invalid_update, fmt::format("Object {} already exists", o.oid)));
+              invalid_update,
+              fmt::format("object {} not pre-registered", o.oid)));
         }
         auto data_size = o.collect_extents_by_tidp(&out_extents);
         out_objects.emplace(
@@ -322,7 +326,16 @@ build_object_removal_entries(
         }
         if (obj_res.value().has_value()) {
             auto obj_entry = obj_res.value().value();
+            if (obj_entry.is_preregistration) {
+                co_return std::unexpected(wrap_read_err(
+                  state_reader::error(
+                    state_reader::errc::corruption,
+                    "Unexpected preregistered object: {}",
+                    oid),
+                  "Error getting object for removal"));
+            }
             obj_entry.removed_data_size += removed_size;
+            obj_entry.last_updated = model::timestamp::now();
             updated_old_objects[oid] = obj_entry;
         }
         // If object doesn't exist, skip it (benign).
@@ -344,7 +357,7 @@ add_objects_db_update::build_rows(
     }
     sorted_extents_by_tidp_t new_extents_by_tp;
     chunked_hash_map<object_id, object_entry> new_objects_by_oid;
-    auto new_extents_res = co_await validate_new_objects_missing(
+    auto new_extents_res = co_await validate_preregistered_and_collect(
       new_objects, state, new_extents_by_tp, new_objects_by_oid);
     if (!new_extents_res.has_value()) {
         co_return std::unexpected(std::move(new_extents_res.error()));
@@ -599,10 +612,9 @@ replace_objects_db_update::build_rows(
     if (!validate_res.has_value()) {
         co_return std::unexpected(std::move(validate_res.error()));
     }
-    // Verify new objects don't exist.
     sorted_extents_by_tidp_t new_extents_by_tp;
     chunked_hash_map<object_id, object_entry> new_objects_map;
-    auto new_extents_res = co_await validate_new_objects_missing(
+    auto new_extents_res = co_await validate_preregistered_and_collect(
       new_objects, state, new_extents_by_tp, new_objects_map);
     if (!new_extents_res.has_value()) {
         co_return std::unexpected(std::move(new_extents_res.error()));
@@ -1182,6 +1194,7 @@ expire_preregistered_objects_db_update::build_rows(
         }
         auto entry = obj_res->value();
         entry.is_preregistration = false;
+        entry.last_updated = model::timestamp::now();
         out.emplace_back(
           write_batch_row{
             .key = object_row_key::encode(oid),
