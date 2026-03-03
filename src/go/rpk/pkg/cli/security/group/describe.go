@@ -80,8 +80,8 @@ Describe Redpanda roles assigned to the "engineering" group:
 func rolesForGroup(roles []*adminv2.Role, groupName string) []string {
 	var result []string
 	for _, role := range roles {
-		for _, m := range role.Members {
-			if g := m.GetGroup(); g != nil && g.Name == groupName {
+		for _, m := range role.GetMembers() {
+			if m.GetGroup().GetName() == groupName {
 				result = append(result, role.Name)
 				break
 			}

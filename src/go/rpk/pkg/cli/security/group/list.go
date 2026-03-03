@@ -78,16 +78,11 @@ List all groups with role mappings:
 func collectGroupsFromAdminRoles(roles []*adminv2.Role) []string {
 	groupSet := map[string]struct{}{}
 	for _, role := range roles {
-		for _, m := range role.Members {
+		for _, m := range role.GetMembers() {
 			if g := m.GetGroup(); g != nil {
 				groupSet[g.Name] = struct{}{}
 			}
 		}
 	}
-	groups := make([]string, 0, len(groupSet))
-	for g := range groupSet {
-		groups = append(groups, g)
-	}
-	sort.Strings(groups)
-	return groups
+    return slices.Sorted(maps.Keys(groupSet))
 }
