@@ -346,3 +346,106 @@ class CompactionStressExtremeDedupTest(CompactionStressBase):
             topic=self.TOPIC_NAME,
             producer=producer,
         )
+
+
+class CompactionStressWritePressureTest(CompactionStressBase):
+    """
+    Continuous high-throughput writes during compaction with a short
+    min_compaction_lag_ms. Verifies that compaction removes a meaningful
+    number of duplicates while the producer is still running.
+
+    The other stress tests cover post-write convergence and correctness.
+    This test targets a different question: does compaction make forward
+    progress under sustained write pressure?
+    """
+
+    TOPIC_NAME = "write_pressure_stress"
+    MSG_SIZE = 512
+    RATE_LIMIT_BPS = 50 * 1024 * 1024  # 50 MB/s
+    MIN_COMPACTION_LAG_MS = 5_000  # 5 seconds
+
+    if is_debug_mode():
+        key_set_cardinality = 5_000
+        min_produced = 50_000
+    else:
+        key_set_cardinality = 100_000
+        min_produced = 750_000
+
+    def __init__(self, test_context: TestContext):
+        super().__init__(test_context)
+
+    def setUp(self):
+        assert self.redpanda
+        self.redpanda.start()
+        self.rpk.create_topic(
+            topic=self.TOPIC_NAME,
+            partitions=8,
+            replicas=3,
+            config={
+                TopicSpec.PROPERTY_STORAGE_MODE: TopicSpec.STORAGE_MODE_CLOUD,
+                "cleanup.policy": TopicSpec.CLEANUP_COMPACT,
+                "min.cleanable.dirty.ratio": "0.0",
+                "min.compaction.lag.ms": str(self.MIN_COMPACTION_LAG_MS),
+            },
+        )
+
+    @cluster(num_nodes=4)
+    def test_write_pressure_during_compaction(self):
+        self.wait_for_managed_logs()
+
+        assert self.redpanda
+        # Use a large msg_count as a ceiling -- we stop by ack count
+        msg_count = 10_000_000
+        producer = KgoVerifierProducer(
+            self.test_context,
+            self.redpanda,
+            self.TOPIC_NAME,
+            msg_size=self.MSG_SIZE,
+            msg_count=msg_count,
+            key_set_cardinality=self.key_set_cardinality,
+            rate_limit_bps=self.RATE_LIMIT_BPS,
+            tolerate_failed_produce=True,
+        )
+        producer.start()
+        try:
+            # Wait for sustained production — enough records that compaction
+            # has time to run concurrently with writes.
+            self.logger.info(
+                f"Write phase: waiting for {self.min_produced} acks "
+                f"at {self.RATE_LIMIT_BPS} bytes/s"
+            )
+            wait_until(
+                lambda: producer.produce_status.acked >= self.min_produced,
+                timeout_sec=360,
+                backoff_sec=5,
+                err_msg=lambda: (
+                    f"Producer only acked {producer.produce_status.acked}"
+                    f"/{self.min_produced}"
+                ),
+            )
+
+            produced = producer.produce_status.acked
+            self.logger.info(
+                f"Write phase complete: {produced} records produced, "
+                f"{self.get_log_compactions()} compaction rounds, "
+                f"{self.get_records_removed()} records removed"
+            )
+
+            # With ~7.5 overwrites per key on average, even partial compaction
+            # should remove at least one duplicate per unique key. Wait for
+            # this while the producer is still running to confirm compaction
+            # works under write pressure.
+            wait_until(
+                lambda: self.get_records_removed() >= self.key_set_cardinality,
+                timeout_sec=120,
+                backoff_sec=5,
+                err_msg=lambda: (
+                    f"Expected at least {self.key_set_cardinality} records "
+                    f"removed under write pressure, "
+                    f"got {self.get_records_removed()} "
+                    f"(produced={producer.produce_status.acked}, "
+                    f"compactions={self.get_log_compactions()})"
+                ),
+            )
+        finally:
+            producer.stop()
