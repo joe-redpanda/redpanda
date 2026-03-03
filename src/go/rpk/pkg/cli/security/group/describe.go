@@ -44,10 +44,8 @@ Describe roles assigned to the "engineering" group:
 			}
 			prof, err := p.LoadVirtualProfile(fs)
 			out.MaybeDie(err, "rpk unable to load config: %v", err)
-			config.CheckExitServerlessAdmin(prof)
-			if prof.CheckFromCloud() {
-				out.Die("rpk security group is not yet available in Redpanda Cloud")
-			}
+
+			config.CheckExitCloudAdmin(prof)
 
 			groupName := args[0]
 

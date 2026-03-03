@@ -41,13 +41,10 @@ Assign the "engineering" group to the "data-reader" role:
 			}
 			prof, err := p.LoadVirtualProfile(fs)
 			out.MaybeDie(err, "rpk unable to load config: %v", err)
-			config.CheckExitServerlessAdmin(prof)
-			if prof.CheckFromCloud() {
-				out.Die("rpk security group is not yet available in Redpanda Cloud")
-			}
+
+			config.CheckExitCloudAdmin(prof)
 
 			groupName := args[0]
-
 			cl, err := adminapi.NewClient(cmd.Context(), fs, prof)
 			out.MaybeDie(err, "unable to initialize admin api client: %v", err)
 
