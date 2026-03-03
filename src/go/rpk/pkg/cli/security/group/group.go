@@ -30,8 +30,6 @@ func NewCommand(fs afero.Fs, p *config.Params) *cobra.Command {
 	cmd.AddCommand(
 		listCommand(fs, p),
 		describeCommand(fs, p),
-		assignCommand(fs, p),
-		unassignCommand(fs, p),
 	)
 	p.InstallAdminFlags(cmd)
 	p.InstallFormatFlag(cmd)
