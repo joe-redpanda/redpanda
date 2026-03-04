@@ -11,6 +11,7 @@
 
 #include "cloud_topics/level_one/common/object.h"
 #include "cloud_topics/level_one/common/object_id.h"
+#include "container/intrusive_list_helpers.h"
 #include "model/fundamental.h"
 #include "ssx/future-util.h"
 
@@ -19,7 +20,6 @@
 #include <seastar/core/lowres_clock.hh>
 #include <seastar/core/timer.hh>
 
-#include <list>
 #include <memory>
 
 namespace cloud_topics {
@@ -73,6 +73,7 @@ private:
         cached_l1_reader reader;
         model::topic_id_partition tidp;
         ss::lowres_clock::time_point atime;
+        safe_intrusive_list_hook _hook;
     };
 
     ss::future<> evict_stale();
@@ -83,7 +84,7 @@ private:
     static ss::future<> close_reader_safe(std::unique_ptr<l1::object_reader>);
 
     size_t _max_cached_readers;
-    std::list<cache_entry> _entries;
+    counted_intrusive_list<cache_entry, &cache_entry::_hook> _entries;
     ss::timer<ss::lowres_clock> _ttl_timer{[this] {
         ssx::spawn_with_gate(_gate, [this] { return evict_stale(); });
     }};

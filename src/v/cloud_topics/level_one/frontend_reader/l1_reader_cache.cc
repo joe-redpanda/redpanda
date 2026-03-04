@@ -9,7 +9,6 @@
  */
 #include "cloud_topics/level_one/frontend_reader/l1_reader_cache.h"
 
-#include "base/vassert.h"
 #include "cloud_topics/logger.h"
 
 #include <seastar/core/loop.hh>
@@ -32,7 +31,8 @@ std::optional<cached_l1_reader> l1_reader_cache::take_reader(
         return std::nullopt;
     }
     auto result = std::move(it->reader);
-    _entries.erase(std::next(it).base());
+    _entries.erase_and_dispose(
+      _entries.iterator_to(*it), [](cache_entry* e) { delete e; }); // NOLINT
     return result;
 }
 
@@ -44,17 +44,19 @@ ss::future<> l1_reader_cache::return_reader(
     }
     std::unique_ptr<l1::object_reader> evicted;
     if (_entries.size() >= _max_cached_readers) {
-        auto& victim = _entries.front();
-        evicted = std::move(victim.reader.reader);
-        vlog(cd_log.debug, "LRU evicted cached L1 reader for {}", victim.tidp);
-        _entries.pop_front();
+        _entries.pop_front_and_dispose([&evicted](cache_entry* e) {
+            evicted = std::move(e->reader.reader);
+            vlog(cd_log.debug, "LRU evicted cached L1 reader for {}", e->tidp);
+            delete e; // NOLINT
+        });
     }
-    _entries.push_back(
-      cache_entry{
-        .reader = std::move(entry),
-        .tidp = tidp,
-        .atime = ss::lowres_clock::now(),
-      });
+    // NOLINTNEXTLINE
+    auto* e = new cache_entry{
+      .reader = std::move(entry),
+      .tidp = tidp,
+      .atime = ss::lowres_clock::now(),
+    };
+    _entries.push_back(*e);
     arm_timer();
     if (evicted) {
         co_await close_reader_safe(std::move(evicted));
@@ -71,7 +73,7 @@ ss::future<> l1_reader_cache::stop() {
     for (auto& e : _entries) {
         to_close.push_back(std::move(e.reader.reader));
     }
-    _entries.clear();
+    _entries.clear_and_dispose([](cache_entry* e) { delete e; }); // NOLINT
 
     co_await ss::max_concurrent_for_each(
       to_close, 16, [](std::unique_ptr<l1::object_reader>& r) {
@@ -86,7 +88,8 @@ ss::future<> l1_reader_cache::evict_stale() {
         if (now - it->atime > ttl) {
             auto reader_to_close = std::move(it->reader.reader);
             vlog(cd_log.debug, "TTL evicted cached L1 reader for {}", it->tidp);
-            it = _entries.erase(it);
+            it = _entries.erase_and_dispose(
+              it, [](cache_entry* e) { delete e; }); // NOLINT
             co_await close_reader_safe(std::move(reader_to_close));
         } else {
             ++it;

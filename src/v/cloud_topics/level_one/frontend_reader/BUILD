@@ -30,6 +30,7 @@ redpanda_cc_library(
         "//src/v/cloud_topics:logger",
         "//src/v/cloud_topics/level_one/common:object",
         "//src/v/cloud_topics/level_one/common:object_id",
+        "//src/v/container:intrusive",
         "//src/v/model",
         "//src/v/ssx:future_util",
         "@seastar",
