@@ -23,6 +23,8 @@ struct gc_test_config {
     std::chrono::milliseconds list_cost{0ms};
     std::chrono::milliseconds delete_cost{0ms};
 };
+constexpr size_t prefix_max = cloud_topics::object_id::prefix_max;
+constexpr size_t n_prefixes = prefix_max + 1;
 } // namespace
 
 class object_storage_test_impl
@@ -481,7 +483,7 @@ void check_range_contents(
 } // namespace
 
 /*
- * With a single shard, it should handle all prefixes [0, 999].
+ * With a single shard, it should handle all prefixes [0, prefix_max].
  */
 TEST_F(PrefixRangeComputationTest, SingleShardCoversAllPrefixes) {
     auto range = cloud_topics::compute_prefix_range(
@@ -509,7 +511,7 @@ TEST_F(PrefixRangeComputationTest, TwoShardsPartitionSpace) {
         auto range = cloud_topics::compute_prefix_range(
           1 /* shard_idx */, 2 /* total_shards */);
         check_range_contents(range);
-        // Second shard: [500, 999]
+        // Second shard: [500, prefix_max]
         EXPECT_EQ(range->min, 500);
         EXPECT_EQ(range->max, cloud_topics::object_id::prefix_max);
     }
@@ -519,7 +521,7 @@ TEST_F(PrefixRangeComputationTest, TwoShardsPartitionSpace) {
  * With 1000 shards (one per prefix), each shard handles exactly one prefix.
  */
 TEST_F(PrefixRangeComputationTest, ThousandShardsOnePerPrefix) {
-    constexpr size_t total = 1000;
+    constexpr size_t total = n_prefixes;
 
     for (size_t i = 0; i < total; ++i) {
         auto range = cloud_topics::compute_prefix_range(
@@ -568,7 +570,7 @@ TEST_F(PrefixRangeComputationTest, MoreShardsThanPrefixes) {
 TEST_F(PrefixRangeComputationTest, HeterogeneousCompleteCoverage) {
     constexpr size_t total = 41;
 
-    std::vector<int> coverage_count(1000, 0);
+    std::vector<int> coverage_count(n_prefixes, 0);
 
     for (size_t shard = 0; shard < total; ++shard) {
         auto r = cloud_topics::compute_prefix_range(
@@ -577,13 +579,14 @@ TEST_F(PrefixRangeComputationTest, HeterogeneousCompleteCoverage) {
         auto [min, max] = r.value();
         EXPECT_GE(min, 0);
         EXPECT_LE(max, cloud_topics::object_id::prefix_max);
-        for (auto prefix = min; prefix <= max && prefix < 1000; ++prefix) {
+        for (auto prefix = min; prefix <= max && prefix < n_prefixes;
+             ++prefix) {
             coverage_count[prefix]++;
         }
     }
 
-    // Verify all prefixes are covered exactlye
-    for (int prefix = 0; prefix < 1000; ++prefix) {
+    // Verify all prefixes are covered exactly once
+    for (size_t prefix = 0; prefix < n_prefixes; ++prefix) {
         EXPECT_EQ(coverage_count[prefix], 1) << fmt::format(
           "Prefix {} covered {} times", prefix, coverage_count[prefix]);
     }
@@ -706,7 +709,7 @@ TEST_P(LevelZeroGCPartitioningTest, ShardOnlyDeletesObjectsInRange) {
     auto [min, max] = range.value();
 
     // Add objects across the full prefix range (every 50th prefix)
-    for (int prefix = 0; prefix <= 999; prefix += 50) {
+    for (size_t prefix = 0; prefix <= prefix_max; prefix += 50) {
         add_listed_with_prefix(prefix, 1);
     }
     sort_listed();
@@ -741,7 +744,7 @@ TEST_P(LevelZeroGCPartitioningTest, PaginationWithinRange) {
     cfg_.list_page_size = 5;
 
     // Add several objects within this shard's range
-    for (auto prefix = min; prefix <= max && prefix < 1000; prefix += 5) {
+    for (auto prefix = min; prefix <= max && prefix < n_prefixes; prefix += 5) {
         for (int i = 0; i < 10; ++i) {
             add_listed_with_prefix(prefix, 1);
         }
@@ -770,7 +773,7 @@ TEST_P(LevelZeroGCPartitioningTest, EpochFilteringWithPartitioning) {
     auto [min, max] = range.value();
 
     // Add objects with various epochs, using prefixes in our range
-    if (min < 1000) {
+    if (min < n_prefixes) {
         add_listed_with_prefix(min, 50);  // epoch 50, eligible
         add_listed_with_prefix(min, 100); // epoch 100, boundary
         add_listed_with_prefix(min, 150); // epoch 150, not eligible
@@ -796,7 +799,7 @@ TEST_P(LevelZeroGCPartitioningTest, AgeFilteringWithPartitioning) {
     ASSERT_TRUE(range.has_value());
     auto [min, max] = range.value();
 
-    if (min < 1000) {
+    if (min < n_prefixes) {
         add_listed_with_prefix(min, 1, 24h); // old enough
         add_listed_with_prefix(
           min + 1 > max ? min : min + 1, 1, 24h); // old enough
@@ -829,9 +832,9 @@ TEST_P(LevelZeroGCPartitioningTest, NoObjectsInRange) {
         // Add objects before our range
         add_listed_with_prefix(0, 1);
     }
-    if (max < 999) {
+    if (max < prefix_max) {
         // Add objects after our range
-        add_listed_with_prefix(999, 1);
+        add_listed_with_prefix(prefix_max, 1);
     }
     sort_listed();
 
@@ -855,7 +858,7 @@ TEST_P(LevelZeroGCPartitioningTest, ObjectsAtBoundaries) {
     // Add object at min boundary
     add_listed_with_prefix(min, 1);
     // Add object at max boundary
-    if (max < 1000) {
+    if (max < n_prefixes) {
         add_listed_with_prefix(max, 1);
     }
     sort_listed();
@@ -877,7 +880,7 @@ INSTANTIATE_TEST_SUITE_P(
   testing::Values(
     std::make_tuple(0, 1),  // Single shard covering all prefixes
     std::make_tuple(0, 2),  // First half [0, 500)
-    std::make_tuple(1, 2),  // Second half [500, 999]
+    std::make_tuple(1, 2),  // Second half [500, prefix_max]
     std::make_tuple(0, 10), // First range [0, 100)
     std::make_tuple(4, 10), // Middle range [400, 500)
     std::make_tuple(23, 24) // Last shard (handles remainder)
