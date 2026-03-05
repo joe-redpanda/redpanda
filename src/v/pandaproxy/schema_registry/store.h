@@ -605,7 +605,7 @@ public:
     }
 
     ///\brief Get the mode of a context.
-    result<mode> get_mode(const context& ctx) const {
+    result<mode> get_mode(const context& ctx, default_to_global) const {
         auto it = _context_stores.find(ctx);
         if (it == _context_stores.end() || !it->second._mode.has_value()) {
             return mode::read_write;
@@ -620,7 +620,7 @@ public:
         if (sub_it && (sub_it.assume_value())->second.mode.has_value()) {
             return (sub_it.assume_value())->second.mode.value();
         } else if (fallback) {
-            return get_mode(sub.ctx);
+            return get_mode(sub.ctx, fallback);
         }
         return mode_not_found(sub);
     }

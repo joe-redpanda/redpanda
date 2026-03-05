@@ -492,11 +492,15 @@ ss::future<server::reply_t> delete_config_subject(
 
 ss::future<server::reply_t> get_mode(server::request_t rq, server::reply_t rp) {
     parse_accept_header(rq, rp);
+    auto fallback = parse::query_param<std::optional<default_to_global>>(
+                      *rq.req, "defaultToGlobal")
+                      .value_or(default_to_global::no);
 
     // Ensure we see latest writes
     co_await rq.service().writer().read_sync();
 
-    auto res = co_await rq.service().schema_store().get_mode(default_context);
+    auto res = co_await rq.service().schema_store().get_mode(
+      default_context, fallback);
 
     auto resp = ppj::rjson_serialize_iobuf(mode_req_rep{.mode = res});
     log_response(*rq.req, resp);
@@ -545,7 +549,8 @@ ss::future<server::reply_t> get_mode_subject(
 
     mode res;
     if (ctx_sub.is_context_only()) {
-        res = co_await rq.service().schema_store().get_mode(ctx_sub.ctx);
+        res = co_await rq.service().schema_store().get_mode(
+          ctx_sub.ctx, fallback);
     } else {
         res = co_await rq.service().schema_store().get_mode(ctx_sub, fallback);
     }
@@ -608,7 +613,8 @@ ss::future<server::reply_t> delete_mode_subject(
     mode m{};
     try {
         if (ctx_sub.is_context_only()) {
-            m = co_await rq.service().schema_store().get_mode(ctx_sub.ctx);
+            m = co_await rq.service().schema_store().get_mode(
+              ctx_sub.ctx, default_to_global::no);
         } else {
             m = co_await rq.service().schema_store().get_mode(
               ctx_sub, default_to_global::no);

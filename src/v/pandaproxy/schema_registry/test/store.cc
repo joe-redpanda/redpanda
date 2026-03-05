@@ -1031,11 +1031,14 @@ BOOST_AUTO_TEST_CASE(test_store_context_mode) {
     auto test_ctx = pps::context{".test"};
     pps::seq_marker dummy_marker;
     auto s = pps::store{pps::is_mutable::yes};
+    auto fallback = pps::default_to_global::yes;
 
     // Default mode is read_write
     BOOST_REQUIRE(
-      s.get_mode(pps::default_context).value() == pps::mode::read_write);
-    BOOST_REQUIRE(s.get_mode(test_ctx).value() == pps::mode::read_write);
+      s.get_mode(pps::default_context, fallback).value()
+      == pps::mode::read_write);
+    BOOST_REQUIRE(
+      s.get_mode(test_ctx, fallback).value() == pps::mode::read_write);
 
     // Set mode on default context
     BOOST_REQUIRE(s.set_mode(
@@ -1045,20 +1048,24 @@ BOOST_AUTO_TEST_CASE(test_store_context_mode) {
                      pps::force::no)
                     .value());
     BOOST_REQUIRE(
-      s.get_mode(pps::default_context).value() == pps::mode::read_only);
-    BOOST_REQUIRE(s.get_mode(test_ctx).value() == pps::mode::read_write);
+      s.get_mode(pps::default_context, fallback).value()
+      == pps::mode::read_only);
+    BOOST_REQUIRE(
+      s.get_mode(test_ctx, fallback).value() == pps::mode::read_write);
 
     // Set different mode on test context
     BOOST_REQUIRE(
       s.set_mode(dummy_marker, test_ctx, pps::mode::import, pps::force::no)
         .value());
     BOOST_REQUIRE(
-      s.get_mode(pps::default_context).value() == pps::mode::read_only);
-    BOOST_REQUIRE(s.get_mode(test_ctx).value() == pps::mode::import);
+      s.get_mode(pps::default_context, fallback).value()
+      == pps::mode::read_only);
+    BOOST_REQUIRE(s.get_mode(test_ctx, fallback).value() == pps::mode::import);
 
     // Clear mode returns to default
     BOOST_REQUIRE(s.clear_mode(test_ctx, pps::force::no).value());
-    BOOST_REQUIRE(s.get_mode(test_ctx).value() == pps::mode::read_write);
+    BOOST_REQUIRE(
+      s.get_mode(test_ctx, fallback).value() == pps::mode::read_write);
 }
 
 BOOST_AUTO_TEST_CASE(test_store_context_mode_written_at) {

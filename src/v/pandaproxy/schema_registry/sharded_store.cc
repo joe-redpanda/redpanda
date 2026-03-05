@@ -609,8 +609,9 @@ ss::future<bool> sharded_store::delete_subject_version(
     co_return result;
 }
 
-ss::future<mode> sharded_store::get_mode(context ctx) {
-    co_return _store.local().get_mode(ctx).value();
+ss::future<mode>
+sharded_store::get_mode(context ctx, default_to_global fallback) {
+    co_return _store.local().get_mode(ctx, fallback).value();
 }
 
 ss::future<mode>

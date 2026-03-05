@@ -152,7 +152,7 @@ public:
     ss::future<bool> delete_subject_version(
       context_subject sub, schema_version version, force f = force::no);
     ///\brief Get the mode of a context.
-    ss::future<mode> get_mode(context ctx);
+    ss::future<mode> get_mode(context ctx, default_to_global fallback);
 
     ///\brief Get the mode for a subject, or fallback to global.
     ss::future<mode> get_mode(context_subject sub, default_to_global fallback);
