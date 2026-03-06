@@ -10725,9 +10725,8 @@ class SchemaRegistryDeadlockTest(SchemaRegistryEndpoints):
             self.logger.info("Broker shutdown timed out as expected.")
 
     @cluster(num_nodes=3)
-    @parametrize(subject=":.:", expect_deadlock=True)
-    @parametrize(subject=":.ctx:", expect_deadlock=True)
-    # These do not trigger the deadlock — only context-only qualifiers do:
+    @parametrize(subject=":.:", expect_deadlock=False)
+    @parametrize(subject=":.ctx:", expect_deadlock=False)
     @parametrize(subject=":.:subject", expect_deadlock=False)
     @parametrize(subject=":.ctx:subject", expect_deadlock=False)
     @parametrize(subject="subject", expect_deadlock=False)
@@ -10749,9 +10748,8 @@ class SchemaRegistryDeadlockTest(SchemaRegistryEndpoints):
         self._stop_node(self.redpanda.nodes[0], expect_timeout=expect_deadlock)
 
     @cluster(num_nodes=3)
-    @parametrize(subject=":.:", expect_deadlock=True)
-    @parametrize(subject=":.ctx:", expect_deadlock=True)
-    # These do not trigger the deadlock — only context-only qualifiers do:
+    @parametrize(subject=":.:", expect_deadlock=False)
+    @parametrize(subject=":.ctx:", expect_deadlock=False)
     @parametrize(subject=":.:subject", expect_deadlock=False)
     @parametrize(subject=":.ctx:subject", expect_deadlock=False)
     @parametrize(subject="subject", expect_deadlock=False)
