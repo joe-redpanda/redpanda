@@ -17,7 +17,7 @@ import time
 import urllib.parse
 import uuid
 from enum import Enum
-from typing import Any, NamedTuple, Optional, TypeAlias
+from typing import Any, Literal, NamedTuple, Optional, TypeAlias
 
 import requests
 from confluent_kafka.schema_registry import (
@@ -30,6 +30,7 @@ from confluent_kafka.schema_registry import (
     topic_subject_name_strategy,
 )
 from confluent_kafka.serialization import MessageField, SerializationContext
+from ducktape.errors import TimeoutError as DucktapeTimeoutError
 from ducktape.mark import matrix, parametrize
 from ducktape.services.background_thread import BackgroundThreadService
 from ducktape.tests.test import TestContext
@@ -10603,3 +10604,171 @@ class SchemaRegistryContextAuthzTest(SchemaRegistryAclAuthzTestBase):
             99999, subject="sub1", auth=self.user_auth
         )
         self.assert_equal(result.status_code, 403)
+
+
+class SchemaRegistryDeadlockTest(SchemaRegistryEndpoints):
+    """
+    Reproduces a bug where DELETE /mode/{subject} or DELETE /config/{subject}
+    with a context-only qualifier (e.g., ":.:" or ":.ctx:") puts schema
+    registry into a deadlocked state: the request never completes and the
+    broker cannot shut down gracefully.
+
+    Only context-only qualifiers trigger the deadlock. Fully qualified
+    subjects (":.ctx:subject") and non-qualified subjects ("my-subject")
+    behave normally.
+    """
+
+    def __init__(self, context: TestContext, **kwargs: Any):
+        schema_registry_config = SchemaRegistryConfig()
+        schema_registry_config.mode_mutability = True
+        super().__init__(
+            context,
+            schema_registry_config=schema_registry_config,
+            extra_rp_conf={"schema_registry_enable_qualified_subjects": True},
+            **kwargs,
+        )
+
+    def _call_delete_endpoint(
+        self,
+        endpoint: Literal["mode", "config"],
+        subject: str,
+        expect_timeout: bool = True,
+    ):
+        """
+        Send a DELETE to /mode/{subject} or /config/{subject}.
+
+        If expect_timeout is True, assert the request never completes
+        (times out or connection error). If False, assert it succeeds.
+        """
+        delete_fn = {
+            "mode": self.sr_client.delete_mode_subject,
+            "config": self.sr_client.delete_config_subject,
+        }[endpoint]
+
+        node = self.redpanda.nodes[0]
+        hostname = node.account.hostname
+
+        try:
+            result = delete_fn(subject=subject, timeout=10, hostname=hostname)
+            assert not expect_timeout, (
+                f"Expected DELETE /{endpoint}/{subject} to hang, but it returned."
+            )
+            return result
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
+            assert expect_timeout, (
+                f"DELETE /{endpoint}/{subject} timed out or connection error "
+                "unexpectedly."
+            )
+
+    def _call_get_endpoint(
+        self,
+        endpoint: Literal["mode", "config"],
+        subject: str,
+    ):
+        """
+        Send a GET to /mode/{subject} or /config/{subject}.
+        Assert the request succeeds. This is used to confirm that the deadlock
+        only affects WRITE requests, not GETs.
+        """
+        get_fn = {
+            "mode": self.sr_client.get_mode_subject,
+            "config": self.sr_client.get_config_subject,
+        }[endpoint]
+
+        node = self.redpanda.nodes[0]
+        hostname = node.account.hostname
+
+        get_fn(subject=subject, timeout=10, hostname=hostname)
+
+    def _post_schema(self, expect_timeout: bool = True):
+        """
+        Post a schema to an unrelated subject to verify whether writes to
+        schema registry are blocked by the deadlock.
+        """
+        schema = '{"type": "string"}'
+        node = self.redpanda.nodes[0]
+        hostname = node.account.hostname
+        subject = "deadlock-test-unrelated"
+
+        try:
+            result = self.sr_client.post_subjects_subject_versions(
+                subject=subject,
+                data=json.dumps({"schema": schema}),
+                timeout=10,
+                hostname=hostname,
+            )
+            assert not expect_timeout, (
+                f"Expected POST /subjects/{subject}/versions to hang, but it returned."
+            )
+            return result
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
+            assert expect_timeout, (
+                f"POST /subjects/{subject}/versions timed out or connection "
+                "error unexpectedly."
+            )
+
+    def _stop_node(self, node, expect_timeout: bool = True):
+        """
+        Attempt to stop a node gracefully.
+
+        If expect_timeout is True, assert the shutdown times out (confirming
+        a deadlocked state). If False, assert clean shutdown succeeds.
+        stop_node sends SIGKILL after timeout before re-raising TimeoutError.
+        """
+        try:
+            self.redpanda.stop_node(node, timeout=15)
+            assert not expect_timeout, (
+                "Expected broker shutdown to time out, but it completed."
+            )
+        except DucktapeTimeoutError:
+            assert expect_timeout, "Broker shutdown timed out unexpectedly."
+            self.logger.info("Broker shutdown timed out as expected.")
+
+    @cluster(num_nodes=3)
+    @parametrize(subject=":.:", expect_deadlock=True)
+    @parametrize(subject=":.ctx:", expect_deadlock=True)
+    # These do not trigger the deadlock — only context-only qualifiers do:
+    @parametrize(subject=":.:subject", expect_deadlock=False)
+    @parametrize(subject=":.ctx:subject", expect_deadlock=False)
+    @parametrize(subject="subject", expect_deadlock=False)
+    def test_delete_mode_context_only_subject_causes_deadlock(
+        self, subject: str, expect_deadlock: bool
+    ):
+        """
+        DELETE /mode/{subject} with a context-only qualifier deadlocks schema
+        registry when schema_registry_enable_qualified_subjects is enabled.
+
+        When the bug is fixed, this test should be updated to assert that the
+        DELETE succeeds and shutdown is clean.
+        """
+        self._call_delete_endpoint("mode", subject, expect_timeout=expect_deadlock)
+        self._call_get_endpoint(
+            "mode", subject
+        )  # GET should still work even if DELETE deadlocks
+        self._post_schema(expect_timeout=expect_deadlock)
+        self._stop_node(self.redpanda.nodes[0], expect_timeout=expect_deadlock)
+
+    @cluster(num_nodes=3)
+    @parametrize(subject=":.:", expect_deadlock=True)
+    @parametrize(subject=":.ctx:", expect_deadlock=True)
+    # These do not trigger the deadlock — only context-only qualifiers do:
+    @parametrize(subject=":.:subject", expect_deadlock=False)
+    @parametrize(subject=":.ctx:subject", expect_deadlock=False)
+    @parametrize(subject="subject", expect_deadlock=False)
+    def test_delete_config_context_only_subject_causes_deadlock(
+        self, subject: str, expect_deadlock: bool
+    ):
+        """
+        DELETE /config/{subject} with a context-only qualifier deadlocks
+        schema registry when schema_registry_enable_qualified_subjects is
+        enabled.
+
+        When the bug is fixed, this test should be updated to assert that the
+        DELETE succeeds and shutdown is clean.
+        """
+        self._call_delete_endpoint("config", subject, expect_timeout=expect_deadlock)
+        self._call_get_endpoint(
+            "config", subject
+        )  # GET should still work even if DELETE deadlocks
+        self._post_schema(expect_timeout=expect_deadlock)
+        self._stop_node(self.redpanda.nodes[0], expect_timeout=expect_deadlock)
