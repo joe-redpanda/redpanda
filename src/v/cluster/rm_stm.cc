@@ -40,6 +40,7 @@
 #include <iterator>
 #include <optional>
 #include <ranges>
+#include <stdexcept>
 #include <utility>
 
 namespace cluster {
@@ -1412,6 +1413,27 @@ static void filter_intersecting(
 
 ss::future<chunked_vector<tx_range>>
 rm_stm::aborted_transactions(model::offset from, model::offset to) {
+    auto lso = last_stable_offset();
+    if (lso == model::invalid_lso) {
+        auto lvi = _raft->last_visible_index();
+        if (to > lvi) {
+            throw std::runtime_error(
+              fmt::format(
+                "to: {} should be <= last_visible_index: {} when lso is "
+                "invalid",
+                to,
+                lvi));
+        }
+    } else {
+        if (to >= lso && to > last_applied()) {
+            throw std::runtime_error(
+              fmt::format(
+                "to: {} should be < lso: {} or <= last_applied: {}",
+                to,
+                lso,
+                last_applied()));
+        }
+    }
     auto gate_holder = _gate.hold();
     auto lock_holder = co_await _state_lock.hold_read_lock();
     co_return co_await do_aborted_transactions(from, to);
