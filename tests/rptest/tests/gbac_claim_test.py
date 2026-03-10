@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import requests
 from confluent_kafka import KafkaError, Message, Producer
 from confluent_kafka.error import KafkaException
 from ducktape.tests.test import Test, TestContext
@@ -100,11 +101,16 @@ class StubOIDCTestBase(Test):
         def _on_delivery(err: KafkaError | None, _msg: Message) -> None:
             errors.append(err)
 
-        producer.produce(
-            topic,
-            b"test",
-            on_delivery=_on_delivery,
-        )
+        try:
+            producer.produce(
+                topic,
+                b"test",
+                on_delivery=_on_delivery,
+            )
+        except KafkaException as e:
+            err = e.args[0]
+            assert isinstance(err, KafkaError)
+            return err
         producer.flush(timeout=10)
         assert len(errors) > 0, "Expected delivery callback but got none"
         return errors[0]
@@ -1014,3 +1020,81 @@ class GbacMultiGroupTest(StubOIDCTestBase):
         # No ACL was created, so produce is denied.
         producer = self.make_producer(client_id)
         self.assert_produce_denied(producer, topic)
+
+
+class GbacConfigEdgeCaseTest(StubOIDCTestBase):
+    """Tests for runtime configuration changes affecting GBAC behavior."""
+
+    def revoke_oidc_sessions(self) -> None:
+        """Revoke existing OIDC sessions so that producers must
+        re-authenticate. Without this, the already-connected producers
+        keep their old SASL sessions and the config change has no
+        effect on them until the token naturally expires."""
+        admin_v2 = AdminV2(self.redpanda)
+        admin_v2.security().revoke_oidc_sessions(
+            security_pb2.RevokeOidcSessionsRequest()
+        )
+
+    @cluster(num_nodes=4)
+    def test_change_group_claim_path_at_runtime(self) -> None:
+        """Changing oidc_group_claim_path at runtime causes subsequent tokens
+        to be evaluated against the new path."""
+        client_a = "client-a"
+        self.stub_idp.register_client(
+            client_a,
+            claims={
+                "sub": "user-a",
+                "groups1": ["test-group"],
+            },
+        )
+
+        client_b = "client-b"
+        self.stub_idp.register_client(
+            client_b,
+            claims={
+                "sub": "user-b",
+                "groups2": ["test-group"],
+            },
+        )
+
+        # Phase 1: setting group claim path to $.groups1 — client-A resolves groups.
+        self.redpanda.set_cluster_config({"oidc_group_claim_path": "$.groups1"})
+
+        resp = self.resolve_oidc_identity(client_a)
+        assert list(resp.groups) == ["test-group"]
+        resp = self.resolve_oidc_identity(client_b)
+        assert len(resp.groups) == 0
+
+        topic = "claim-path-topic"
+        self.rpk.create_topic(topic)
+        self.rpk.sasl_allow_principal("Group:test-group", ["all"], "topic", topic)
+
+        producer_a = self.make_producer(client_a)
+        producer_b = self.make_producer(client_b)
+
+        self.wait_until_produce_succeeds(
+            producer_a,
+            topic,
+            "Phase 1: client-A should have access via groups1 claim path",
+        )
+
+        self.assert_produce_denied(producer_b, topic)
+
+        # Change group claim path to $.groups2 at runtime — client-B should now resolve groups, client-A should not.
+        self.redpanda.set_cluster_config({"oidc_group_claim_path": "$.groups2"})
+
+        # Phase 2: new path — client-B resolves groups.
+        resp = self.resolve_oidc_identity(client_a)
+        assert len(resp.groups) == 0
+        resp = self.resolve_oidc_identity(client_b)
+        assert list(resp.groups) == ["test-group"]
+
+        self.revoke_oidc_sessions()
+
+        self.assert_produce_denied(producer_a, topic)
+
+        self.wait_until_produce_succeeds(
+            producer_b,
+            topic,
+            "Phase 2: client-B should have access via groups2 claim path",
+        )
