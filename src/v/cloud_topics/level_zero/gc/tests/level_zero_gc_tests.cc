@@ -189,10 +189,22 @@ private:
 
 class safety_monitor_test_impl
   : public cloud_topics::level_zero_gc::safety_monitor {
+    static constexpr bool default_ok{true};
+
 public:
+    safety_monitor_test_impl() = default;
+    explicit safety_monitor_test_impl(bool* ok)
+      : ok_(ok) {}
+
     result can_proceed() const override {
-        return {.ok = true, .reason = std::nullopt};
+        if (*ok_) {
+            return {.ok = true, .reason = std::nullopt};
+        }
+        return {.ok = false, .reason = "test: unsafe"};
     }
+
+private:
+    const bool* ok_{&default_ok};
 };
 
 class LevelZeroGCTest : public testing::Test {
@@ -217,7 +229,7 @@ public:
           std::move(storage),
           std::make_unique<epoch_source_test_impl>(&max_epoch),
           std::make_unique<node_info_test_impl>(),
-          std::make_unique<safety_monitor_test_impl>());
+          std::make_unique<safety_monitor_test_impl>(&safety_ok));
     }
 
     void TearDown() override { gc->stop().get(); }
@@ -246,6 +258,7 @@ public:
     std::unique_ptr<cloud_topics::level_zero_gc> gc;
     gc_test_config cfg{};
     object_storage_test_impl* storage_{nullptr};
+    bool safety_ok{true};
 };
 
 template<typename Func>
@@ -258,6 +271,46 @@ template<typename Func>
         seastar::sleep_abortable(delay).get();
     }
     return ::testing::AssertionFailure() << "Timeout";
+}
+
+class LevelZeroGCSafetyTest : public LevelZeroGCTest {};
+
+TEST_F(LevelZeroGCSafetyTest, ProceedsWhenSafe) {
+    for (int i = 0; i < 100; ++i) {
+        add_listed(i, 24h);
+    }
+    max_epoch = 100;
+    safety_ok = true;
+    gc->start().get();
+    EXPECT_TRUE(Eventually([this] { return deleted.size() == 100; }));
+}
+
+TEST_F(LevelZeroGCSafetyTest, BlockedWhenUnsafe) {
+    for (int i = 0; i < 100; ++i) {
+        add_listed(i, 24h);
+    }
+    max_epoch = 100;
+    safety_ok = false;
+    gc->start().get();
+    EXPECT_FALSE(Eventually([this] { return deleted.size() > 0; }));
+}
+
+TEST_F(LevelZeroGCSafetyTest, ResumesAfterSafetyRestored) {
+    for (int i = 0; i < 100; ++i) {
+        add_listed(i, 24h);
+    }
+    max_epoch = 100;
+    safety_ok = false;
+    gc->start().get();
+
+    // GC should not delete anything while unsafe
+    EXPECT_FALSE(Eventually([this] { return deleted.size() > 0; }));
+
+    // Flip to safe
+    safety_ok = true;
+
+    // GC should now proceed
+    EXPECT_TRUE(Eventually([this] { return deleted.size() == 100; }));
 }
 
 // all 100 objects are deleted
