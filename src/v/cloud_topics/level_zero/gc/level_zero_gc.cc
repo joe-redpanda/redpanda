@@ -901,17 +901,30 @@ level_zero_gc::do_try_to_collect(std::optional<cluster_epoch>& max_gc_epoch) {
 
 std::optional<prefix_range_inclusive>
 compute_prefix_range(size_t shard_idx, size_t total_shards) {
-    auto total_prefixes = object_id::prefix_max + 1;
-    total_shards = std::min(total_shards, static_cast<size_t>(total_prefixes));
-    if (shard_idx >= total_shards) {
+    constexpr size_t total_prefixes = object_id::prefix_max + 1;
+    total_shards = std::min(total_shards, total_prefixes);
+    if (total_shards == 0 || shard_idx >= total_shards) {
         return std::nullopt;
     }
+
+    // Divide prefixes evenly, distributing the remainder one-per-shard across
+    // the first `remainder` shards. E.g. 1000 prefixes / 32 shards:
+    //   stride=31, remainder=8
+    //   shards 0-7:  32 prefixes each (31 + 1 extra)
+    //   shards 8-31: 31 prefixes each
     auto stride = total_prefixes / total_shards;
-    auto min = static_cast<object_id::prefix_t>(shard_idx * stride);
-    auto max = static_cast<object_id::prefix_t>(min + stride - 1);
-    if (shard_idx == total_shards - 1) {
-        max = object_id::prefix_max;
-    }
+    auto remainder = total_prefixes % total_shards;
+
+    auto has_extra = shard_idx < remainder;
+    auto width = stride + (has_extra ? 1 : 0);
+
+    // Each shard before us consumed `stride` prefixes, plus one extra for each
+    // of the first `remainder` shards. The number of extra prefixes already
+    // handed out is min(shard_idx, remainder).
+    auto extras_before = std::min(shard_idx, remainder);
+    auto min = static_cast<object_id::prefix_t>(
+      shard_idx * stride + extras_before);
+    auto max = static_cast<object_id::prefix_t>(min + width - 1);
 
     return prefix_range_inclusive{min, max};
 }
