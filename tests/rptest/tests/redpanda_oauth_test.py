@@ -1644,6 +1644,114 @@ class RedpandaOIDCTestMethods(RedpandaOIDCTestBase):
         )
         self.logger.info("Denied topic consumption correctly denied with auth error")
 
+    @cluster(num_nodes=4)
+    def test_group_pandaproxy_api_coverage(self):
+        """
+        Test group-based access control through the Pandaproxy HTTP API.
+
+        Covers:
+        - Produce to allowed topic -> succeeds (200, offsets returned)
+        - Consume from allowed topic -> succeeds (200, records returned)
+
+        TODO(andrew): Exercise the deny path (produce/consume on a denied
+        topic) once CORE-15764 is resolved.
+
+        Setup:
+        - Keycloak group "proxy-api-group" with service user as member
+        - Topic "allowed-topic-pp" with ACL granting all permissions to
+          Group:proxy-api-group
+        """
+        allowed_topic = "allowed-topic-pp"
+        group_name = "proxy-api-group"
+
+        cfg = self._setup_gbac_group(group_name)
+
+        self.rpk.create_topic(allowed_topic)
+
+        group_principal = f"Group:{group_name}"
+
+        # Allow all on allowed-topic-pp
+        self.rpk.sasl_allow_principal(
+            group_principal,
+            ["all"],
+            "topic",
+            allowed_topic,
+        )
+
+        token = self.get_client_credentials_token(cfg)
+
+        scheme, cert, ca_cert = self._tls_config()
+
+        hostname = self.redpanda.nodes[0].account.hostname
+        base_url = f"{scheme}://{hostname}:8082"
+
+        auth_header = {"Authorization": f"Bearer {token['access_token']}"}
+
+        produce_headers = {
+            "Accept": "application/vnd.kafka.v2+json",
+            "Content-Type": "application/vnd.kafka.json.v2+json",
+            **auth_header,
+        }
+
+        fetch_headers = {
+            "Accept": "application/vnd.kafka.json.v2+json",
+            **auth_header,
+        }
+
+        produce_data = json.dumps(
+            {"records": [{"value": "test-value", "partition": 0}]}
+        )
+
+        self.logger.info("Phase 1: Produce authorization")
+
+        # Produce to allowed topic should succeed
+        def produce_to_allowed():
+            res = requests.post(
+                f"{base_url}/topics/{allowed_topic}",
+                produce_data,
+                headers=produce_headers,
+                timeout=10,
+                cert=cert,
+                verify=ca_cert,
+            )
+            if res.status_code != 200:
+                return False
+            offsets = res.json().get("offsets", [])
+            return len(offsets) > 0 and offsets[0].get("offset", -1) >= 0
+
+        wait_until(
+            produce_to_allowed,
+            timeout_sec=10,
+            backoff_sec=1,
+            err_msg="Failed to produce to allowed topic via Pandaproxy",
+        )
+        self.logger.info("Produce to allowed topic succeeded")
+
+        self.logger.info("Phase 2: Consume authorization")
+
+        # Fetch from allowed topic should succeed
+        def fetch_from_allowed():
+            res = requests.get(
+                f"{base_url}/topics/{allowed_topic}/partitions/0/records"
+                f"?offset=0&max_bytes=1024&timeout=1000",
+                headers=fetch_headers,
+                timeout=10,
+                cert=cert,
+                verify=ca_cert,
+            )
+            if res.status_code != 200:
+                return False
+            records = res.json()
+            return isinstance(records, list) and len(records) > 0
+
+        wait_until(
+            fetch_from_allowed,
+            timeout_sec=10,
+            backoff_sec=1,
+            err_msg="Failed to fetch from allowed topic via Pandaproxy",
+        )
+        self.logger.info("Fetch from allowed topic succeeded")
+
 class RedpandaOIDCTest(RedpandaOIDCTestMethods):
     def __init__(self, test_context, **kwargs):
         super(RedpandaOIDCTest, self).__init__(test_context, **kwargs)
