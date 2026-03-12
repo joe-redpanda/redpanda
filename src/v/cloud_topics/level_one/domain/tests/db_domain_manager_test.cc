@@ -954,6 +954,7 @@ chunked_vector<object_id> put_dummy_objects(
 TEST_F(DbDomainManagerTest, TestGarbageCollectionAfterRemoveTopic) {
     cfg.get("cloud_topics_long_term_garbage_collection_interval")
       .set_value(100ms);
+    cfg.get("cloud_topics_long_term_file_deletion_delay").set_value(0ms);
 
     auto tp = make_tp();
 
@@ -1003,6 +1004,61 @@ TEST_F(DbDomainManagerTest, TestGarbageCollectionAfterRemoveTopic) {
 
     // Start running GC and wait for all the objects to be removed.
     initial_manager->start();
+    RPTEST_REQUIRE_EVENTUALLY(
+      30s, [&] { return all_objects_missing(object_ids); });
+}
+
+TEST_F(DbDomainManagerTest, TestGarbageCollectionDeletionDelay) {
+    cfg.get("cloud_topics_long_term_garbage_collection_interval")
+      .set_value(100ms);
+    cfg.get("cloud_topics_long_term_file_deletion_delay").set_value(5000ms);
+
+    auto tp = make_tp();
+
+    auto prereg_reply = initial_manager
+                          ->preregister_objects({
+                            .metastore_partition = model::partition_id(0),
+                            .count = 3,
+                          })
+                          .get();
+    ASSERT_EQ(prereg_reply.ec, l1_rpc::errc::ok);
+    auto new_objects = make_new_objects_with_ids(
+      tp, kafka::offset(0), 10, prereg_reply.object_ids);
+    auto object_ids = put_dummy_objects(initial_leader->object_io, new_objects);
+
+    for (const auto& oid : object_ids) {
+        ASSERT_TRUE(object_exists(oid).get());
+    }
+
+    // Add and remove objects so the metastore thinks they are eligible for
+    // removal.
+    {
+        l1_rpc::add_objects_request req;
+        req.new_objects = std::move(new_objects);
+        req.new_terms = make_terms(tp, kafka::offset(0), model::term_id(1));
+        auto reply = initial_manager->add_objects(std::move(req)).get();
+        ASSERT_EQ(reply.ec, l1_rpc::errc::ok);
+    }
+    {
+        l1_rpc::remove_topics_request req;
+        req.topics.push_back(tp.topic_id);
+        auto reply = initial_manager->remove_topics(std::move(req)).get();
+        ASSERT_EQ(reply.ec, l1_rpc::errc::ok);
+        ASSERT_TRUE(reply.not_removed.empty());
+    }
+
+    ASSERT_EQ(initial_manager->flush_domain({}).get().ec, l1_rpc::errc::ok);
+
+    // Start GC. The deletion delay should prevent immediate removal.
+    initial_manager->start();
+
+    // Verify objects survive several GC cycles while the delay hasn't elapsed.
+    ss::sleep(1s).get();
+    for (const auto& oid : object_ids) {
+        EXPECT_TRUE(object_exists(oid).get());
+    }
+
+    // Objects should eventually be deleted once the delay elapses.
     RPTEST_REQUIRE_EVENTUALLY(
       30s, [&] { return all_objects_missing(object_ids); });
 }
@@ -1099,6 +1155,7 @@ TEST_F(DbDomainManagerTest, TestPreregisteredObjectExpiry) {
     cfg.get("cloud_topics_preregistered_object_ttl").set_value(1ms);
     cfg.get("cloud_topics_long_term_garbage_collection_interval")
       .set_value(100ms);
+    cfg.get("cloud_topics_long_term_file_deletion_delay").set_value(0ms);
 
     auto tp = make_tp();
     auto prereg_reply = initial_manager

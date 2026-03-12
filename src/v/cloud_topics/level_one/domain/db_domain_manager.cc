@@ -1144,12 +1144,17 @@ ss::future<> db_domain_manager::gc_loop() {
         }
         // TODO: make batch size configurable.
         vlog(cd_log.debug, "Running garbage collection now...");
+        auto now = model::timestamp::now();
         auto ttl
           = config::shard_local_cfg().cloud_topics_preregistered_object_ttl();
         auto prereg_expiry_cutoff = model::timestamp{
-          model::timestamp::now()() - static_cast<int64_t>(ttl.count())};
+          now() - static_cast<int64_t>(ttl.count())};
+        auto deletion_delay = config::shard_local_cfg()
+                                .cloud_topics_long_term_file_deletion_delay();
+        auto deletion_delay_cutoff = model::timestamp{
+          now() - static_cast<int64_t>(deletion_delay.count())};
         auto gc_res = co_await gc.remove_unreferenced_objects(
-          db_.get(), &as_, 1000, prereg_expiry_cutoff);
+          db_.get(), &as_, 1000, prereg_expiry_cutoff, deletion_delay_cutoff);
         if (!gc_res.has_value()) {
             using enum db_garbage_collector::errc;
             switch (gc_res.error().e) {
