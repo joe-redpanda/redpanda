@@ -2413,4 +2413,22 @@ FIXTURE_TEST(test_repair_archive_start_before_spillover, archiver_fixture) {
     BOOST_REQUIRE(res.has_value());
     BOOST_REQUIRE_EQUAL(res.value().offset, model::offset{});
     BOOST_REQUIRE_EQUAL(res.value().delta, model::offset_delta{});
+
+    // Enable the upload loop. The archiver should detect the misalignment
+    // and replicate a repaired manifest.
+    cfg.get("cloud_storage_disable_upload_loop_for_tests").set_value(false);
+    archiver.start().get();
+
+    RPTEST_REQUIRE_EVENTUALLY(10s, [&] {
+        return manifest.get_archive_start_offset() >= first_spill_base;
+    });
+
+    BOOST_REQUIRE_EQUAL(manifest.get_archive_start_offset(), first_spill_base);
+    BOOST_REQUIRE_EQUAL(manifest.get_archive_clean_offset(), first_spill_base);
+
+    // After repair: retention correctly identifies the old segment for removal.
+    res = amv->compute_retention(std::nullopt, 1h).get();
+    BOOST_REQUIRE(res.has_value());
+    BOOST_REQUIRE_EQUAL(res.value().offset, model::offset{30});
+    BOOST_REQUIRE_EQUAL(res.value().delta, model::offset_delta{0});
 }

@@ -418,6 +418,40 @@ archival_stm_fence ntp_archiver::emit_rw_fence() {
     };
 }
 
+ss::future<std::error_code>
+ntp_archiver::maybe_repair_manifest(ss::lowres_clock::time_point deadline) {
+    auto repaired_copy = _parent.archival_meta_stm()->manifest().repair_state();
+    if (!repaired_copy) {
+        co_return std::error_code{};
+    }
+
+    vlog(
+      _rtclog.warn, "Manifest repair created a new manifest. Replicating it.");
+    auto batch = _parent.archival_meta_stm()->batch_start(deadline, _as);
+    auto fence = emit_rw_fence();
+    if (fence.emit_rw_fence_cmd) {
+        vlog(
+          _rtclog.debug,
+          "replace manifest with repair, read-write fence: {}",
+          fence.read_write_fence);
+        batch.read_write_fence(fence.read_write_fence);
+    }
+
+    batch.replace_manifest(repaired_copy->to_iobuf());
+    auto ec = co_await batch.replicate();
+    if (ec) {
+        vlog(
+          _rtclog.error,
+          "Failed to replace manifest with repaired version: {}",
+          ec);
+    } else {
+        vlog(
+          _rtclog.debug, "Finished replacing manifest with repaired version");
+    }
+
+    co_return ec;
+}
+
 void ntp_archiver::log_collected_traces() noexcept {
     try {
         _rtclog.bypass_tracing([this] {
@@ -696,6 +730,13 @@ ss::future<> ntp_archiver::upload_until_abort() {
                   checks_disabled,
                   ok_to_skip);
             }
+        }
+
+        if (auto ec = co_await maybe_repair_manifest(
+              ss::lowres_clock::now() + sync_timeout);
+            ec) {
+            vlog(_rtclog.warn, "Failed to repair manifest: {}, retrying", ec);
+            continue;
         }
 
         vlog(_rtclog.debug, "upload loop synced in term {}", _start_term);

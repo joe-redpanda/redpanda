@@ -471,6 +471,9 @@ private:
     /// Create a fence value for the next STM operation
     archival_stm_fence emit_rw_fence();
 
+    ss::future<std::error_code>
+    maybe_repair_manifest(ss::lowres_clock::time_point deadline);
+
     /// Delete objects, return true on success and false otherwise
     ss::future<bool>
     batch_delete(std::vector<cloud_storage_clients::object_key> paths);
