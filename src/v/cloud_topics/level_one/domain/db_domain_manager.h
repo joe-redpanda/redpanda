@@ -152,9 +152,13 @@ private:
     ss::future<rpc::set_start_offset_reply> do_set_start_offset(
       const gate_writer_locks&, rpc::set_start_offset_request);
 
-    // Ensures all partitions for a topic have start_offset == next_offset by
-    // advancing start_offset where needed.
-    ss::future<std::expected<void, rpc::errc>>
+    struct set_partitions_empty_result {
+        bool has_more{false};
+    };
+
+    // Advances start_offset toward next_offset for one partition at a time.
+    // Returns has_more=true if more work remains (more batches or partitions).
+    ss::future<std::expected<set_partitions_empty_result, rpc::errc>>
     set_partitions_empty(const gate_writer_locks&, const model::topic_id&);
 
     // Removes all metadata rows for the given topics. Callers are expected to

@@ -869,50 +869,55 @@ ss::future<rpc::set_start_offset_reply> db_domain_manager::do_set_start_offset(
         current_start_offset = meta.start_offset;
     }
 
-    // Advance start_offset in batches until reaching final target.
-    while (current_start_offset < target_offset) {
-        auto reader = state_reader(db_->db().create_snapshot());
-
-        // Scan through extents to find an intermediate offset in case there
-        // are a ton of extents.
-        auto new_start_res = co_await scan_extents_below(
-          reader, req.tp, target_offset, max_extents_per_batch);
-        if (!new_start_res.has_value()) {
-            co_return rpc::set_start_offset_reply{
-              .ec = log_and_convert(
-                new_start_res.error(), "Error scanning extents: "),
-            };
-        }
-
-        auto update = set_start_offset_db_update{
-          .tp = req.tp,
-          .new_start_offset = new_start_res.value(),
+    if (current_start_offset >= target_offset) {
+        co_return rpc::set_start_offset_reply{
+          .ec = rpc::errc::ok,
         };
+    }
 
-        chunked_vector<write_batch_row> rows;
-        bool is_no_op = false;
-        auto build_res = co_await update.build_rows(reader, rows, &is_no_op);
-        if (!build_res.has_value()) {
-            co_return rpc::set_start_offset_reply{
-              .ec = log_and_convert(
-                build_res.error(), "Rejecting request to set start offset: "),
-            };
-        }
-        if (is_no_op) {
-            current_start_offset = new_start_res.value();
-            continue;
-        }
-        auto apply_res = co_await write_rows(locks, std::move(rows));
-        if (!apply_res.has_value()) {
-            co_return rpc::set_start_offset_reply{
-              .ec = apply_res.error(),
-            };
-        }
-        current_start_offset = new_start_res.value();
+    auto reader = state_reader(db_->db().create_snapshot());
+
+    // Scan through extents to find an intermediate offset bounded by
+    // max_extents_per_batch.
+    auto new_start_res = co_await scan_extents_below(
+      reader, req.tp, target_offset, max_extents_per_batch);
+    if (!new_start_res.has_value()) {
+        co_return rpc::set_start_offset_reply{
+          .ec = log_and_convert(
+            new_start_res.error(), "Error scanning extents: "),
+        };
+    }
+
+    auto update = set_start_offset_db_update{
+      .tp = req.tp,
+      .new_start_offset = new_start_res.value(),
+    };
+
+    chunked_vector<write_batch_row> rows;
+    bool is_no_op = false;
+    auto build_res = co_await update.build_rows(reader, rows, &is_no_op);
+    if (!build_res.has_value()) {
+        co_return rpc::set_start_offset_reply{
+          .ec = log_and_convert(
+            build_res.error(), "Rejecting request to set start offset: "),
+        };
+    }
+    if (is_no_op) {
+        co_return rpc::set_start_offset_reply{
+          .ec = rpc::errc::ok,
+          .has_more = new_start_res.value() < target_offset,
+        };
+    }
+    auto apply_res = co_await write_rows(locks, std::move(rows));
+    if (!apply_res.has_value()) {
+        co_return rpc::set_start_offset_reply{
+          .ec = apply_res.error(),
+        };
     }
 
     co_return rpc::set_start_offset_reply{
       .ec = rpc::errc::ok,
+      .has_more = new_start_res.value() < target_offset,
     };
 }
 
@@ -927,7 +932,8 @@ db_domain_manager::set_start_offset(rpc::set_start_offset_request req) {
     co_return co_await do_set_start_offset(gl_res.value(), req);
 }
 
-ss::future<std::expected<void, rpc::errc>>
+ss::future<
+  std::expected<db_domain_manager::set_partitions_empty_result, rpc::errc>>
 db_domain_manager::set_partitions_empty(
   const gate_writer_locks& locks, const model::topic_id& tid) {
     auto reader = state_reader(db_->db().create_snapshot());
@@ -937,20 +943,20 @@ db_domain_manager::set_partitions_empty(
           partitions_res.error(), "Error getting partitions for topic: "));
     }
     if (partitions_res.value().empty()) {
-        // No partitions, all done!
-        co_return std::expected<void, rpc::errc>{};
+        co_return set_partitions_empty_result{.has_more = false};
     }
 
-    // Truncate all partitions that have data.
-    for (const auto& pid : partitions_res.value()) {
+    // Process one batch of work for the first non-empty partition, then
+    // return so the caller can bound work per RPC.
+    for (size_t i = 0; i < partitions_res.value().size(); ++i) {
+        const auto& pid = partitions_res.value()[i];
         model::topic_id_partition tidp(tid, pid);
         auto meta_res = co_await reader.get_metadata(tidp);
         if (!meta_res.has_value()) {
             co_return std::unexpected(
               log_and_convert(meta_res.error(), "Error getting metadata: "));
         }
-        if (!meta_res->has_value()) {
-            // Partition doesn't exist, skip.
+        if (!meta_res.value().has_value()) {
             continue;
         }
         const auto& metadata = (*meta_res).value();
@@ -964,10 +970,11 @@ db_domain_manager::set_partitions_empty(
             if (set_offset_reply.ec != rpc::errc::ok) {
                 co_return std::unexpected(set_offset_reply.ec);
             }
+            co_return set_partitions_empty_result{.has_more = true};
         }
     }
 
-    co_return std::expected<void, rpc::errc>{};
+    co_return set_partitions_empty_result{.has_more = false};
 }
 
 ss::future<std::expected<void, rpc::errc>> db_domain_manager::do_remove_topics(
@@ -1027,9 +1034,8 @@ db_domain_manager::remove_topics(rpc::remove_topics_request req) {
         if (
           to_delete_so_far.empty() && topic_extents >= max_extents_per_batch) {
             // This topic is big and it's the first one (we don't have any
-            // other topics accumulated). Delete it on its own by iteratively
-            // emptying its partitions (via set_partitions_empty) and then
-            // removing the remaining topic metadata.
+            // other topics accumulated). Do one batch of partition emptying
+            // and return, expecting callers to retry.
             auto empty_res = co_await set_partitions_empty(gl_res.value(), tid);
             if (!empty_res.has_value()) {
                 co_return rpc::remove_topics_reply{
@@ -1037,6 +1043,15 @@ db_domain_manager::remove_topics(rpc::remove_topics_request req) {
                   .not_removed = {},
                 };
             }
+            if (empty_res.value().has_more) {
+                // More emptying to do — return this topic (and the rest)
+                // as not_removed so the caller retries.
+                co_return rpc::remove_topics_reply{
+                  .ec = rpc::errc::ok,
+                  .not_removed = copy_req_topics_from(i),
+                };
+            }
+            // Partitions are fully emptied. Remove the remaining metadata.
             auto rm_res = co_await do_remove_topics(
               gl_res.value(), chunked_vector<model::topic_id>::single(tid));
             if (!rm_res.has_value()) {
@@ -1047,7 +1062,7 @@ db_domain_manager::remove_topics(rpc::remove_topics_request req) {
             }
             co_return rpc::remove_topics_reply{
               .ec = rpc::errc::ok,
-              .not_removed = copy_req_topics_from(1),
+              .not_removed = copy_req_topics_from(i + 1),
             };
         }
 
