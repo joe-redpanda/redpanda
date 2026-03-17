@@ -1152,6 +1152,11 @@ void partition_manifest::spillover(const segment_meta& spillover_meta) {
 }
 
 segment_meta partition_manifest::make_manifest_metadata() const {
+    if (empty()) {
+        throw std::runtime_error(
+          "can't make manifest metadata for empty manifest");
+    }
+
     return segment_meta{
       .size_bytes = cloud_log_size(),
       .base_offset = get_start_offset().value(),

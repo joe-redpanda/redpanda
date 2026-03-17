@@ -381,6 +381,8 @@ public:
     /// This mechanism is used by the 'spillover' mechanism. The 'segment_meta'
     /// instances that describe spillover manifests are stored using this
     /// format.
+    ///
+    /// \pre The manifest must not be empty.
     segment_meta make_manifest_metadata() const;
 
     /// Return 'true' if the spillover manifest can be added to
