@@ -497,7 +497,7 @@ def redpanda_cc_bench(
     # we write a wrapper to test the benchmark, which tries to
     # run it as quickly as possible in order to smoke test it
     test_data, test_env = _test_options()
-    test_args = args + ["--iterations=1 --runs=1 --duration=0 --overprovisioned"]
+    test_args = args + ["--iterations=1 --runs=1 --duration=0 --no-stdout --overprovisioned"]
     if test_regex != None:
         test_args = test_args + ["-t {}".format(test_regex)]
     py_test(
