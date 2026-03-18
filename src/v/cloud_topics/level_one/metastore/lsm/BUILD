@@ -289,8 +289,10 @@ redpanda_cc_library(
         ":state_reader",
         ":write_batch_row",
         "//src/v/base",
+        "//src/v/cloud_topics/level_one/common:object_id",
         "//src/v/cloud_topics/level_one/metastore:state_update",
         "//src/v/utils:named_type",
+        "@abseil-cpp//absl/container:btree",
         "@seastar",
     ],
 )
