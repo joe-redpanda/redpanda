@@ -145,6 +145,7 @@ redpanda_cc_btest(
         "//src/v/model",
         "//src/v/net",
         "//src/v/net:types",
+        "//src/v/random:generators",
         "//src/v/ssx:sformat",
         "//src/v/storage",
         "//src/v/storage:resources",
