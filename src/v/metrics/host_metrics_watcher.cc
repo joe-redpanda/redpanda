@@ -2,43 +2,90 @@
 
 #include "base/vlog.h"
 #include "config/configuration.h"
+#include "utils/device_utils.h"
 
-#include <seastar/core/abort_source.hh>
-#include <seastar/core/future.hh>
 #include <seastar/core/lowres_clock.hh>
 #include <seastar/core/posix.hh>
-#include <seastar/core/sleep.hh>
-#include <seastar/util/later.hh>
 
 #include <exception>
 #include <ranges>
 #include <unordered_map>
 
+// Device label conventions used for diskstats metrics:
+//
+//   disk       - The block device associated with the series. For the default
+//                series these are generally partitions, while for the
+//                _underlying series, these are a guess at the underlying disk.
+//   underlying - For series which are associated the nearest block device
+//                (e.g., the partition), this is the best guess at the
+//                underlying disk. For example, if the disk is nvme0n1p1,
+//                underlying is nvme0n1.
+//   mountpoint - mountpoint identifying the specific Seastar io_queue,
+//                with the semantics as Seastar's mountpoint label on its own
+//                io_queue metrics.
+//                This is the mountpoint path specified in io-properties; which
+//                is not necessarily a "mount point" at all but may be any path
+//                at all. Empty mountpoint is the default io_queue (id=0).
+//   data_disk  - "1" if the series is associated with the device that contains
+//                the data directory, "0" otherwise
+//   cache_disk - "1" if the series is associated with the device that contains
+//                the cache directory, "0" otherwise
+//
 namespace metrics {
 
+// A /proc/diskstats entry we want to monitor, with role flags.
+struct diskstats_entry {
+    ss::sstring name;       // device name as it appears in /proc/diskstats
+    ss::sstring underlying; // best-guess underlying disk, empty if unknown
+    bool is_data;
+    bool is_cache;
+};
+
+// Result of resolve_monitored_devices: deduped partition and disk entries,
+// plus the union of their names for filtering /proc/diskstats.
+struct resolved_devices {
+    std::vector<diskstats_entry> partitions;
+    std::vector<diskstats_entry> disks;
+    std::unordered_set<ss::sstring> filter;
+};
+
 namespace {
+
+// sectors in diskstats are always 512-byte units
+// https://www.kernel.org/doc/Documentation/block/stat.txt
+constexpr uint64_t bytes_per_sector = 512;
+
+struct diskstats_field {
+    ss::sstring name;
+    // If present, means "name" is in sectors, expose an additional metric
+    // converted to bytes for convenience
+    std::optional<ss::sstring> bytes_name;
+};
+
+// NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer,modernize-use-designated-initializers)
 static const std::
-  array<ss::sstring, host_metrics_watcher::diskstats_field_count>
-    diskstats_fields{
-      "reads",             // 0
-      "reads_merged",      // 1
-      "sectors_read",      // 2
-      "reads_ms",          // 3
-      "writes",            // 4
-      "writes_merged",     // 5
-      "sectors_written",   // 6
-      "writes_ms",         // 7
-      "io_in_progress",    // 8
-      "io_ms",             // 9
-      "io_weighted_ms",    // 10
-      "discards",          // 11
-      "discards_merged",   // 12
-      "sectors_discarded", // 13
-      "discards_ms",       // 14
-      "flushes",           // 15
-      "flushes_ms"         // 16
-    };
-}
+  array<diskstats_field, host_metrics_watcher::diskstats_field_count>
+    diskstats_fields{{
+      {"reads"},                                // 0
+      {"reads_merged"},                         // 1
+      {"sectors_read", "bytes_read"},           // 2
+      {"reads_ms"},                             // 3
+      {"writes"},                               // 4
+      {"writes_merged"},                        // 5
+      {"sectors_written", "bytes_written"},     // 6
+      {"writes_ms"},                            // 7
+      {"io_in_progress"},                       // 8
+      {"io_ms"},                                // 9
+      {"io_weighted_ms"},                       // 10
+      {"discards"},                             // 11
+      {"discards_merged"},                      // 12
+      {"sectors_discarded", "bytes_discarded"}, // 13
+      {"discards_ms"},                          // 14
+      {"flushes"},                              // 15
+      {"flushes_ms"},                           // 16
+    }};
+// NOLINTEND(cppcoreguidelines-prefer-member-initializer,modernize-use-designated-initializers)
+} // namespace
 
 template<typename StatsWrapper, typename RefreshF, typename MetricsF>
 void setup_parser(
@@ -67,26 +114,31 @@ void setup_parser(
     }
 }
 
-host_metrics_watcher::host_metrics_watcher(ss::logger& log)
+host_metrics_watcher::host_metrics_watcher(
+  ss::logger& log,
+  const ss::sstring& data_directory,
+  const ss::sstring& cache_directory)
   : _logger(log) {
     if (!config::shard_local_cfg().enable_host_metrics()) {
         return;
     }
 
-    vlog(log.info, "Setting up host metrics exporter");
+    vlog(
+      log.info,
+      "Setting up host metrics exporter, data_directory: {}, cache_directory: "
+      "{}",
+      data_directory,
+      cache_directory);
+
+    auto devices = resolve_monitored_devices(data_directory, cache_directory);
+    _monitored_devices = devices.filter;
 
     setup_parser(
       _logger,
       _diskstats,
       "/proc/diskstats",
       [this] { maybe_refresh_diskstats(); },
-      [this] {
-          // if more disks get added after startup we will be missing them.
-          // Unlikely to happen.
-          for (const auto& [diskname, _] : _diskstats.stats) {
-              setup_metrics_for_disk(diskname);
-          }
-      });
+      [this, devs = devices] { setup_diskstats_metrics(devs); });
 
     setup_parser(
       _logger,
@@ -103,28 +155,106 @@ host_metrics_watcher::host_metrics_watcher(ss::logger& log)
       [this]() { setup_snmp_metrics(); });
 }
 
-void host_metrics_watcher::setup_metrics_for_disk(const std::string& diskname) {
-    const auto& stats = _diskstats.stats[diskname];
+void host_metrics_watcher::setup_diskstats_metrics(
+  const resolved_devices& devices) {
+    // Register metrics for the given "interesting" devices, or else fall
+    // back to all.
+    if (!devices.partitions.empty() || !devices.disks.empty()) {
+        // The data and/or cache directories are resolved successfully.
+        // Monitor both partition-level (normal names)
+        // and whole-disk (underlying_ prefix). Otherwise fall back to all
+        // devices.
+        for (const auto& entry : devices.partitions) {
+            setup_diskstats_for_entry(entry, "disk", "");
+        }
+        for (const auto& entry : devices.disks) {
+            setup_diskstats_for_entry(entry, "disk", "underlying_");
+        }
+    } else {
+        // Could not resolve any devices (e.g. overlay/tmpfs filesystem).
+        // Fall back to unfiltered monitoring without role labels.
+        vlog(
+          _logger.info,
+          "No devices resolved, monitoring all {} devices from diskstats",
+          _diskstats.stats.size());
+        for (const auto& [diskname, _] : _diskstats.stats) {
+            diskstats_entry entry{
+              .name = ss::sstring(diskname),
+              .underlying = "",
+              .is_data = false,
+              .is_cache = false};
+            setup_diskstats_for_entry(entry, "disk", "");
+        }
+    }
+}
 
-    auto disk_label = seastar::metrics::label("disk");
-    const std::vector<seastar::metrics::label_instance> labels = {
-      disk_label(diskname),
+void host_metrics_watcher::setup_diskstats_for_entry(
+  const diskstats_entry& entry,
+  std::string_view label_name,
+  std::string_view metric_prefix) {
+    // Register gauges for one /proc/diskstats device. label_name controls
+    // whether the series is keyed by "device" (partition) or "disk" (whole
+    // disk), and metric_prefix prepends e.g. "underlying_" to metric names.
+    const auto& stats = _diskstats.stats[entry.name];
+
+    vlog(
+      _logger.info,
+      "Setting up diskstats metrics for '{}' ({}label, prefix='{}', "
+      "data_disk={}, cache_disk={})",
+      entry.name,
+      label_name,
+      metric_prefix,
+      entry.is_data,
+      entry.is_cache);
+
+    auto device_or_disk_label = seastar::metrics::label(
+      ss::sstring(label_name));
+    auto data_disk_label = seastar::metrics::label("data_disk");
+    auto cache_disk_label = seastar::metrics::label("cache_disk");
+    auto underlying_label = seastar::metrics::label("underlying");
+    std::vector<seastar::metrics::label_instance> labels = {
+      device_or_disk_label(entry.name),
+      data_disk_label(entry.is_data ? "1" : "0"),
+      cache_disk_label(entry.is_cache ? "1" : "0"),
     };
+    if (!entry.underlying.empty()) {
+        labels.push_back(underlying_label(entry.underlying));
+    }
 
     for (size_t i = 0; i < stats.size() && i < diskstats_fields.size(); i++) {
+        const auto& field = diskstats_fields[i];
+        auto name = fmt::format("{}{}", metric_prefix, field.name);
         _metrics.add_group(
           "host_diskstats",
           {
             seastar::metrics::make_gauge(
-              diskstats_fields[i],
+              name,
               [this, &stats, i] {
                   maybe_refresh_diskstats();
                   return stats[i];
               },
               seastar::metrics::description(
-                fmt::format("Host diskstat {}", diskstats_fields[i])),
+                fmt::format("Host diskstat {}", name)),
               labels),
           });
+
+        if (field.bytes_name) {
+            auto bytes_name = fmt::format(
+              "{}{}", metric_prefix, *field.bytes_name);
+            _metrics.add_group(
+              "host_diskstats",
+              {
+                seastar::metrics::make_gauge(
+                  bytes_name,
+                  [this, &stats, i] {
+                      maybe_refresh_diskstats();
+                      return stats[i] * bytes_per_sector;
+                  },
+                  seastar::metrics::description(
+                    fmt::format("Host diskstat {} (converted to bytes)", name)),
+                  labels),
+              });
+        }
     }
 }
 
@@ -178,7 +308,9 @@ void host_metrics_watcher::setup_snmp_metrics() {
 }
 
 void host_metrics_watcher::parse_diskstats(
-  std::string_view diskstats_lines, diskstats_map& diskstats) {
+  std::string_view diskstats_lines,
+  diskstats_map& diskstats,
+  const std::unordered_set<ss::sstring>& monitored_devices) {
     for (auto diskline : std::views::split(diskstats_lines, '\n')) {
         auto fields_view = std::views::split(diskline, ' ')
                            | std::views::filter(
@@ -192,6 +324,12 @@ void host_metrics_watcher::parse_diskstats(
         }
 
         auto diskname = fields[2];
+
+        // Filter by monitored devices if specified
+        if (
+          !monitored_devices.empty() && !monitored_devices.contains(diskname)) {
+            continue;
+        }
 
         // skip major number, minor number and diskname
         auto stat_fields = fields | std::views::drop(3);
@@ -311,7 +449,7 @@ void refresh_stats(StatsWrapper& stats, ss::logger& logger, ParseF parsef) {
 
 void host_metrics_watcher::maybe_refresh_diskstats() {
     refresh_stats(_diskstats, _logger, [this](const auto& stat_lines) {
-        parse_diskstats(stat_lines, _diskstats.stats);
+        parse_diskstats(stat_lines, _diskstats.stats, _monitored_devices);
     });
 }
 
@@ -327,4 +465,87 @@ void host_metrics_watcher::maybe_refresh_snmp() {
     });
 }
 
+resolved_devices host_metrics_watcher::resolve_monitored_devices(
+  const ss::sstring& data_directory, const ss::sstring& cache_directory) {
+    // Map data and cache directory paths to their partition and whole-disk
+    // device names. Returns deduped entry lists and a filter set for
+    // /proc/diskstats parsing.
+    resolved_devices result;
+
+    struct resolved {
+        ss::sstring partition;
+        ss::sstring disk;
+    };
+
+    auto resolve_one = [this](
+                         std::string_view label,
+                         const ss::sstring& dir) -> std::optional<resolved> {
+        try {
+            auto partition = utils::device_resolver::device_for_path(dir);
+            auto disk = utils::device_resolver::get_base_device(partition);
+            vlog(
+              _logger.info,
+              "Resolved {} '{}' to device '{}' (underlying disk '{}')",
+              label,
+              dir,
+              partition,
+              disk);
+            return resolved{std::move(partition), std::move(disk)};
+        } catch (const std::exception& e) {
+            vlog(
+              _logger.warn,
+              "Failed to resolve {} '{}' to a block device: {}. "
+              "Skipping diskstats monitoring for this path.",
+              label,
+              dir,
+              e.what());
+            return std::nullopt;
+        }
+    };
+
+    auto data = resolve_one("data directory", data_directory);
+    auto cache = resolve_one("cache directory", cache_directory);
+
+    // Helper: insert or merge into a deduped entry list and filter set
+    auto add_entry = [&result](
+                       std::vector<diskstats_entry>& entries,
+                       const ss::sstring& name,
+                       const ss::sstring& underlying,
+                       bool is_data,
+                       bool is_cache) {
+        for (auto& e : entries) {
+            if (e.name == name) {
+                e.is_data |= is_data;
+                e.is_cache |= is_cache;
+                return;
+            }
+        }
+        entries.push_back(
+          diskstats_entry{
+            .name = name,
+            .underlying = underlying,
+            .is_data = is_data,
+            .is_cache = is_cache});
+        result.filter.insert(name);
+    };
+
+    if (data) {
+        add_entry(result.partitions, data->partition, data->disk, true, false);
+        add_entry(result.disks, data->disk, {}, true, false);
+    }
+    if (cache) {
+        add_entry(
+          result.partitions, cache->partition, cache->disk, false, true);
+        add_entry(result.disks, cache->disk, {}, false, true);
+    }
+
+    if (!result.filter.empty()) {
+        vlog(
+          _logger.info,
+          "Monitoring diskstats for devices: {}",
+          fmt::join(result.filter, ", "));
+    }
+
+    return result;
+}
 } // namespace metrics
