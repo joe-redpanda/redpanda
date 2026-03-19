@@ -10,6 +10,7 @@
 
 #include "cloud_topics/level_zero/stm/ctp_stm.h"
 #include "cloud_topics/level_zero/stm/ctp_stm_api.h"
+#include "cloud_topics/level_zero/stm/ctp_stm_commands.h"
 #include "cloud_topics/level_zero/stm/placeholder.h"
 #include "cloud_topics/logger.h"
 #include "cloud_topics/types.h"
@@ -136,6 +137,18 @@ public:
 
         // fence_guard released here when it goes out of scope
         co_return res.has_value();
+    }
+
+    ss::future<std::expected<model::offset, ct::ctp_stm_api_errc>>
+    replicate_reset_state(
+      raft::raft_node_instance& node, ct::ctp_stm_state state) {
+        storage::record_batch_builder builder(
+          model::record_batch_type::ctp_stm_command, model::offset{0});
+        builder.add_raw_kv(
+          serde::to_iobuf(ct::reset_state_cmd::key),
+          serde::to_iobuf(ct::reset_state_cmd(std::move(state))));
+        co_return co_await replicate_record_batch(
+          node, std::move(builder).build());
     }
 
     ss::abort_source as;
@@ -1257,4 +1270,39 @@ TEST_F_CORO(ctp_stm_fixture, test_multiple_active_readers) {
     auto live_epoch = leader_api.estimate_inactive_epoch();
     ASSERT_TRUE_CORO(live_epoch.has_value());
     ASSERT_GE_CORO(live_epoch.value(), reader2_epoch.value());
+}
+
+TEST_F_CORO(ctp_stm_fixture, test_reset_state_cmd) {
+    // Verify that replicating a reset_state_cmd replaces the STM's in-memory
+    // state wholesale. The test first drives the STM into a non-trivial state
+    // (epoch + LRO), then resets it to a fresh default state and confirms that
+    // all previously accumulated state is gone.
+    co_await start();
+    co_await wait_for_leader(raft::default_timeout());
+
+    auto& leader = node(*get_leader());
+    auto leader_api = api(leader);
+
+    // Drive the STM into a known non-trivial state.
+    bool ok = co_await replicate_with_epoch(
+      leader, ct::cluster_epoch{5}, model::offset{0}, 0);
+    ASSERT_TRUE_CORO(ok);
+
+    co_await leader_api.advance_reconciled_offset(
+      kafka::offset{0}, model::no_timeout, as);
+
+    ASSERT_EQ_CORO(leader_api.get_max_epoch().value(), ct::cluster_epoch{5});
+    auto stm = get_stm<0>(leader);
+    ASSERT_TRUE_CORO(stm->state().get_last_reconciled_offset().has_value());
+
+    // Build a fresh default state and replicate the reset command.
+    ct::ctp_stm_state fresh_state;
+    auto res = co_await replicate_reset_state(leader, std::move(fresh_state));
+    ASSERT_TRUE_CORO(res.has_value());
+
+    // The STM state should now reflect the fresh state: no epoch, no LRO.
+    ASSERT_FALSE_CORO(stm->state().get_max_applied_epoch().has_value())
+      << "max_applied_epoch should be cleared after reset";
+    ASSERT_FALSE_CORO(stm->state().get_last_reconciled_offset().has_value())
+      << "LRO should be cleared after reset";
 }
