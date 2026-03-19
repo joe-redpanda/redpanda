@@ -2849,7 +2849,7 @@ ss::future<> ntp_archiver::garbage_collect_archive() {
         co_return;
     }
 
-    model::offset new_clean_offset;
+    model::offset new_clean_offset{clean_offset};
     // Value includes segments but doesn't include manifests
     size_t bytes_to_remove = 0;
     size_t segments_to_remove_count = 0;
