@@ -1122,6 +1122,7 @@ shadow_link_status create_shadow_link_status(
     properties_synced.reserve(props.size());
     std::ranges::copy(props, std::back_inserter(properties_synced));
 
+    std::ranges::sort(properties_synced);
     status.set_synced_shadow_topic_properties(std::move(properties_synced));
     return status;
 }
