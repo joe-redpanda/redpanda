@@ -690,6 +690,21 @@ void host_metrics_watcher::setup_io_queue_config_metrics(
               seastar::metrics::description(
                 "Configured write IOPS from io-properties"),
               labels),
+
+            seastar::metrics::make_gauge(
+              "max_cost_function",
+              [v = cfg.max_cost_function] { return v ? 1 : 0; },
+              seastar::metrics::description(
+                "IO cost function mode: 1 = max(iops, throughput), "
+                "0 = sum(iops, throughput)"),
+              labels),
+
+            seastar::metrics::make_gauge(
+              "duplex",
+              [v = cfg.duplex] { return v ? 1 : 0; },
+              seastar::metrics::description(
+                "IO scheduler duplex mode: 0 = half-duplex, 1 = duplex"),
+              labels),
           });
     }
 }
