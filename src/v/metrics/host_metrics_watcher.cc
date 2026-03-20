@@ -135,7 +135,9 @@ host_metrics_watcher::host_metrics_watcher(
   const ss::sstring& data_directory,
   const ss::sstring& cache_directory)
   : _logger(log) {
-    if (!config::shard_local_cfg().enable_host_metrics()) {
+    if (
+      config::shard_local_cfg().disable_metrics()
+      || !config::shard_local_cfg().enable_host_metrics()) {
         return;
     }
 
