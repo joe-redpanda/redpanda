@@ -82,3 +82,65 @@ class HostMetricsTest(RedpandaTest):
             check("cache_resolved", "0")
             check("same_partition", "0")
             check("data_has_io_queue", "0")
+
+    @cluster(num_nodes=1)
+    def test_io_queue_config_metrics(self):
+        """
+        Test that IO queue config metrics are exported with expected labels
+        and gauge values. In docker, device resolution falls back to
+        directory stat, producing a single sample per gauge with empty
+        device/disk labels.
+        """
+        node = self.redpanda.nodes[0]
+        metrics = list(self.redpanda.metrics(node))
+
+        expected_gauges = {
+            "vectorized_io_queue_config_read_bytes_rate",
+            "vectorized_io_queue_config_write_bytes_rate",
+            "vectorized_io_queue_config_read_req_rate",
+            "vectorized_io_queue_config_write_req_rate",
+            "vectorized_io_queue_config_max_cost_function",
+            "vectorized_io_queue_config_duplex",
+        }
+
+        expected_labels = {
+            "disk",
+            "device",
+            "mountpoint",
+            "data_disk",
+            "cache_disk",
+            "id",
+        }
+
+        found = {}
+        for family in metrics:
+            if family.name in expected_gauges:
+                found[family.name] = family.samples
+
+        if not self.redpanda.dedicated_nodes:
+            # In docker there are no real block devices, so IO queue config
+            # metrics are not emitted.
+            assert len(found) == 0, (
+                f"Expected no io_queue_config metrics in docker, got: "
+                f"{list(found.keys())}"
+            )
+            return
+
+        assert found.keys() == expected_gauges, (
+            f"Missing io_queue_config metrics: {expected_gauges - found.keys()}"
+        )
+
+        for name, samples in found.items():
+            assert len(samples) >= 1, f"Expected at least 1 sample for {name}"
+            for sample in samples:
+                assert expected_labels.issubset(sample.labels.keys()), (
+                    f"{name} missing labels: {expected_labels - sample.labels.keys()}"
+                )
+                # All gauges should be non-negative
+                assert sample.value >= 0, f"{name} has negative value: {sample.value}"
+
+            # At least one sample should have data_disk=1
+            data_samples = [s for s in samples if s.labels["data_disk"] == "1"]
+            assert len(data_samples) >= 1, (
+                f"Expected at least one {name} sample with data_disk=1"
+            )
