@@ -434,6 +434,36 @@ void host_metrics_watcher::parse_snmp(
     snmp_stats.tcp_established = snmp_map["Tcp:"]["CurrEstab"];
 }
 
+namespace {
+
+// Blocking read of an entire /proc file into a string.
+//
+// We use blocking reads because you can't do dma_reads into /proc.
+// Reading from /proc should never block so this should be ~fine~.
+// From tracing the calls take less than 100us generally.
+//
+// /proc seq_files may return partial results from a single pread,
+// so we loop until we get everything.
+std::string read_proc_file(ss::file_desc& fd) {
+    static constexpr size_t chunk_size = 4096;
+    std::string result;
+
+    for (;;) {
+        auto prev_size = result.size();
+        result.resize(prev_size + chunk_size);
+        auto bytes_read = fd.pread(
+          result.data() + prev_size, chunk_size, prev_size);
+        result.resize(prev_size + bytes_read);
+        if (bytes_read == 0) {
+            break;
+        }
+    }
+
+    return result;
+}
+
+} // namespace
+
 template<typename StatsWrapper, typename ParseF>
 void refresh_stats(StatsWrapper& stats, ss::logger& logger, ParseF parsef) {
     if (stats.errored) {
@@ -445,17 +475,7 @@ void refresh_stats(StatsWrapper& stats, ss::logger& logger, ParseF parsef) {
     }
 
     try {
-        // These files aren't really big (2KiB max) so we just use a single
-        // buffer and don't dynamically read the full thing.
-        std::array<char, 16384> read_buffer;
-
-        // We are doing a blocking read here this is because you can't do
-        // dma_reads into /proc. Reading from /proc should never block so this
-        // should be ~fine~. From tracing the calls take less than 100us
-        // generally.
-        auto bytes_read = stats.fd->pread(
-          read_buffer.data(), read_buffer.size(), 0);
-        auto lines = std::string_view(read_buffer.data(), bytes_read);
+        auto lines = read_proc_file(*stats.fd);
 
         parsef(lines);
 
