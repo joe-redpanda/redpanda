@@ -1094,6 +1094,16 @@ chunked_vector<shadow_link_task_status> create_task_status(
           });
     }
 
+    std::ranges::sort(task_status, [](const auto& a, const auto& b) {
+        if (a.get_name() != b.get_name()) {
+            return a.get_name() < b.get_name();
+        }
+        if (a.get_broker_id() != b.get_broker_id()) {
+            return a.get_broker_id() < b.get_broker_id();
+        }
+        return a.get_shard() < b.get_shard();
+    });
+
     return task_status;
 }
 
