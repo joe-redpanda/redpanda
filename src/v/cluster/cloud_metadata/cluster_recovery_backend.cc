@@ -423,16 +423,16 @@ ss::future<cluster::errc> cluster_recovery_backend::do_action(
                         auto start_offset = offsets_res->start_offset;
                         auto next_offset = offsets_res->next_offset;
 
-                        // Get term for start offset.
-                        // missing_ntp and out_of_range are acceptable
-                        // - use term 0. Other errors are transient and
-                        // worth retrying.
+                        // Fetch the term for the next offset so we can start
+                        // the restored Raft group where we left off, at a term
+                        // that continues monotonically with what is in the
+                        // metastore.
                         retry_chain_node term_retry(60s, 1s, &parent_retry);
                         auto term_res
                           = co_await cloud_topics::l1::retry_metastore_op(
-                            [metastore, &tidp, start_offset] {
+                            [metastore, &tidp, next_offset] {
                                 return metastore->get_term_for_offset(
-                                  tidp, start_offset);
+                                  tidp, next_offset);
                             },
                             term_retry);
                         model::term_id initial_term{0};
@@ -446,10 +446,10 @@ ss::future<cluster::errc> cluster_recovery_backend::do_action(
                                  out_of_range) {
                             vlog(
                               clusterlog.debug,
-                              "Term not found for {} offset {}: {}, using "
-                              "term 0",
+                              "Term not found for {} offset {}: {}, "
+                              "using term 0",
                               tidp,
-                              start_offset,
+                              next_offset,
                               term_res.error());
                         } else {
                             vlog(
@@ -457,7 +457,7 @@ ss::future<cluster::errc> cluster_recovery_backend::do_action(
                               "Failed to get term for {} offset {} from "
                               "metastore: {}",
                               tidp,
-                              start_offset,
+                              next_offset,
                               term_res.error());
                             co_return cluster::errc::replication_error;
                         }
