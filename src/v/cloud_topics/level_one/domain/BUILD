@@ -24,6 +24,7 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         ":db_domain_manager",
+        ":domain_manager_probe",
         ":simple_domain_manager",
         "//src/v/cloud_topics:logger",
         "//src/v/cloud_topics/level_one/common:abstract_io",
@@ -114,6 +115,7 @@ redpanda_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":domain_manager",
+        ":domain_manager_probe",
         "//src/v/base",
         "//src/v/cloud_topics/level_one/common:abstract_io",
         "//src/v/cloud_topics/level_one/common:object_id",
