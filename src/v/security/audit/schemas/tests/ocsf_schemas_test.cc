@@ -16,6 +16,7 @@
 
 #include <seastar/net/socket_defs.hh>
 
+#include <fmt/format.h>
 #include <rapidjson/document.h>
 
 #include <optional>
@@ -66,6 +67,25 @@ static const ss::sstring default_user_with_role_ser{
 "type_id": 1,
 "uid": "none",
 "groups" : [{"type": "role", "name": "redpanda-group"}]
+}
+)"};
+
+static const sa::user default_user_with_group{
+  .domain = "redpanda.com",
+  .name = "redpanda-user",
+  .type_id = sa::user::type::user,
+  .uid = "none",
+  .groups = chunked_vector<sa::group>{
+    {sa::group{.type = sa::group::type_id::idp_group, .name = "developers"}}}};
+
+static const ss::sstring default_user_with_group_ser{
+  R"(
+{
+"domain": "redpanda.com",
+"name": "redpanda-user",
+"type_id": 1,
+"uid": "none",
+"groups" : [{"type": "idp_group", "name": "developers"}]
 }
 )"};
 
@@ -351,6 +371,66 @@ BOOST_AUTO_TEST_CASE(validate_api_activity) {
     "unmapped": )"
       + unmapped_ser + R"(
 })"};
+
+    BOOST_REQUIRE_EQUAL(ser, ::json::minify(expected));
+}
+
+BOOST_AUTO_TEST_CASE(validate_api_activity_with_group) {
+    auto dst_endpoint = rp_kafka_endpoint;
+    auto src_endpoint = client_kafka_endpoint;
+    auto now = sa::timestamp_t{
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch())
+        .count()};
+    auto api_act = sa::api_activity{
+      sa::api_activity::activity_id::create,
+      sa::actor{
+        .authorizations = {authz_success},
+        .user = default_user_with_group.copy()},
+      sa::api{api_create_topic},
+      std::move(dst_endpoint),
+      test_http_request(),
+      {resource_detail},
+      sa::severity_id::informational,
+      std::move(src_endpoint),
+      sa::api_activity::status_id::success,
+      now,
+      sa::api_activity_unmapped{unmapped}};
+
+    auto ser = sa::rjson_serialize(api_act);
+
+    auto expected = fmt::format(
+      R"({{
+          "category_uid": 6,
+          "class_uid": 6003,
+          "metadata": {metadata},
+          "severity_id": 1,
+          "time": {time},
+          "type_uid": 600301,
+          "activity_id": 1,
+          "actor": {{
+              "authorizations": [{authorizations}],
+              "user": {user}
+          }},
+          "api": {api},
+          "cloud": {{ "provider": "" }},
+          "dst_endpoint": {dst_endpoint},
+          "http_request": {http_request},
+          "resources": [{resources}],
+          "src_endpoint": {src_endpoint},
+          "status_id": 1,
+          "unmapped": {unmapped}
+      }})",
+      fmt::arg("metadata", metadata_cloud_profile_ser),
+      fmt::arg("time", now()),
+      fmt::arg("authorizations", authz_success_ser),
+      fmt::arg("user", default_user_with_group_ser),
+      fmt::arg("api", api_create_topic_ser),
+      fmt::arg("dst_endpoint", rp_kafka_endpoint_ser),
+      fmt::arg("http_request", test_http_request_ser),
+      fmt::arg("resources", resource_detail_ser),
+      fmt::arg("src_endpoint", client_kafka_endpoint_ser),
+      fmt::arg("unmapped", unmapped_ser));
 
     BOOST_REQUIRE_EQUAL(ser, ::json::minify(expected));
 }
