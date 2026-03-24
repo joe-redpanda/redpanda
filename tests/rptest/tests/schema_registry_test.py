@@ -1391,6 +1391,8 @@ class SchemaRegistryEndpoints(RedpandaTest):
         subject_name_strategy: Optional[str] = None,
         payload_class: Optional[str] = None,
         compression_type: Optional[TopicSpec.CompressionTypes] = None,
+        context_name_strategy: Optional[str] = None,
+        context_name: Optional[str] = None,
     ):
         schema_reg = self.redpanda.schema_reg().split(",", 1)[0]
         sec_cfg = self.redpanda.kafka_client_security().to_dict()
@@ -1409,6 +1411,8 @@ class SchemaRegistryEndpoints(RedpandaTest):
             subject_name_strategy=subject_name_strategy,
             payload_class=payload_class,
             compression_type=compression_type,
+            context_name_strategy=context_name_strategy,
+            context_name=context_name,
         )
 
     def _create_topic(
