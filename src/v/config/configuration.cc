@@ -4723,6 +4723,12 @@ configuration::configuration()
       "The local cache duration of a cluster wide epoch.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       1min)
+  , cloud_topics_epoch_service_max_same_epoch_duration(
+      *this,
+      "cloud_topics_epoch_service_max_same_epoch_duration",
+      "The duration of time that a node can use the exact same epoch.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      24 * 60min)
   , cloud_topics_short_term_gc_minimum_object_age(
       *this,
       "cloud_topics_short_term_gc_minimum_object_age",
