@@ -2704,3 +2704,159 @@ FIXTURE_TEST(
         return get_requests().size() - initial_request > 4;
     });
 }
+
+// Regression test: archive_start_offset before the first spillover manifest's
+// base_offset creates a gap that causes time-based retention to give up. Such a
+// manifest could be created only by previous versions of the code (pre v25.3).
+// The archiver should detect and repair this on leader start.
+FIXTURE_TEST(test_repair_archive_start_before_spillover, archiver_fixture) {
+    auto cfg = scoped_config{};
+    cfg.get("cloud_storage_disable_upload_loop_for_tests").set_value(true);
+
+    std::vector<segment_desc> segments = {
+      {.ntp = manifest_ntp,
+       .base_offset = model::offset(0),
+       .term = model::term_id(1),
+       .num_records = 1000}};
+
+    init_storage_api_local(segments);
+    wait_for_partition_leadership(manifest_ntp);
+
+    auto part = app.partition_manager.local().get(manifest_ntp);
+    tests::cooperative_spin_wait_with_timeout(10s, [part]() mutable {
+        return part->last_stable_offset() >= model::offset(1);
+    }).get();
+
+    listen();
+
+    auto [arch_conf, remote_conf] = get_configurations();
+    auto amv = ss::make_shared<cloud_storage::async_manifest_view>(
+      remote,
+      app.shadow_index_cache,
+      part->archival_meta_stm()->manifest(),
+      arch_conf->bucket_name,
+      path_provider);
+    archival::ntp_archiver archiver(
+      get_ntp_conf(),
+      arch_conf,
+      remote.local(),
+      app.shadow_index_cache.local(),
+      *part,
+      amv);
+    archiver.initialize_probe();
+    amv->start().get();
+    auto action = ss::defer([&archiver, &amv] {
+        archiver.stop().get();
+        amv->stop().get();
+    });
+
+    // Build a bogus manifest with archive_start_offset below the first
+    // spillover entry, reproducing a pre-v25.3 bug.
+    //
+    //  archive_start=10    spillover[20..49]    stm[50..60]
+    //  archive_clean=10    (3 segments)         (1 segment)
+    //       ^--- gap ---^
+    //
+    // The first spillover segment [20..29] has an old timestamp so that
+    // time-based retention wants to remove it.
+    auto now = model::timestamp::now();
+    auto old_ts = model::timestamp{1000};
+    std::vector<cloud_storage::segment_meta> segs;
+    segs.push_back(
+      cloud_storage::segment_meta{
+        .size_bytes = 4097,
+        .base_offset = model::offset{20},
+        .committed_offset = model::offset{29},
+        .base_timestamp = old_ts,
+        .max_timestamp = old_ts,
+        .delta_offset = model::offset_delta{0},
+        .ntp_revision = manifest_revision,
+        .archiver_term = model::term_id{1},
+        .segment_term = model::term_id{1},
+        .delta_offset_end = model::offset_delta{0},
+        .sname_format = cloud_storage::segment_name_format::v3,
+      });
+    for (auto [base, committed] :
+         std::vector<std::pair<int, int>>{{30, 39}, {40, 49}, {50, 60}}) {
+        segs.push_back(
+          cloud_storage::segment_meta{
+            .size_bytes = 4097,
+            .base_offset = model::offset{base},
+            .committed_offset = model::offset{committed},
+            .base_timestamp = now,
+            .max_timestamp = now,
+            .delta_offset = model::offset_delta{0},
+            .ntp_revision = manifest_revision,
+            .archiver_term = model::term_id{1},
+            .segment_term = model::term_id{1},
+            .delta_offset_end = model::offset_delta{0},
+            .sname_format = cloud_storage::segment_name_format::v3,
+          });
+    }
+
+    // Build the spillover manifest from the first 3 segments and put it
+    // in the cache so async_manifest_view can materialize it.
+    cloud_storage::spillover_manifest spm(manifest_ntp, manifest_revision);
+    for (int i = 0; i < 3; ++i) {
+        spm.add(segs[i]);
+    }
+    auto spill_meta = spm.make_manifest_metadata();
+    {
+        auto spill_path = spm.get_manifest_path(path_provider);
+        auto [stream, size] = spm.serialize().get();
+        auto reservation
+          = app.shadow_index_cache.local().reserve_space(size, 1).get();
+        app.shadow_index_cache.local()
+          .put(spill_path, stream, reservation)
+          .get();
+        stream.close().get();
+    }
+
+    cloud_storage::partition_manifest bogus(manifest_ntp, manifest_revision);
+    for (int i = 0; i < 3; ++i) {
+        bogus.add(segs[i]);
+    }
+    bogus.add(segs[3]);
+    bogus.spillover(spill_meta);
+
+    bogus.set_archive_start_offset(model::offset{10}, model::offset_delta{0});
+    bogus.set_archive_clean_offset(model::offset{10}, 0);
+
+    auto first_spill_base = bogus.get_spillover_map().begin()->base_offset;
+    BOOST_REQUIRE_EQUAL(first_spill_base, model::offset{20});
+    BOOST_REQUIRE(bogus.get_archive_start_offset() < first_spill_base);
+
+    // Replicate the bogus manifest through the STM.
+    auto b = part->archival_meta_stm()->batch_start(
+      ss::lowres_clock::now() + 10s, never_abort);
+    b.replace_manifest(bogus.to_iobuf());
+    auto errc = b.replicate().get();
+    BOOST_REQUIRE(!errc);
+
+    const auto& manifest = part->archival_meta_stm()->manifest();
+    BOOST_REQUIRE(manifest.get_archive_start_offset() < first_spill_base);
+
+    // Before repair: the gap causes time-based retention to give up.
+    auto res = amv->compute_retention(std::nullopt, 1h).get();
+    BOOST_REQUIRE(res.has_value());
+    BOOST_REQUIRE_EQUAL(res.value().offset, model::offset{});
+    BOOST_REQUIRE_EQUAL(res.value().delta, model::offset_delta{});
+
+    // Enable the upload loop. The archiver should detect the misalignment
+    // and replicate a repaired manifest.
+    cfg.get("cloud_storage_disable_upload_loop_for_tests").set_value(false);
+    archiver.start().get();
+
+    RPTEST_REQUIRE_EVENTUALLY(10s, [&] {
+        return manifest.get_archive_start_offset() >= first_spill_base;
+    });
+
+    BOOST_REQUIRE_EQUAL(manifest.get_archive_start_offset(), first_spill_base);
+    BOOST_REQUIRE_EQUAL(manifest.get_archive_clean_offset(), first_spill_base);
+
+    // After repair: retention correctly identifies the old segment for removal.
+    res = amv->compute_retention(std::nullopt, 1h).get();
+    BOOST_REQUIRE(res.has_value());
+    BOOST_REQUIRE_EQUAL(res.value().offset, model::offset{30});
+    BOOST_REQUIRE_EQUAL(res.value().delta, model::offset_delta{0});
+}
