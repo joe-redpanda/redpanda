@@ -35,6 +35,7 @@
 #
 
 import argparse
+import functools
 import re
 import shlex
 import shutil
@@ -112,39 +113,34 @@ def render_template(template_path: Path, **kwargs) -> str:
     return tmpl.render(**kwargs)
 
 
-_cquery_cache: dict[str, str] = {}
-_cquery_extra_args: list[str] = []
-
-
-def _cquery_file(label: str) -> str:
-    """Resolve a bazel label to its output file path, with caching.
+@functools.cache
+def _cquery_file(label: str, extra_args: tuple[str, ...] = ()) -> str:
+    """Resolve a bazel label to its output file path.
 
     For built targets, uses cquery to get the output path. For source
     files (which cquery can't resolve), falls back to locating the file
     directly in the workspace.
     """
-    if label not in _cquery_cache:
-        result = run(
-            ["bazel", "cquery", "--output=files"] + _cquery_extra_args + [label],
-            capture=True,
-            check=False,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            _cquery_cache[label] = result.stdout.strip().splitlines()[-1]
-        else:
-            # Source file — resolve from workspace. Labels like
-            # ":foo" or "//pkg:foo" map to <pkg>/<name> in the repo.
-            pkg, name = parse_bazel_target(label)
-            src_path = pkg + "/" + name if pkg else name
-            if not (REPO_ROOT / src_path).exists():
-                sys.exit(f"Error: cannot resolve label {label}")
-            _cquery_cache[label] = src_path
-    return _cquery_cache[label]
+    result = run(
+        ["bazel", "cquery", "--output=files", *extra_args, label],
+        capture=True,
+        check=False,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip().splitlines()[-1]
+    # Source file — resolve from workspace. Labels like
+    # ":foo" or "//pkg:foo" map to <pkg>/<name> in the repo.
+    pkg, name = parse_bazel_target(label)
+    src_path = pkg + "/" + name if pkg else name
+    if not (REPO_ROOT / src_path).exists():
+        sys.exit(f"Error: cannot resolve label {label}")
+    return src_path
 
 
 def resolve_rootpaths(
     env: dict[str, str],
     pkg: str,
+    extra_bazel_args: tuple[str, ...] = (),
 ) -> tuple[dict[str, str], dict[str, Path]]:
     """Resolve $(rootpath <label>) references in env var values.
 
@@ -165,7 +161,7 @@ def resolve_rootpaths(
         for label in labels:
             # Qualify relative labels (e.g. ":foo") with the target's package.
             qualified = f"//{pkg}:{label[1:]}" if label.startswith(":") else label
-            rel_path = _cquery_file(qualified)
+            rel_path = _cquery_file(qualified, extra_bazel_args)
             local_path = REPO_ROOT / rel_path
             new_value = new_value.replace(
                 f"$(rootpath {label})", f"{DATA_DIR}/{rel_path}"
@@ -315,6 +311,7 @@ def collect_binary_info(
     target_info: dict[str, TargetInfo],
     binary_args: str,
     log_level: str,
+    extra_bazel_args: tuple[str, ...] = (),
 ) -> list[BinaryInfo]:
     """Build BinaryInfo for each target from bazel query results."""
     binaries: list[BinaryInfo] = []
@@ -326,7 +323,7 @@ def collect_binary_info(
             print(f"    Skipping {target} (not built)")
             continue
         env = {k: v for k, v in ti.env.items() if k not in _EXCLUDED_ENV}
-        env, data_files = resolve_rootpaths(env, pkg)
+        env, data_files = resolve_rootpaths(env, pkg, extra_bazel_args)
         binaries.append(
             BinaryInfo(
                 label=target,
@@ -349,7 +346,7 @@ def build_workload_image(
     with tempfile.TemporaryDirectory() as tmpdir:
         ctx = Path(tmpdir)
 
-        # Bazel's output tree is all symlinks which Docker can't follow).
+        # Bazel's output tree is all symlinks which Docker can't follow.
         # So for at least the shared libraries we're copying them into a
         # single tmp dir.
         collect_shared_libs(binaries, ctx / "libs")
@@ -488,13 +485,13 @@ def main() -> None:
     if not args.skip_bazel_build:
         build_targets(args.targets, extra_bazel_args)
 
-    # Ensure cquery uses the same config as the build so resolved
-    # output paths match (e.g. k8-opt vs k8-fastbuild).
-    _cquery_extra_args.extend(extra_bazel_args)
-
     # Collect per-binary info (args, env, data files).
     binaries = collect_binary_info(
-        targets, target_info, args.binary_args, args.log_level
+        targets,
+        target_info,
+        args.binary_args,
+        args.log_level,
+        tuple(extra_bazel_args),
     )
     if not binaries:
         sys.exit("Error: no binaries found. Run without --skip-bazel-build?")
