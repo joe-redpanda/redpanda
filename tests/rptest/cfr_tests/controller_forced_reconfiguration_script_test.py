@@ -11,8 +11,10 @@
 script against a real cluster where the controller has lost quorum."""
 
 import subprocess
+from typing import Any
 
 from ducktape.cluster.cluster import ClusterNode
+from ducktape.mark import matrix
 from ducktape.tests.test import TestContext
 from ducktape.utils.util import wait_until
 
@@ -21,9 +23,12 @@ from rptest.cfr_tests.cfr_test_base import (
     NO_LEADER,
     REALLY_LONG_TIMEOUT,
     ControllerForcedReconfigurationTestBase,
+    SimpleTLSProvider,
 )
 from rptest.clients.rpk import RpkTool
+from rptest.services import tls as tls_mod
 from rptest.services.cluster import cluster
+from rptest.services.redpanda import RedpandaService, SecurityConfig
 from rptest.tests.redpanda_test import RedpandaTest
 
 # Name of the script on PATH, installed via the script_package bazel rule.
@@ -36,6 +41,11 @@ CFR_HELP_DESCRIPTION = \
 # Interactive confirmation the script expects on stdin before proceeding.
 CFR_CONFIRMATION_INPUT = "yes\n"
 
+# Name of the TLS-enabled admin API listener defined in the redpanda.yaml
+# template.  TLS certs are bound to this listener; the default listener on
+# port 9644 remains plaintext.
+ADMIN_TLS_LISTENER_NAME = "iplistener"
+
 # Topic created after CFR to verify the controller is fully functional.
 VALIDATION_TOPIC = "cfr-validation-topic"
 
@@ -44,6 +54,10 @@ CFR_SUBCMD_BAREMETAL = "baremetal"
 CFR_FLAG_NODES = "--nodes"
 CFR_FLAG_DEAD_NODES = "--dead-nodes"
 CFR_FLAG_SURVIVING_COUNT = "--surviving-count"
+CFR_FLAG_PORT = "--port"
+CFR_FLAG_USERNAME = "--username"
+CFR_FLAG_PASSWORD = "--password"
+CFR_FLAG_TLS_CA_CERT = "--tls-ca-cert"
 CFR_FLAG_HELP = "--help"
 
 
@@ -83,30 +97,76 @@ class ControllerForcedReconfigurationBasicTest(
     real cluster where the controller has lost quorum.
 
     Inherits cluster lifecycle helpers from
-    ControllerForcedReconfigurationTestBase.
+    ControllerForcedReconfigurationTestBase and adds the script-specific
+    invocation and auth/TLS wiring.
     """
 
     CLUSTER_SIZE = 3
 
+    # Admin API TLS config applied to the alternate listener only
+    # (server-side TLS, no mTLS).
+    ADMIN_TLS_CONFIG: dict[str, Any] = dict(
+        name=ADMIN_TLS_LISTENER_NAME,
+        enabled=True,
+        require_client_auth=False,
+        key_file=RedpandaService.TLS_SERVER_KEY_FILE,
+        cert_file=RedpandaService.TLS_SERVER_CRT_FILE,
+        truststore_file=RedpandaService.TLS_CA_CRT_FILE,
+    )
+
     def __init__(self, test_context: TestContext) -> None:
+        security = SecurityConfig()
+        security.enable_sasl = True
+        security.http_authentication = ["BASIC"]
+        security.endpoint_authn_method = "sasl"
+        security.require_client_auth = False
+
+        self._tls_manager = tls_mod.TLSCertManager(test_context.logger)
+        self._tls_provider = SimpleTLSProvider(self._tls_manager)
+
         super().__init__(
             test_context,
             cluster_size=self.CLUSTER_SIZE,
+            security=security,
         )
 
         self._superuser = self.redpanda.SUPERUSER_CREDENTIALS
 
     # ── helpers ───────────────────────────────────────────────────────────
 
-    def _start_redpanda(self) -> None:
-        """Bootstrap the cluster."""
+    def _start_redpanda(
+        self,
+        is_auth_enabled: bool,
+        is_tls_enabled: bool,
+    ) -> None:
+        """Bootstrap the cluster with the requested security posture.
+
+        Args:
+            is_auth_enabled: require HTTP basic-auth on the admin API.
+            is_tls_enabled: enable TLS on the alternate admin API listener.
+        """
         self.redpanda.add_extra_rp_conf(
             {"internal_topic_replication_factor": self.cluster_size})
+
+        if is_tls_enabled:
+            # sets up tls on all nodes, we need init_tls because
+            # the membership check on startup now needs to be tls gnostic
+            self.redpanda._security.tls_provider = self._tls_provider
+            self.redpanda._init_tls()
+            for node in self.redpanda.nodes:
+                self.redpanda.set_extra_node_conf(
+                    node, dict(admin_api_tls=self.ADMIN_TLS_CONFIG))
+
         self.redpanda.start()
+
+        if is_auth_enabled:
+            self.redpanda.set_cluster_config(
+                {"admin_api_require_auth": True})
 
     def _controller_recovered(self, killed_ids: list[int]) -> bool:
         """True when a controller leader exists that is NOT one of the
-        killed nodes."""
+        killed nodes.  Uses the authenticated admin client so the check
+        works even when admin_api_require_auth is set."""
         admin = self.redpanda._admin
         for node in self.redpanda.started_nodes():
             try:
@@ -122,6 +182,27 @@ class ControllerForcedReconfigurationBasicTest(
             except Exception:
                 continue
         return False
+
+    def _common_auth_tls_args(
+        self,
+        is_auth_enabled: bool,
+        is_tls_enabled: bool,
+    ) -> list[str]:
+        """Build the --username/--password and --port/--tls-ca-cert CLI
+        flags shared by both manual and liveness modes."""
+        args: list[str] = []
+        if is_auth_enabled:
+            args += [
+                CFR_FLAG_USERNAME, self._superuser.username,
+                CFR_FLAG_PASSWORD, self._superuser.password,
+            ]
+        if is_tls_enabled:
+            # TLS is on the alternate admin listener, not port 9644.
+            args += [
+                CFR_FLAG_PORT, str(RedpandaService.ADMIN_ALTERNATE_PORT),
+                CFR_FLAG_TLS_CA_CERT, self._tls_manager.ca.crt,
+            ]
+        return args
 
     def _kill_majority_and_enter_recovery(
         self,
@@ -200,8 +281,12 @@ class ControllerForcedReconfigurationBasicTest(
             err_msg="Controller did not recover after exiting recovery mode",
         )
 
+        # Pass the service's internal TLS client cert (None when TLS is off)
+        # along with explicit SASL credentials.  Both are needed because
+        # RpkTool treats tls_cert-without-SASL as mTLS-only auth.
         rpk = RpkTool(
             self.redpanda,
+            tls_cert=self.redpanda._tls_cert,
             username=self._superuser.username,
             password=self._superuser.password,
             sasl_mechanism=self._superuser.algorithm,
@@ -216,7 +301,8 @@ class ControllerForcedReconfigurationBasicTest(
     # ── tests ────────────────────────────────────────────────────────────
 
     @cluster(num_nodes=CLUSTER_SIZE)
-    def test_cfr_script_manual_mode(self) -> None:
+    @matrix(authn=[False, True], tls=[False, True])
+    def test_cfr_script_manual_mode(self, authn: bool, tls: bool) -> None:
         """Run the CFR script with explicit --dead-nodes and
         --surviving-count.
 
@@ -243,6 +329,10 @@ class ControllerForcedReconfigurationBasicTest(
             CFR_FLAG_NODES, *surviving_ips,
             CFR_FLAG_DEAD_NODES, *[str(i) for i in killed_ids],
             CFR_FLAG_SURVIVING_COUNT, str(surviving_count),
+            *self._common_auth_tls_args(
+                is_auth_enabled=is_auth_enabled,
+                is_tls_enabled=is_tls_enabled,
+            ),
         ]
 
         self._run_cfr_script(cmd)
