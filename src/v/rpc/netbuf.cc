@@ -27,7 +27,7 @@ iobuf header_as_iobuf(const header& h) {
 }
 /// \brief used to send the bytes down the wire
 /// we re-compute the header-checksum on every call
-ss::future<ss::scattered_message<char>> netbuf::as_scattered() && {
+ss::future<scattered_buffer> netbuf::as_scattered() && {
     // Move object members into coroutine before first supension.
     iobuf out_buf = std::move(_out);
     auto hdr = _hdr;
@@ -53,7 +53,7 @@ ss::future<ss::scattered_message<char>> netbuf::as_scattered() && {
     out_buf.prepend(header_as_iobuf(hdr));
 
     // prepare for output
-    co_return iobuf_as_scattered(std::move(out_buf));
+    co_return iobuf_to_buffer_vector(std::move(out_buf));
 }
 
 } // namespace rpc

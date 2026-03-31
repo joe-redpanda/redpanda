@@ -37,6 +37,7 @@ redpanda_cc_btest(
     deps = [
         ":test_types",
         "//src/v/bytes:iobuf",
+        "//src/v/bytes:scattered_message",
         "//src/v/rpc",
         "//src/v/serde",
         "//src/v/serde:sstring",

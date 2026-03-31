@@ -488,15 +488,11 @@ public:
     }
 
     void iobuf_as_scattered() {
-        auto s = ::iobuf_as_scattered(buf.share(0, buf.size_bytes()));
-        auto p = std::move(s).release();
-        iobuf tmp;
-        for (auto& t : p.release()) {
-            tmp.append(std::move(t));
-        }
+        auto bufs = ::iobuf_to_buffer_vector(buf.share(0, buf.size_bytes()));
+        auto tmp = ::buffer_vector_to_iobuf(std::move(bufs));
         if (tmp != buf) {
             throw std::runtime_error(
-              "Iobuf as scattered message doesn't match original data");
+              "iobuf_to_buffer_vector doesn't match original data");
         }
     }
 

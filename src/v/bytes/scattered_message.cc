@@ -10,22 +10,28 @@
  */
 #include "bytes/scattered_message.h"
 
-ss::scattered_message<char> iobuf_as_scattered(iobuf b) {
-    ss::scattered_message<char> msg;
-    auto in = iobuf::iterator_consumer(b.cbegin(), b.cend());
-    int32_t chunk_no = 0;
-    in.consume(
-      b.size_bytes(), [&msg, &chunk_no, &b](const char* src, size_t sz) {
-          ++chunk_no;
-          vassert(
-            chunk_no <= std::numeric_limits<int16_t>::max(),
-            "Invalid construction of scattered_message. fragment coutn exceeds "
-            "max count:{}. Usually a bug with small append() to iobuf. {}",
-            chunk_no,
-            b);
-          msg.append_static(src, sz);
-          return ss::stop_iteration::no;
+#include <algorithm>
+
+iobuf buffer_vector_to_iobuf(scattered_buffer bufs) {
+    iobuf result;
+    for (auto& b : bufs) {
+        result.append(std::move(b));
+    }
+    return result;
+}
+
+size_t scattered_size(const scattered_buffer& bufs) {
+    return std::ranges::fold_left(
+      bufs, size_t{0}, [](size_t acc, const auto& buf) {
+          return acc + buf.size();
       });
-    msg.on_delete([b = std::move(b)] {});
-    return msg;
+}
+
+scattered_buffer iobuf_to_buffer_vector(iobuf b) {
+    scattered_buffer bufs;
+    bufs.reserve(std::distance(b.begin(), b.end()));
+    for (auto& frag : b) {
+        bufs.push_back(frag.share());
+    }
+    return bufs;
 }

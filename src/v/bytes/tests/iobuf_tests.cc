@@ -400,13 +400,16 @@ SEASTAR_THREAD_TEST_CASE(iobuf_as_scattered_message) {
     for (size_t size = 0; size < b.size(); size++) {
         iobuf buf;
         buf.append(b.data(), size);
-        auto msg = iobuf_as_scattered(std::move(buf));
-        auto packet = std::move(msg).release();
-        packet.linearize();
-        BOOST_TEST(packet.nr_frags() == 1);
-        auto& frag = packet.frag(0);
-        BOOST_TEST(frag.size == size);
-        BOOST_TEST(std::memcmp(frag.base, b.data(), size) == 0);
+        auto bufs = iobuf_to_buffer_vector(std::move(buf));
+        // linearize by copying into a single buffer
+        ss::temporary_buffer<char> linear(size);
+        size_t off = 0;
+        for (auto& tb : bufs) {
+            std::memcpy(linear.get_write() + off, tb.get(), tb.size());
+            off += tb.size();
+        }
+        BOOST_TEST(off == size);
+        BOOST_TEST(std::memcmp(linear.get(), b.data(), size) == 0);
     }
 }
 SEASTAR_THREAD_TEST_CASE(iobuf_as_ostream_basic) {
@@ -481,8 +484,8 @@ SEASTAR_THREAD_TEST_CASE(test_next_chunk_allocation_append_temp_buf) {
     auto distance = std::distance(buf.begin(), buf.end());
     BOOST_REQUIRE_EQUAL(distance, 323);
     constexpr size_t sz = 40000 * 1024;
-    auto msg = iobuf_as_scattered(std::move(buf));
-    BOOST_REQUIRE_EQUAL(msg.size(), sz);
+    auto msg = iobuf_to_buffer_vector(std::move(buf));
+    BOOST_REQUIRE_EQUAL(scattered_size(msg), sz);
 }
 
 SEASTAR_THREAD_TEST_CASE(test_next_chunk_allocation_append_iobuf) {
@@ -497,8 +500,8 @@ SEASTAR_THREAD_TEST_CASE(test_next_chunk_allocation_append_iobuf) {
     auto distance = std::distance(buf.begin(), buf.end());
     BOOST_REQUIRE_EQUAL(distance, 322);
     constexpr size_t sz = 40000 * 1024;
-    auto msg = iobuf_as_scattered(std::move(buf));
-    BOOST_REQUIRE_EQUAL(msg.size(), sz);
+    auto msg = iobuf_to_buffer_vector(std::move(buf));
+    BOOST_REQUIRE_EQUAL(scattered_size(msg), sz);
 }
 
 SEASTAR_THREAD_TEST_CASE(test_appending_frament_takes_ownership) {
