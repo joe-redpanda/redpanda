@@ -47,6 +47,7 @@ type benchmarkConfig struct {
 	replicas               int16
 	clients                int
 	reset                  bool
+	useExistingTopic       bool
 	warmupS                int
 	durationS              int
 	metricsJSON            string
@@ -63,6 +64,7 @@ type benchmarkTiming struct {
 }
 
 type benchmarkRun struct {
+	cfg     benchmarkConfig
 	profile *config.RpkProfile
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -79,22 +81,29 @@ const (
 
 func (cfg *benchmarkConfig) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cfg.topic, "topic", "rpk-benchmark-topic", "Benchmark topic name")
-	cmd.Flags().Int32VarP(&cfg.partitions, "partitions", "p", 18, "Number of partitions for benchmark topic creation")
-	cmd.Flags().Int16VarP(&cfg.replicas, "replicas", "r", 3, "Replication factor for benchmark topic creation")
+	cmd.Flags().Int32VarP(&cfg.partitions, "partitions", "p", 18, "Number of partitions for benchmark topic creation (ignored with --use-existing-topic)")
+	cmd.Flags().Int16VarP(&cfg.replicas, "replicas", "r", 3, "Replication factor for benchmark topic creation (ignored with --use-existing-topic)")
 	cmd.Flags().IntVar(&cfg.clients, "clients", 16, "Number of benchmark client connections")
 	cmd.Flags().BoolVar(&cfg.reset, "reset-topic", false, "Delete the benchmark topic first if it already exists")
+	cmd.Flags().BoolVar(&cfg.useExistingTopic, "use-existing-topic", false, "Use the benchmark topic as-is without creating or deleting it")
 	cmd.Flags().IntVar(&cfg.warmupS, "warmup", 10, "Warmup duration in seconds")
 	cmd.Flags().IntVar(&cfg.durationS, "duration", 60, "Measurement duration in seconds")
 	cmd.Flags().StringVar(&cfg.metricsJSON, "metrics-json", "", "Optional path to write final metrics JSON")
 	cmd.Flags().BoolVar(&cfg.waitLeadershipBalanced, "wait-leadership-balanced", true, "Wait for topic leadership to become balanced before starting the benchmark")
+	cmd.MarkFlagsMutuallyExclusive("reset-topic", "use-existing-topic")
 }
 
 func (cfg benchmarkConfig) validate() error {
-	if cfg.partitions <= 0 {
-		return fmt.Errorf("invalid --partitions %d, must be > 0", cfg.partitions)
+	if cfg.reset && cfg.useExistingTopic {
+		return fmt.Errorf("--use-existing-topic cannot be used with --reset-topic")
 	}
-	if cfg.replicas <= 0 {
-		return fmt.Errorf("invalid --replicas %d, must be > 0", cfg.replicas)
+	if !cfg.useExistingTopic {
+		if cfg.partitions <= 0 {
+			return fmt.Errorf("invalid --partitions %d, must be > 0", cfg.partitions)
+		}
+		if cfg.replicas <= 0 {
+			return fmt.Errorf("invalid --replicas %d, must be > 0", cfg.replicas)
+		}
 	}
 	if cfg.clients <= 0 {
 		return fmt.Errorf("invalid --clients %d, must be > 0", cfg.clients)
@@ -142,7 +151,7 @@ func printStats(tw *out.TabWriter, s *stats, now, measureStart time.Time) {
 
 func newBenchmarkRun(fs afero.Fs, p *config.Params, cmd *cobra.Command, cfg benchmarkConfig) (*benchmarkRun, error) {
 	var err error
-	run := &benchmarkRun{}
+	run := &benchmarkRun{cfg: cfg}
 	defer func() {
 		if err != nil {
 			run.Close()
@@ -160,7 +169,15 @@ func newBenchmarkRun(fs afero.Fs, p *config.Params, cmd *cobra.Command, cfg benc
 
 	run.ctx, run.cancel = setupSignalContext(cmd)
 
-	err = setupBenchmarkTopic(run.ctx, run.adm, cfg.topic, cfg.partitions, cfg.replicas, cfg.reset)
+	err = setupBenchmarkTopic(
+		run.ctx,
+		run.adm,
+		cfg.topic,
+		cfg.partitions,
+		cfg.replicas,
+		cfg.reset,
+		cfg.useExistingTopic,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +185,7 @@ func newBenchmarkRun(fs afero.Fs, p *config.Params, cmd *cobra.Command, cfg benc
 
 	if cfg.waitLeadershipBalanced {
 		fmt.Printf("waiting for balanced leadership on topic=%s\n", cfg.topic)
-		if err = waitForBalancedLeadership(run.ctx, run.adm, cfg.topic, cfg.partitions); err != nil {
+		if err = waitForBalancedLeadership(run.ctx, run.adm, cfg.topic); err != nil {
 			return nil, err
 		}
 	}
@@ -185,7 +202,7 @@ func (r *benchmarkRun) Close() {
 	if r.timing.cancel != nil {
 		r.timing.cancel()
 	}
-	if r.topic != "" {
+	if !r.cfg.useExistingTopic && r.topic != "" {
 		if err := deleteBenchmarkTopic(context.Background(), r.adm, r.topic); err != nil {
 			fmt.Printf("cleanup warning: unable to delete topic %q: %v\n", r.topic, err)
 		}
@@ -304,7 +321,7 @@ func createBenchmarkTopic(ctx context.Context, adm *kadm.Client, topic string, p
 		return fmt.Errorf("missing create topic response for %q", topic)
 	}
 	if errors.Is(resp.Err, kerr.TopicAlreadyExists) {
-		return fmt.Errorf("benchmark topic %q already exists; choose a unique --topic or pass --reset-topic to recreate it (destructive) - error: %w", topic, resp.Err)
+		return fmt.Errorf("benchmark topic %q already exists; choose a unique --topic, pass --use-existing-topic to reuse it, or pass --reset-topic to recreate it (destructive) - error: %w", topic, resp.Err)
 	}
 	if resp.Err != nil {
 		return resp.Err
@@ -319,13 +336,35 @@ func setupBenchmarkTopic(
 	partitions int32,
 	replicas int16,
 	reset bool,
+	useExistingTopic bool,
 ) error {
+	if useExistingTopic {
+		return ensureBenchmarkTopicExists(ctx, adm, topic)
+	}
 	if reset {
 		if err := deleteBenchmarkTopic(ctx, adm, topic); err != nil {
 			return fmt.Errorf("unable to reset benchmark topic %q: %w", topic, err)
 		}
 	}
 	return createBenchmarkTopic(ctx, adm, topic, partitions, replicas)
+}
+
+func ensureBenchmarkTopicExists(ctx context.Context, adm *kadm.Client, topic string) error {
+	md, err := adm.Metadata(ctx, topic)
+	if err != nil {
+		return err
+	}
+	td, ok := md.Topics[topic]
+	if !ok || errors.Is(td.Err, kerr.UnknownTopicOrPartition) {
+		return fmt.Errorf(
+			"benchmark topic %q does not exist; create it first or omit --use-existing-topic",
+			topic,
+		)
+	}
+	if td.Err != nil {
+		return td.Err
+	}
+	return nil
 }
 
 func deleteBenchmarkTopic(ctx context.Context, adm *kadm.Client, topic string) error {
@@ -350,7 +389,7 @@ func deleteBenchmarkTopic(ctx context.Context, adm *kadm.Client, topic string) e
 // checks whether leadership is balanced, aka:
 // - all brokers have equal amount of leadership.
 // - The above but some are leader for one more partition.
-func leadershipBalanced(md kadm.Metadata, topic string, expectedPartitions int32) (bool, string) {
+func leadershipBalanced(md kadm.Metadata, topic string) (bool, string) {
 	td, ok := md.Topics[topic]
 	if !ok {
 		return false, "topic metadata not found"
@@ -358,13 +397,7 @@ func leadershipBalanced(md kadm.Metadata, topic string, expectedPartitions int32
 	if td.Err != nil {
 		return false, td.Err.Error()
 	}
-	if int32(len(td.Partitions)) != expectedPartitions {
-		return false, fmt.Sprintf(
-			"partition count is %d, expected %d",
-			len(td.Partitions),
-			expectedPartitions,
-		)
-	}
+	partitionCount := len(td.Partitions)
 
 	replicaNodes := make(map[int32]struct{})
 	leaderCounts := make(map[int32]int)
@@ -386,8 +419,8 @@ func leadershipBalanced(md kadm.Metadata, topic string, expectedPartitions int32
 	}
 
 	brokerCount := len(replicaNodes)
-	basePartitionLeadersPerBroker := int(expectedPartitions) / brokerCount
-	moduloLeaderCount := int(expectedPartitions) % brokerCount
+	basePartitionLeadersPerBroker := partitionCount / brokerCount
+	moduloLeaderCount := partitionCount % brokerCount
 
 	brokersAtBase := 0
 	brokersAtBasePlusOne := 0
@@ -433,7 +466,6 @@ func waitForBalancedLeadership(
 	ctx context.Context,
 	adm *kadm.Client,
 	topic string,
-	expectedPartitions int32,
 ) error {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
@@ -445,7 +477,7 @@ func waitForBalancedLeadership(
 	for {
 		md, err := adm.Metadata(ctx, topic)
 		if err == nil {
-			if ok, reason := leadershipBalanced(md, topic, expectedPartitions); ok {
+			if ok, reason := leadershipBalanced(md, topic); ok {
 				return nil
 			} else {
 				lastReason = reason

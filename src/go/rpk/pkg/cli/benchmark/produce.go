@@ -88,14 +88,23 @@ func runProduceBenchmark(fs afero.Fs, p *config.Params, cmd *cobra.Command, cfg 
 		}
 	}()
 
-	fmt.Printf(
-		"mode=produce topic=%s clients=%d partitions=%d record_size=%d replication_factor=%d\n",
-		cfg.topic,
-		cfg.clients,
-		cfg.partitions,
-		cfg.recordSize,
-		cfg.replicas,
-	)
+	if cfg.useExistingTopic {
+		fmt.Printf(
+			"mode=produce topic=%s clients=%d record_size=%d use_existing_topic=true\n",
+			cfg.topic,
+			cfg.clients,
+			cfg.recordSize,
+		)
+	} else {
+		fmt.Printf(
+			"mode=produce topic=%s clients=%d partitions=%d record_size=%d replication_factor=%d\n",
+			cfg.topic,
+			cfg.clients,
+			cfg.partitions,
+			cfg.recordSize,
+			cfg.replicas,
+		)
+	}
 	if run.timing.warmup > 0 {
 		fmt.Printf("warming up for %ds...\n", cfg.warmupS)
 	}
