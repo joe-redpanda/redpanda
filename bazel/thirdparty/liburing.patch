@@ -1,6 +1,6 @@
 --- a/BUILD.bazel	2026-03-24 11:46:07.317446858 -0300
 +++ b/BUILD.bazel	2026-03-25 10:48:54.430923058 -0300
-@@ -20,20 +20,28 @@
+@@ -20,20 +20,29 @@
          "src/include/liburing/io_uring_version.h",
      ],
      cmd = """
@@ -30,6 +30,7 @@
              done
            """,
 -    toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
++    local = True,
 +    toolchains = [
 +        "@bazel_tools//tools/cpp:current_cc_toolchain",
 +        "@bazel_tools//tools/cpp:cc_flags",
