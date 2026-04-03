@@ -3397,7 +3397,11 @@ void application::start_runtime_services(
             std::make_unique<kafka::data::rpc::network_service>(
               sched_groups.transforms_sg(),
               smp_service_groups.transform_smp_sg(),
-              &_kafka_data_rpc_service));
+              &_kafka_data_rpc_service,
+              kafka::data::rpc::network_service::memory_config{
+                .memory = &s.memory(),
+                .total = s.cfg.max_service_memory_per_core,
+              }));
 
           if (wasm_data_transforms_enabled()) {
               runtime_services.push_back(
