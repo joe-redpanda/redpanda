@@ -2278,8 +2278,6 @@ admin_server::patch_cluster_config_handler(
         for (const auto& key : update.remove) {
             if (cfg.contains(key)) {
                 cfg.get(key).reset();
-            } else {
-                errors[key] = "Unknown property";
             }
         }
 
