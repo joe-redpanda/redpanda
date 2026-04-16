@@ -1,7 +1,7 @@
 ---
 name: create-backport-branch
-description: "Create a new backport branch with prefix `ai-backport-` by cherry-picking all commits from a GitHub PR onto a target release branch. Use when the user wants to backport a PR, create a backport branch, cherry-pick PR commits to a release branch, or mentions backporting changes from dev/main to a version branch (e.g. v25.1.x, v25.2.x). Requires two arguments: TARGET_BRANCH (the release branch to backport onto) and PR_NUM (the GitHub PR number to backport)."
-argument-hint: [target-branch] [pr-number]
+description: "Create a new backport branch with prefix `ai-backport-` by cherry-picking all commits from a GitHub PR onto a target release branch or commit. Use when the user wants to backport a PR, create a backport branch, cherry-pick PR commits to a release branch, or mentions backporting changes from dev/main to a version branch (e.g. v25.1.x, v25.2.x). Requires two arguments: TARGET (the release branch or commit hash to backport onto) and PR_NUM (the GitHub PR number to backport)."
+argument-hint: [target-branch-or-commit] [pr-number]
 allowed-tools: Bash(git *), Bash(gh *), Bash(date *), Bash(grep *), Bash(wc *), Read, Write, Edit, Glob, Grep, Agent
 model: opus[1m]
 effort: high
@@ -12,7 +12,7 @@ effort: high
 Cherry-pick all commits from a GitHub PR onto a target release branch, resolving conflicts along the way.
 
 Arguments:
-- `$0` is target-branch (e.g. `v25.1.x`)
+- `$0` is target — a release branch (e.g. `v25.1.x`) or a commit hash (e.g. `81d9e1af33`)
 - `$1` is pr-number (e.g. `12345`)
 
 ## Procedure
@@ -40,7 +40,7 @@ Get the list of commit SHAs from the PR:
 gh api "repos/redpanda-data/redpanda/pulls/$pr_number/commits" --paginate --jq '[.[].sha[0:10]]|join(" ")'
 ```
 
-Save the full list of commits as git-commits and report how many commits were found.
+Save the full list of commits as `git_commits` and report how many commits were found.
 
 ### 4. Cherry-pick commits
 
@@ -129,16 +129,16 @@ A cherry-pick can also be empty without any conflict — git will report "The pr
 After all commits are cherry-picked successfully, report:
 
 ```
-Backport of PR https://github.com/redpanda-data/redpanda/pull/$PR_NUM
+Backport of PR https://github.com/redpanda-data/redpanda/pull/${pr_number}
 
-- Command: git cherry-pick -x $GIT_COMMITS
-- Commits backported: $TOTAL_COMMITS
-- Conflicts resolved: $CONFLICTS_RESOLVED
-- Commits skipped (already on target): $COMMITS_SKIPPED
-- Backport branch: $BRANCH_NAME
+- Command: git cherry-pick -x ${git_commits}
+- Commits backported: ${total_commits}
+- Conflicts resolved: ${conflicts_resolved}
+- Commits skipped (already on target): ${commits_skipped}
+- Backport branch: ${backport_branch_name}
 
 Conflict details:
-- $COMMIT_SHA ($FILE): one-line explanation of what conflicted and how it was resolved
+- ${commit_sha} (${file}): one-line explanation of what conflicted and how it was resolved
 ```
 
 For each conflict resolved, include a one-line explanation covering what conflicted and how you resolved it. This helps PR reviewers understand the backport without reading every diff.
@@ -147,8 +147,8 @@ If `generated_files_touched` is non-empty, append a warning section:
 
 ```
 ⚠️  Generated files were cherry-picked and may need regeneration:
-- $FILE_1
-- $FILE_2
+- ${file_1}
+- ${file_2}
 
 These files were accepted as-is from the source branch. Before merging,
 regenerate them on the target branch to ensure they're correct. For example:
