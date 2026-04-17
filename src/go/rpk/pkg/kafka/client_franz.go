@@ -134,9 +134,9 @@ func NewFranzClient(fs afero.Fs, p *config.RpkProfile, extraOpts ...kgo.Opt) (*k
 					Pass: k.SASL.Password,
 				}).AsMechanism()))
 			case "OAUTHBEARER":
-				token := oauthBearerToken(k.SASL.Password)
+				token := adminapi.OAuthBearerToken(k.SASL.Password)
 				if token == "" {
-					return nil, fmt.Errorf("OAUTHBEARER requires a token passed via --sasl-password")
+					return nil, errors.New("OAUTHBEARER requires a token passed via --password (or kafka_api.sasl.password in the profile)")
 				}
 				opts = append(opts, kgo.SASL((koauth.Auth{
 					Token: token,
@@ -158,15 +158,6 @@ func NewFranzClient(fs afero.Fs, p *config.RpkProfile, extraOpts ...kgo.Opt) (*k
 	opts = append(opts, extraOpts...)
 
 	return kgo.NewClient(opts...)
-}
-
-// oauthBearerToken extracts the bearer token from the SASL password field.
-// It accepts both "token:<TOKEN>" format and a raw token string.
-func oauthBearerToken(password string) string {
-	if t, ok := strings.CutPrefix(password, "token:"); ok {
-		return t
-	}
-	return password
 }
 
 // NewAdmin returns a franz-go admin client.

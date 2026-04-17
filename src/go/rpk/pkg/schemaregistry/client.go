@@ -62,9 +62,9 @@ func NewClient(fs afero.Fs, p *config.RpkProfile) (*rpsr.Client, error) {
 
 	switch {
 	case p.KafkaAPI.SASL != nil && strings.EqualFold(p.KafkaAPI.SASL.Mechanism, adminapi.OAuthBearer):
-		token := oauthBearerToken(p.KafkaAPI.SASL.Password)
+		token := adminapi.OAuthBearerToken(p.KafkaAPI.SASL.Password)
 		if token == "" {
-			return nil, errors.New("OAUTHBEARER requires a token passed via --sasl-password")
+			return nil, errors.New("OAUTHBEARER requires a token passed via --password (or kafka_api.sasl.password in the profile)")
 		}
 		opts = append(opts, sr.BearerToken(token))
 	case p.HasSASLCredentials() && p.KafkaAPI.SASL.Mechanism != adminapi.CloudOIDC:
@@ -97,15 +97,6 @@ func NewClient(fs afero.Fs, p *config.RpkProfile) (*rpsr.Client, error) {
 		return nil, err
 	}
 	return rpsr.NewClient(srCl)
-}
-
-// oauthBearerToken extracts the bearer token from the SASL password field.
-// It accepts both "token:<TOKEN>" format and a raw token string.
-func oauthBearerToken(password string) string {
-	if t, ok := strings.CutPrefix(password, "token:"); ok {
-		return t
-	}
-	return password
 }
 
 // IsSoftDeleteError checks whether the error is a SoftDeleteError. This error

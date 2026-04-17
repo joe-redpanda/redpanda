@@ -116,7 +116,7 @@ func TestGetAuth(t *testing.T) {
 	}
 }
 
-func Test_oauthBearerToken(t *testing.T) {
+func TestOAuthBearerToken(t *testing.T) {
 	tests := []struct {
 		name     string
 		password string
@@ -142,10 +142,15 @@ func Test_oauthBearerToken(t *testing.T) {
 			password: "token:",
 			want:     "",
 		},
+		{
+			name:     "token prefix is case-sensitive",
+			password: "Token:abc",
+			want:     "Token:abc",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := oauthBearerToken(tt.password)
+			got := OAuthBearerToken(tt.password)
 			require.Equal(t, tt.want, got)
 		})
 	}

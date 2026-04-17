@@ -47,9 +47,9 @@ const (
 func GetAuth(p *config.RpkProfile) (rpadmin.Auth, error) {
 	switch {
 	case p.KafkaAPI.SASL != nil && strings.EqualFold(p.KafkaAPI.SASL.Mechanism, OAuthBearer):
-		token := oauthBearerToken(p.KafkaAPI.SASL.Password)
+		token := OAuthBearerToken(p.KafkaAPI.SASL.Password)
 		if token == "" {
-			return nil, errors.New("OAUTHBEARER requires a token passed via --sasl-password")
+			return nil, errors.New("OAUTHBEARER requires a token passed via --password (or kafka_api.sasl.password in the profile)")
 		}
 		return &rpadmin.BearerToken{Token: token}, nil
 	case p.KafkaAPI.SASL != nil && p.KafkaAPI.SASL.Mechanism != CloudOIDC:
@@ -79,9 +79,9 @@ func GetAuth(p *config.RpkProfile) (rpadmin.Auth, error) {
 	}
 }
 
-// oauthBearerToken extracts the bearer token from the SASL password field.
+// OAuthBearerToken extracts the bearer token from the SASL password field.
 // It accepts both "token:<TOKEN>" format and a raw token string.
-func oauthBearerToken(password string) string {
+func OAuthBearerToken(password string) string {
 	if t, ok := strings.CutPrefix(password, "token:"); ok {
 		return t
 	}
