@@ -200,4 +200,23 @@ TEST_F_CORO(pb_state_fixture, pinning_cache_drops_topic_on_delete) {
     EXPECT_TRUE(state.topics_with_replica_pinning().empty());
 }
 
+TEST_F_CORO(pb_state_fixture, pinning_cache_reset_forces_reseed) {
+    co_await create_topic("t1");
+    co_await set_pinning("t1", "racks: rack_A");
+
+    auto& state = pb_state.local();
+    state.ensure_pinning_cache_seeded();
+    ASSERT_EQ_CORO(state.topics_with_replica_pinning().size(), 1u);
+
+    // Reset clears the cache so callers don't observe stale contents in
+    // the window before ensure_pinning_cache_seeded() re-scans.
+    state.reset_pinning_cache();
+    EXPECT_TRUE(state.topics_with_replica_pinning().empty());
+
+    // Re-seed rebuilds from authoritative topic_table state.
+    state.ensure_pinning_cache_seeded();
+    ASSERT_EQ_CORO(state.topics_with_replica_pinning().size(), 1u);
+    EXPECT_TRUE(state.topics_with_replica_pinning().contains(make_tp_ns("t1")));
+}
+
 } // namespace

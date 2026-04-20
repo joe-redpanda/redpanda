@@ -92,6 +92,11 @@ private:
     /// If now, rearms to run immediately, else rearms to _tick_interval or
     /// current timeout whichever is minimum.
     void maybe_rearm_timer(bool now = false);
+
+    /// If the raft0 term has advanced since we last observed it, reset
+    /// per-term state. Must be called on shard 0 before any code that
+    /// relies on _cur_term or on per-term caches in partition_balancer_state.
+    void maybe_advance_term();
     void on_members_update(model::node_id, model::membership_state);
     void on_topic_table_update();
     void on_health_monitor_update(

@@ -87,9 +87,13 @@ public:
     void ensure_pinning_cache_seeded();
 
     /// Invalidate the pinning cache so the next
-    /// ensure_pinning_cache_seeded() call re-scans topic_table.
-    /// Call on raft0 term change.
-    void reset_pinning_cache() { _pinning_cache_seeded = false; }
+    /// ensure_pinning_cache_seeded() call re-scans topic_table. Also clears
+    /// the current contents so a caller reading between reset and re-seed
+    /// does not observe stale data. Call on raft0 term change.
+    void reset_pinning_cache() {
+        _pinning_cache_seeded = false;
+        _topics_with_replica_pinning.clear();
+    }
 
     /// Called when the replica set of an ntp changes. Note that this doesn't
     /// account for in-progress moves - the function is called only once when

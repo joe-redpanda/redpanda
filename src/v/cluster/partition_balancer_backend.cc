@@ -105,6 +105,13 @@ bool partition_balancer_backend::is_enabled() const {
     return is_leader() && !config::node().recovery_mode_enabled();
 }
 
+void partition_balancer_backend::maybe_advance_term() {
+    if (!_cur_term || _raft0->term() != _cur_term->id) {
+        _cur_term = per_term_state(_raft0->term());
+        _state.reset_pinning_cache();
+    }
+}
+
 void partition_balancer_backend::start() {
     _topic_table_updates = _state.topics().register_lw_ntp_notification(
       [this]() { on_topic_table_update(); });
@@ -137,9 +144,7 @@ ss::future<std::error_code> partition_balancer_backend::request_rebalance() {
         co_return errc::not_leader;
     }
 
-    if (!_cur_term || _raft0->term() != _cur_term->id) {
-        _cur_term = per_term_state(_raft0->term());
-    }
+    maybe_advance_term();
 
     if (
       _cur_term->_ondemand_rebalance_requested
@@ -359,9 +364,7 @@ ss::future<> partition_balancer_backend::do_tick() {
 
     vlog(clusterlog.debug, "tick");
 
-    if (!_cur_term || _raft0->term() != _cur_term->id) {
-        _cur_term = per_term_state(_raft0->term());
-    }
+    maybe_advance_term();
 
     co_await _controller_stm.wait(
       _raft0->committed_offset(),
