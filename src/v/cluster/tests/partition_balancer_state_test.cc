@@ -187,4 +187,17 @@ TEST_F_CORO(pb_state_fixture, pinning_cache_tracks_properties_updated) {
     EXPECT_TRUE(state.topics_with_replica_pinning().empty());
 }
 
+TEST_F_CORO(pb_state_fixture, pinning_cache_drops_topic_on_delete) {
+    co_await create_topic("doomed");
+    co_await set_pinning("doomed", "racks: rack_A");
+
+    auto& state = pb_state.local();
+    state.ensure_pinning_cache_seeded();
+    ASSERT_EQ_CORO(state.topics_with_replica_pinning().size(), 1u);
+
+    co_await delete_topic("doomed");
+
+    EXPECT_TRUE(state.topics_with_replica_pinning().empty());
+}
+
 } // namespace
