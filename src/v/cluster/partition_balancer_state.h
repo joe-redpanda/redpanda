@@ -39,6 +39,8 @@ public:
 
     node_status_table& node_status() const { return _node_status; }
 
+    bool is_rack_awareness_enabled() const;
+
     const absl::btree_set<model::ntp>&
     ntps_with_broken_rack_constraint() const {
         return _ntps_with_broken_rack_constraint;

@@ -249,6 +249,7 @@ cluster::simple_allocation_request make_simple_allocation_request(
     if (topic_aware) {
         req.existing_replica_counts = cluster::node2count_t{};
     }
+    req.replicas_preference = ca_cfg.cfg.properties.replicas_preference;
     return req;
 }
 

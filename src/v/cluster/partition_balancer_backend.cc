@@ -448,6 +448,8 @@ ss::future<> partition_balancer_backend::do_tick() {
 
     _cur_term->last_tick_time = clock_t::now();
     _cur_term->last_violations = std::move(plan_data.violations);
+    _cur_term->last_pinning_violations_count
+      = plan_data.last_pinning_violations_count;
     _cur_term->last_tick_reallocation_failures = std::move(
       plan_data.reallocation_failures);
     if (

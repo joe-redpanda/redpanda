@@ -75,6 +75,14 @@ public:
 
     partition_balancer_overview_reply overview() const;
 
+    // Pinning-violation count observed during the most recent planning tick
+    // of the current leader term. Zero if no tick has run yet for this term.
+    // TODO: expose through partition_balancer_overview_reply (serde version
+    // bump) once we're ready to make this visible via the admin API.
+    size_t last_pinning_violations_count() const {
+        return _cur_term ? _cur_term->last_pinning_violations_count : 0;
+    }
+
     ss::future<std::error_code> request_rebalance();
 
 private:
@@ -144,6 +152,7 @@ private:
         partition_balancer_status last_status
           = partition_balancer_status::starting;
         size_t last_tick_in_progress_updates = 0;
+        size_t last_pinning_violations_count = 0;
 
         chunked_hash_map<model::ntp, reallocation_failure_details>
           last_tick_reallocation_failures;
