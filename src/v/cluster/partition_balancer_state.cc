@@ -36,7 +36,22 @@ partition_balancer_state::partition_balancer_state(
   , _members_table(members_table.local())
   , _partition_allocator(pa.local())
   , _node_status(nst.local())
-  , _probe(*this) {}
+  , _probe(*this) {
+    if (ss::this_shard_id() == 0) {
+        _topic_deltas_handle = _topic_table.register_topic_delta_notification(
+          [this](const chunked_vector<topic_table_topic_delta>& deltas) {
+              handle_topic_deltas(deltas);
+          });
+    }
+}
+
+ss::future<> partition_balancer_state::stop() {
+    if (_topic_deltas_handle != cluster::notification_id_type_invalid) {
+        _topic_table.unregister_topic_delta_notification(_topic_deltas_handle);
+        _topic_deltas_handle = cluster::notification_id_type_invalid;
+    }
+    return ss::now();
+}
 
 bool partition_balancer_state::is_rack_awareness_enabled() const {
     return _partition_allocator.is_rack_awareness_enabled();
@@ -55,6 +70,42 @@ void partition_balancer_state::ensure_pinning_cache_seeded() {
         }
     }
     _pinning_cache_seeded = true;
+}
+
+void partition_balancer_state::handle_topic_deltas(
+  const chunked_vector<topic_table_topic_delta>& deltas) {
+    // Before first seed there is nothing to maintain; the next
+    // ensure_pinning_cache_seeded() call reads live topic_table state.
+    if (!_pinning_cache_seeded) {
+        return;
+    }
+
+    using delta_type = topic_table_topic_delta_type;
+    for (const auto& d : deltas) {
+        switch (d.type) {
+        case delta_type::added:
+        case delta_type::properties_updated: {
+            auto md_ref = _topic_table.get_topic_metadata_ref(d.ns_tp);
+            if (!md_ref) {
+                _topics_with_replica_pinning.erase(d.ns_tp);
+                break;
+            }
+            const auto& pref = md_ref->get()
+                                 .get_configuration()
+                                 .properties.replicas_preference;
+            if (
+              pref && pref->type != config::replicas_preference::type_t::none) {
+                _topics_with_replica_pinning.insert(d.ns_tp);
+            } else {
+                _topics_with_replica_pinning.erase(d.ns_tp);
+            }
+            break;
+        }
+        case delta_type::removed:
+            _topics_with_replica_pinning.erase(d.ns_tp);
+            break;
+        }
+    }
 }
 
 void partition_balancer_state::handle_ntp_move_begin_or_cancel(

@@ -168,4 +168,23 @@ TEST_F_CORO(pb_state_fixture, pinning_cache_seeds_from_existing_topics) {
     EXPECT_FALSE(pinned.contains(make_tp_ns("plain")));
 }
 
+TEST_F_CORO(pb_state_fixture, pinning_cache_tracks_properties_updated) {
+    co_await create_topic("t1");
+
+    auto& state = pb_state.local();
+    state.ensure_pinning_cache_seeded();
+    EXPECT_TRUE(state.topics_with_replica_pinning().empty());
+
+    // Set pinning — notification must update the cache.
+    co_await set_pinning("t1", "racks: rack_A");
+
+    ASSERT_EQ_CORO(state.topics_with_replica_pinning().size(), 1u);
+    EXPECT_TRUE(state.topics_with_replica_pinning().contains(make_tp_ns("t1")));
+
+    // Clear pinning via remove op — cache must drop the topic.
+    co_await clear_pinning("t1");
+
+    EXPECT_TRUE(state.topics_with_replica_pinning().empty());
+}
+
 } // namespace

@@ -35,6 +35,14 @@ public:
       ss::sharded<members_table>&,
       ss::sharded<partition_allocator>&,
       ss::sharded<node_status_table>&);
+    partition_balancer_state(const partition_balancer_state&) = delete;
+    partition_balancer_state(partition_balancer_state&&) = delete;
+    partition_balancer_state&
+    operator=(const partition_balancer_state&) = delete;
+    partition_balancer_state& operator=(partition_balancer_state&&) = delete;
+    ~partition_balancer_state() = default;
+
+    ss::future<> stop();
 
     topic_table& topics() const { return _topic_table; }
 
@@ -66,8 +74,9 @@ public:
     }
 
     /// Topics whose `replicas_preference` is currently set to a non-"none"
-    /// type. Populated by ensure_pinning_cache_seeded() from a one-shot
-    /// topic_table scan. Only populated on shard 0 (the balancer shard).
+    /// type. Seeded by ensure_pinning_cache_seeded() from a full topic_table
+    /// scan on first use, then maintained incrementally via topic_table
+    /// delta notifications. Only populated on shard 0 (the balancer shard).
     const absl::btree_set<model::topic_namespace>&
     topics_with_replica_pinning() const {
         return _topics_with_replica_pinning;
