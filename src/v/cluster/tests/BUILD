@@ -97,6 +97,25 @@ redpanda_test_cc_library(
 )
 
 redpanda_test_cc_library(
+    name = "partition_balancer_sim_fixture",
+    hdrs = [
+        "partition_balancer_sim_fixture.h",
+    ],
+    deps = [
+        ":partition_balancer_planner_fixture",
+        "//src/v/base",
+        "//src/v/cluster",
+        "//src/v/config",
+        "//src/v/model",
+        "//src/v/random:generators",
+        "@abseil-cpp//absl/container:btree",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@boost//:test",
+        "@seastar",
+    ],
+)
+
+redpanda_test_cc_library(
     name = "rebalancing_tests_fixture",
     hdrs = [
         "rebalancing_tests_fixture.h",
@@ -532,9 +551,27 @@ redpanda_cc_btest(
         "//src/v/cluster:node_status_table",
         "//src/v/cluster:scheduling_allocation",
         "//src/v/cluster:topic_table",
+        "//src/v/config",
         "//src/v/test_utils:seastar_boost",
-        "//src/v/utils:stable_iterator",
+        "@abseil-cpp//absl/container:flat_hash_set",
         "@boost//:test",
+        "@seastar",
+        "@seastar//:testing",
+    ],
+)
+
+redpanda_cc_btest(
+    name = "partition_balancer_pinning_scoring_test",
+    timeout = "short",
+    srcs = [
+        "partition_balancer_pinning_scoring_test.cc",
+    ],
+    deps = [
+        ":partition_balancer_planner_fixture",
+        "//src/v/cluster",
+        "//src/v/cluster:scheduling_allocation",
+        "//src/v/config",
+        "//src/v/test_utils:seastar_boost",
         "@seastar",
         "@seastar//:testing",
     ],
@@ -547,8 +584,20 @@ redpanda_cc_btest(
         "partition_balancer_simulator_test.cc",
     ],
     deps = [
-        ":partition_balancer_planner_fixture",
-        "//src/v/base",
+        ":partition_balancer_sim_fixture",
+        "//src/v/test_utils:seastar_boost",
+        "@seastar//:testing",
+    ],
+)
+
+redpanda_cc_btest(
+    name = "partition_balancer_pinning_sim_test",
+    timeout = "long",
+    srcs = [
+        "partition_balancer_pinning_sim_test.cc",
+    ],
+    deps = [
+        ":partition_balancer_sim_fixture",
         "//src/v/cluster",
         "//src/v/cluster:commands",
         "//src/v/cluster:data_migrated_resources",
@@ -557,6 +606,7 @@ redpanda_cc_btest(
         "//src/v/cluster:node_status_table",
         "//src/v/cluster:scheduling_allocation",
         "//src/v/cluster:topic_table",
+        "//src/v/config",
         "//src/v/model",
         "//src/v/random:generators",
         "//src/v/test_utils:seastar_boost",
