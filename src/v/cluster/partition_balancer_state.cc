@@ -218,6 +218,11 @@ partition_balancer_state::apply_snapshot(const controller_snapshot& snap) {
     _ntps_with_broken_rack_constraint.clear();
     _ntps_with_broken_rack_constraint_revision++;
 
+    // topic_table is being rebuilt from the snapshot, so any deltas the
+    // pinning-cache notification callback may have observed are no longer
+    // authoritative. Force a re-seed on the next read.
+    reset_pinning_cache();
+
     for (const auto& [ns_tp, topic] : snap.topics.topics) {
         for (const auto& [p_id, partition] : topic.partitions) {
             const std::vector<model::broker_shard>* replicas

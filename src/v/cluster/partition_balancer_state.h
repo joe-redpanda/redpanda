@@ -89,7 +89,8 @@ public:
     /// Invalidate the pinning cache so the next
     /// ensure_pinning_cache_seeded() call re-scans topic_table. Also clears
     /// the current contents so a caller reading between reset and re-seed
-    /// does not observe stale data. Call on raft0 term change.
+    /// does not observe stale data. Call on raft0 term change or when
+    /// topic_table is rebuilt from a controller snapshot.
     void reset_pinning_cache() {
         _pinning_cache_seeded = false;
         _topics_with_replica_pinning.clear();
