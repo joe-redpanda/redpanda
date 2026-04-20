@@ -1946,21 +1946,42 @@ ss::future<> partition_balancer_planner::get_replica_pinning_repair_actions(
     const auto& members = ctx.state().members();
     bool rack_awareness = ctx.state().is_rack_awareness_enabled();
 
-    // assuming that rack node counts is stable throughout planning
     auto rack_node_counts = build_rack_node_counts(members, rack_awareness);
 
     size_t violations = 0;
 
-    for (auto topic_it = topics.topics_iterator_begin();
-         topic_it != topics.topics_iterator_end();
-         ++topic_it) {
-        const auto& tp_ns = topic_it->first;
-        const auto& cfg = topic_it->second.get_configuration();
-        const auto& maybe_pref = cfg.properties.replicas_preference;
-        if (!maybe_pref || maybe_pref->type == preference::none) {
+    ctx.state().ensure_pinning_cache_seeded();
+    // Snapshot the pinned-topics cache to avoid iterator invalidation:
+    // handle_topic_deltas mutates the cache on topic_table notifications,
+    // which fire during the co_await points in the loops below.
+    chunked_vector<model::topic_namespace> pinned_topics_snapshot;
+    {
+        const auto& pinned = ctx.state().topics_with_replica_pinning();
+        pinned_topics_snapshot.reserve(pinned.size());
+        for (const auto& tp_ns : pinned) {
+            pinned_topics_snapshot.push_back(tp_ns);
+        }
+    }
+
+    for (const auto& tp_ns : pinned_topics_snapshot) {
+        auto md_ref = topics.get_topic_metadata_ref(tp_ns);
+        if (!md_ref) {
+            // Raced with a topic delete — the snapshot may outlive the
+            // entry; the delta handler has already dropped it from the
+            // cache for the next tick.
             continue;
         }
-        auto& replicas_preference = *maybe_pref;
+        const auto& cfg = md_ref->get().get_configuration();
+        const auto& maybe_pref = cfg.properties.replicas_preference;
+        if (!maybe_pref || maybe_pref->type == preference::none) {
+            // Defensive: cache and topic_table disagreed; the delta
+            // handler will resync on the next notification.
+            continue;
+        }
+        // Copy the preference out of topic_table so it stays valid across
+        // co_await points even if the topic's properties change or it is
+        // deleted mid-iteration.
+        auto replicas_preference = *maybe_pref;
 
         auto capacity_by_rack_group = compute_pinning_capacity(
           replicas_preference, rack_node_counts);
@@ -1973,19 +1994,27 @@ ss::future<> partition_balancer_planner::get_replica_pinning_repair_actions(
           capacity_by_rack_group,
           cfg.replication_factor);
 
-        const auto& assignments = topic_it->second.get_assignments();
-        for (const auto& [p_id, assignment] : assignments) {
-            // stop adding reassignments if we're over capacity
+        // Snapshot per-partition data so the inner loop does not hold
+        // references into topic_table across co_await points.
+        chunked_vector<
+          std::pair<model::partition_id, std::vector<model::broker_shard>>>
+          partition_snapshot;
+        {
+            const auto& assignments = md_ref->get().get_assignments();
+            partition_snapshot.reserve(assignments.size());
+            for (const auto& [p_id, assignment] : assignments) {
+                partition_snapshot.emplace_back(p_id, assignment.replicas);
+            }
+        }
+
+        for (const auto& [p_id, replicas] : partition_snapshot) {
             if (!ctx.can_add_reassignment()) {
                 co_return;
             }
 
-            // yield, check stability and skip if there's nothing to do with
-            // this partition
             if (!is_pinning_violated(
-                  assignment.replicas, replicas_preference, ideal, members)) {
+                  replicas, replicas_preference, ideal, members)) {
                 co_await ss::maybe_yield();
-                topic_it.check();
                 continue;
             }
 
@@ -2032,9 +2061,6 @@ ss::future<> partition_balancer_planner::get_replica_pinning_repair_actions(
                         "forced");
                   });
             });
-
-            // iterator stability check on asyncs
-            topic_it.check();
         }
     }
 
