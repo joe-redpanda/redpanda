@@ -560,6 +560,31 @@ redpanda_cc_btest(
     ],
 )
 
+redpanda_cc_gtest(
+    name = "partition_balancer_state_test",
+    timeout = "short",
+    srcs = [
+        "partition_balancer_state_test.cc",
+    ],
+    deps = [
+        "//src/v/cluster",
+        "//src/v/cluster:commands",
+        "//src/v/cluster:data_migrated_resources",
+        "//src/v/cluster:members_table",
+        "//src/v/cluster:node_status_table",
+        "//src/v/cluster:scheduling_allocation",
+        "//src/v/cluster:topic_table",
+        "//src/v/cluster:types",
+        "//src/v/config",
+        "//src/v/features",
+        "//src/v/model",
+        "//src/v/test_utils:gtest",
+        "@abseil-cpp//absl/container:btree",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)
+
 redpanda_cc_btest(
     name = "partition_balancer_pinning_scoring_test",
     timeout = "short",
