@@ -17,7 +17,9 @@
 #include "cluster/node_status_table.h"
 #include "cluster/scheduling/partition_allocator.h"
 #include "cluster/topic_table.h"
+#include "cluster/types.h"
 #include "config/configuration.h"
+#include "config/replicas_preference.h"
 #include "metrics/metrics.h"
 #include "metrics/prometheus_sanitize.h"
 
@@ -38,6 +40,21 @@ partition_balancer_state::partition_balancer_state(
 
 bool partition_balancer_state::is_rack_awareness_enabled() const {
     return _partition_allocator.is_rack_awareness_enabled();
+}
+
+void partition_balancer_state::ensure_pinning_cache_seeded() {
+    if (_pinning_cache_seeded) {
+        return;
+    }
+    _topics_with_replica_pinning.clear();
+    for (const auto& [tp_ns, md] : _topic_table.topics_map()) {
+        const auto& pref
+          = md.get_configuration().properties.replicas_preference;
+        if (pref && pref->type != config::replicas_preference::type_t::none) {
+            _topics_with_replica_pinning.insert(tp_ns);
+        }
+    }
+    _pinning_cache_seeded = true;
 }
 
 void partition_balancer_state::handle_ntp_move_begin_or_cancel(
