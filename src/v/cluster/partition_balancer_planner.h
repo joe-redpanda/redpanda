@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "cluster/fwd.h"
 #include "cluster/health_monitor_types.h"
@@ -17,6 +18,7 @@
 #include "cluster/scheduling/types.h"
 #include "cluster/types.h"
 #include "config/replicas_preference.h"
+#include "container/chunked_hash_map.h"
 #include "container/chunked_vector.h"
 #include "model/metadata.h"
 
@@ -131,9 +133,38 @@ private:
       const absl::flat_hash_set<model::node_id>&,
       change_reason reason);
 
+    /// Per-topic state carried from detection into repair. The preference
+    /// is copied (not referenced into topic_table) so it survives co_await
+    /// points during the repair phase even if the topic is deleted or its
+    /// properties change mid-iteration.
+    struct topic_pinning_plan {
+        config::replicas_preference preference;
+        std::vector<uint32_t> ideal;
+        absl::btree_set<model::partition_id> violating_partitions;
+    };
+
+    /// Result of the detection pass. `count` is the total violating
+    /// partitions across all topics; `per_topic` maps each topic with at
+    /// least one violation to its precomputed plan. Callers use `any()`
+    /// to short-circuit the planner's early-exit predicate without
+    /// iterating the map.
+    struct pinning_violations {
+        bool any() const { return count > 0; }
+        size_t count{0};
+        chunked_hash_map<model::topic_namespace, topic_pinning_plan> per_topic;
+    };
+
+    /// Detection pass: walk the pinned-topics cache, compute the ideal
+    /// pinning for each topic, and record every partition whose current
+    /// replica set violates it. Synchronous; reads only `state().topics()`,
+    /// `state().members()`, and `state().is_rack_awareness_enabled()`.
+    /// Safe to call before `init_ntp_sizes_from_health_report` — it does
+    /// not inspect partition sizes or the allocator.
+    pinning_violations detect_pinning_violations(request_context& ctx);
+
     static ss::future<> get_rack_constraint_repair_actions(request_context&);
-    static ss::future<>
-    get_replica_pinning_repair_actions(request_context&, plan_data&);
+    static ss::future<> get_replica_pinning_repair_actions(
+      request_context&, plan_data&, const pinning_violations&);
     /// Logs a warning when the topic's preferred-group capacity is below the
     /// replication factor. Signals a structural (topology vs preference vs RF)
     /// mismatch where pinning cannot be fully satisfied.
