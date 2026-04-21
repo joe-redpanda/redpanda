@@ -1470,3 +1470,63 @@ FIXTURE_TEST(
     auto plan_data = planner.plan_actions(hr, as).get();
     BOOST_REQUIRE_EQUAL(plan_data.last_pinning_violations_count, 0);
 }
+
+/*
+ * Test that plan_actions returns empty when pinning is enabled and all
+ * replicas already satisfy the preference.
+ */
+FIXTURE_TEST(
+  test_plan_actions_early_exits_when_pinning_satisfied,
+  partition_balancer_planner_fixture) {
+    allocator_register_nodes(3, {"rack_A", "rack_B", "rack_C"});
+    create_topic("topic-1", {{n(0), n(1), n(2)}});
+
+    auto pref = config::replicas_preference::parse(
+      "racks: rack_A, rack_B, rack_C");
+    cluster::incremental_topic_updates updates;
+    updates.replicas_preference.op = cluster::incremental_update_operation::set;
+    updates.replicas_preference.value = pref;
+    cluster::update_topic_properties_cmd cmd{
+      make_tp_ns("topic-1"), std::move(updates)};
+    workers.dispatch_topic_command(std::move(cmd));
+
+    auto hr = create_health_report();
+    populate_node_status_table().get();
+    auto planner = make_planner();
+    auto plan_data = planner.plan_actions(hr, as).get();
+
+    // Pinning enabled, no violations -> empty early-exit.
+    BOOST_REQUIRE(
+      plan_data.status == cluster::partition_balancer_planner::status::empty);
+    BOOST_REQUIRE_EQUAL(plan_data.reassignments.size(), 0);
+    BOOST_REQUIRE_EQUAL(plan_data.last_pinning_violations_count, 0);
+}
+
+/*
+ * Test that plan_data.last_pinning_violations_count is populated even
+ * when violations cause the planner to proceed past the early-exit.
+ */
+FIXTURE_TEST(
+  test_plan_actions_exposes_pinning_count_pre_action,
+  partition_balancer_planner_fixture) {
+    allocator_register_nodes(4, {"rack_A", "rack_B", "rack_C", "rack_D"});
+    create_topic("topic-1", {{n(1), n(2), n(3)}});
+
+    auto pref = config::replicas_preference::parse(
+      "racks: rack_A, rack_B, rack_C");
+    cluster::incremental_topic_updates updates;
+    updates.replicas_preference.op = cluster::incremental_update_operation::set;
+    updates.replicas_preference.value = pref;
+    cluster::update_topic_properties_cmd cmd{
+      make_tp_ns("topic-1"), std::move(updates)};
+    workers.dispatch_topic_command(std::move(cmd));
+
+    auto hr = create_health_report();
+    populate_node_status_table().get();
+    auto planner = make_planner();
+    auto plan_data = planner.plan_actions(hr, as).get();
+
+    BOOST_REQUIRE_EQUAL(plan_data.last_pinning_violations_count, 1);
+    BOOST_REQUIRE(
+      plan_data.status != cluster::partition_balancer_planner::status::empty);
+}
