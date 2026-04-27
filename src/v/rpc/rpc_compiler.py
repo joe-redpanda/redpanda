@@ -245,7 +245,16 @@ def _enrich_methods(service: Any):
         bytes("%s:%s" % (service["namespace"], service["service_name"]), "utf-8")
     )
 
+    # Method IDs are derived from the method name and the input/output type
+    # names, so renaming any of them changes the wire-level dispatch ID. To
+    # let a method be renamed (or its types renamed) without breaking older
+    # peers that still use the previous identifiers, an entry may set
+    # `legacy_id` to the prior name/types. The hash is then computed from
+    # those, and the generated method ID matches what the old codegen would
+    # have produced. This is safe only when the underlying serde payload is
+    # field-for-field compatible across the rename.
     def _xor_id(m):
+        m = m.get("legacy_id", m)
         mid = ("%s:" % service["namespace"]).join(
             [m["name"], m["input_type"], m["output_type"]]
         )
