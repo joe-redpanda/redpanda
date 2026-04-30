@@ -3921,9 +3921,12 @@ class SchemaRegistryTestMethods(SchemaRegistryEndpoints):
     @cluster(num_nodes=1)
     def test_qualified_subjects_flag_off(self):
         """
-        With enable_qualified_subjects off (default), the qualified syntax is not parsed, and all
+        With enable_qualified_subjects off, the qualified syntax is not parsed, and all
         subjects are treated as if they are in the default context.
         """
+        self.redpanda.set_cluster_config(
+            {"schema_registry_enable_qualified_subjects": False}, expect_restart=True
+        )
 
         # Register a schema with qualified-looking subject name
         # Flag OFF: treated as literal subject name in default context
@@ -5173,7 +5176,6 @@ class SchemaRegistryContextTest(SchemaRegistryEndpoints):
         super().__init__(
             context,
             schema_registry_config=schema_registry_config,
-            extra_rp_conf={"schema_registry_enable_qualified_subjects": True},
             **kwargs,
         )
 
@@ -10911,7 +10913,6 @@ class SchemaRegistryContextAuthzTest(SchemaRegistryAclAuthzTestBase):
     def __init__(self, context: TestContext, **kwargs: Any):
         super().__init__(
             context,
-            extra_rp_conf={"schema_registry_enable_qualified_subjects": True},
             **kwargs,
         )
 

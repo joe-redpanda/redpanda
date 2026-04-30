@@ -3825,11 +3825,11 @@ configuration::configuration()
       *this,
       "schema_registry_enable_qualified_subjects",
       "Enable parsing of qualified subject syntax (:.context:subject). "
+      "When true, qualified syntax is parsed to extract context and subject. "
       "When false, subjects are treated literally, as subjects in the default "
-      "context. When true, qualified syntax is parsed to extract context and "
-      "subject.",
-      {.needs_restart = needs_restart::yes, .visibility = visibility::tunable},
-      false)
+      "context.",
+      {.needs_restart = needs_restart::yes, .visibility = visibility::user},
+      true)
   , pp_sr_smp_max_non_local_requests(
       *this,
       "pp_sr_smp_max_non_local_requests",

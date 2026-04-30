@@ -404,7 +404,6 @@ class SchemaRegistryContextMetricsTest(RedpandaTest):
             num_brokers=1,
             extra_rp_conf={
                 "health_monitor_max_metadata_age": 1000,
-                "schema_registry_enable_qualified_subjects": True,
                 **self.metrics.rp_conf(),
             },
             schema_registry_config=SchemaRegistryConfig(),
