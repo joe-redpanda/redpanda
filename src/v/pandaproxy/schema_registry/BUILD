@@ -44,6 +44,7 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         "//src/v/bytes:iobuf_parser",
+        "//src/v/config",
         "//src/v/container:chunked_vector",
         "//src/v/model",
         "//src/v/pandaproxy:error",
@@ -56,7 +57,6 @@ redpanda_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//src/v/base",
-        "//src/v/config:startup_config",
         "//src/v/json",
         "//src/v/kafka/protocol",
         "//src/v/utils:named_type",
@@ -193,7 +193,6 @@ redpanda_cc_library(
         "//src/v/base",
         "//src/v/bytes:iobuf_parser",
         "//src/v/config",
-        "//src/v/config:startup_config",
         "//src/v/container:chunked_vector",
         "//src/v/json",
         "//src/v/metrics",
@@ -314,7 +313,6 @@ redpanda_cc_library(
         "//src/v/cluster:fwd",
         "//src/v/cluster:plugin_table",
         "//src/v/cluster:rpc_utils",
-        "//src/v/config:startup_config",
         "//src/v/utils:variant",
     ],
 )
@@ -345,7 +343,6 @@ redpanda_cc_library(
     deps = [
         ":server",
         ":transport",
-        "//src/v/config:startup_config",
         "//src/v/pandaproxy:core",
     ],
 )

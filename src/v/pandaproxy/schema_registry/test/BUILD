@@ -343,6 +343,7 @@ redpanda_cc_gtest(
         "context_subject.cc",
     ],
     deps = [
+        "//src/v/config",
         "//src/v/pandaproxy/schema_registry:types",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
