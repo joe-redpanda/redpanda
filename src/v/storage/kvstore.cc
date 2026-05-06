@@ -121,6 +121,8 @@ ss::future<> kvstore::start() {
 ss::future<> kvstore::stop() {
     vlog(lg.info, "Stopping kvstore: dir {}", _ntpc.work_directory());
 
+    _probe.metrics.clear();
+
     _as.request_abort();
 
     // prevent new ops, signal flusher to exit

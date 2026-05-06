@@ -33,16 +33,22 @@ public:
       ss::sharded<features::feature_table>& feature_table) noexcept
       : _kv_conf_cb(std::move(kv_conf_cb))
       , _log_conf_cb(std::move(log_conf_cb))
-      , _feature_table(feature_table) {}
+      , _feature_table(feature_table)
+      , _kvstore(
+          std::make_unique<kvstore>(
+            _kv_conf_cb(), ss::this_shard_id(), _resources, _feature_table)) {}
 
     ss::future<> start() {
-        _kvstore = std::make_unique<kvstore>(
-          _kv_conf_cb(), ss::this_shard_id(), _resources, _feature_table);
-        return _kvstore->start().then([this] {
+        if (!_kvstore) {
+            _kvstore = std::make_unique<kvstore>(
+              _kv_conf_cb(), ss::this_shard_id(), _resources, _feature_table);
+        }
+        co_await _kvstore->start();
+        if (!_log_mgr) {
             _log_mgr = std::make_unique<log_manager>(
               _log_conf_cb(), kvs(), _resources, _feature_table);
-            return _log_mgr->start();
-        });
+        }
+        co_await _log_mgr->start();
     }
 
     ss::future<> recover_kvstore() { co_await _kvstore->recover(); }
@@ -71,6 +77,11 @@ public:
             return f.then([this] { return _kvstore->stop(); });
         }
         return f;
+    }
+
+    void reset() {
+        _log_mgr.reset();
+        _kvstore.reset();
     }
 
     void set_node_uuid(const model::node_uuid& node_uuid) {
