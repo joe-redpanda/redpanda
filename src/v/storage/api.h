@@ -45,6 +45,8 @@ public:
         });
     }
 
+    ss::future<> recover_kvstore() { co_await _kvstore->recover(); }
+
     ss::future<std::unique_ptr<storage::kvstore>>
     make_extra_kvstore(ss::shard_id s) {
         vassert(
