@@ -32,6 +32,8 @@
 #include <seastar/core/sstring.hh>
 #include <seastar/coroutine/exception.hh>
 
+#include <avro/ValidSchema.hh>
+
 #include <optional>
 
 namespace pandaproxy::schema_registry {

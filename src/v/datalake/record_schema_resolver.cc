@@ -30,6 +30,7 @@
 #include <seastar/core/shared_ptr.hh>
 #include <seastar/coroutine/as_future.hh>
 
+#include <avro/ValidSchema.hh>
 #include <google/protobuf/descriptor.h>
 
 #include <algorithm>

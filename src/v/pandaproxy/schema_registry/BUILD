@@ -61,7 +61,6 @@ redpanda_cc_library(
         "//src/v/kafka/protocol",
         "//src/v/utils:named_type",
         "@abseil-cpp//absl/container:btree",
-        "@avro",
         "@boost//:outcome",
     ],
 )

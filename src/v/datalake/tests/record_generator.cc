@@ -24,6 +24,7 @@
 #include <avro/Encoder.hh>
 #include <avro/Specific.hh>
 #include <avro/Stream.hh>
+#include <avro/ValidSchema.hh>
 #include <google/protobuf/descriptor.h>
 #include <rapidjson/error/en.h>
 
