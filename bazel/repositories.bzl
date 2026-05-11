@@ -3,6 +3,7 @@ This module contains the sources for all third party dependencies.
 """
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@toolchains_llvm//toolchain:sysroot.bzl", "sysroot")
 
 def data_dependency():
     """
@@ -192,20 +193,31 @@ def data_dependency():
         url = "https://github.com/Cyan4973/xxHash/archive/bbb27a5efb85b92a0486cf361a8635715a53f6ba.tar.gz",
     )
 
-    sysroot_build_file = """
-filegroup(
-  name = "sysroot",
-  srcs = glob(["*/**"]),
-  visibility = ["//visibility:public"],
-)"""
-    http_archive(
-        name = "x86_64_sysroot",
-        sha256 = "0d85fc9e155e664403c1c3c40831d865796d36a91b78a2e6d8922aa6ad3f0375",
-        urls = ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-22.1.0/sysroot-ubuntu-22.04-x86_64-2026-05-05.tar.zst"],
-    )
-
-    http_archive(
-        name = "aarch64_sysroot",
-        sha256 = "1afc00adf978c90ad8ffd3b729180923c27d57a7702ea23ba35c714e11d0def2",
-        urls = ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-22.1.0/sysroot-ubuntu-22.04-aarch64-2026-05-05.tar.zst"],
-    )
+    # The sysroot is consumed two ways. The upstream `sysroot` rule from
+    # toolchains_llvm exposes a single source-directory artifact that the
+    # cc_toolchain ingests as one input. The packaging rules in
+    # //bazel/packaging need individual file labels for the dynamic loader
+    # and versioned shared libraries to ship alongside the binary, so we
+    # also pull the same tarball via http_archive with a glob-based BUILD.
+    _SYSROOT_URL = "https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-22.1.0/sysroot-ubuntu-22.04-{arch}-2026-05-05.tar.zst"
+    for arch, sha in [
+        ("x86_64", "0d85fc9e155e664403c1c3c40831d865796d36a91b78a2e6d8922aa6ad3f0375"),
+        ("aarch64", "1afc00adf978c90ad8ffd3b729180923c27d57a7702ea23ba35c714e11d0def2"),
+    ]:
+        url = _SYSROOT_URL.format(arch = arch)
+        sysroot(
+            name = arch + "_sysroot",
+            sha256 = sha,
+            urls = [url],
+        )
+        http_archive(
+            name = arch + "_sysroot_runtime",
+            build_file_content = """filegroup(
+    name = "runtime",
+    srcs = glob(["**/*.so.*"], allow_empty = False),
+    visibility = ["//visibility:public"],
+)
+""",
+            sha256 = sha,
+            urls = [url],
+        )

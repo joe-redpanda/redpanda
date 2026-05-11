@@ -124,6 +124,8 @@ use_repo(non_module_dependencies, "wasmtime")
 use_repo(non_module_dependencies, "xxhash")
 use_repo(non_module_dependencies, "x86_64_sysroot")
 use_repo(non_module_dependencies, "aarch64_sysroot")
+use_repo(non_module_dependencies, "x86_64_sysroot_runtime")
+use_repo(non_module_dependencies, "aarch64_sysroot_runtime")
 
 bazel_dep(name = "toolchains_llvm", version = "1.7.0", dev_dependency = True)
 archive_override(
@@ -209,12 +211,12 @@ COMPILERS = {
         ),
         llvm.sysroot(
             name = "{version}_llvm_toolchain".format(version = major_version),
-            label = "@x86_64_sysroot//:sysroot",
+            label = "@x86_64_sysroot//sysroot:sysroot",
             targets = ["linux-x86_64"],
         ),
         llvm.sysroot(
             name = "{version}_llvm_toolchain".format(version = major_version),
-            label = "@aarch64_sysroot//:sysroot",
+            label = "@aarch64_sysroot//sysroot:sysroot",
             targets = ["linux-aarch64"],
         ),
         use_repo(llvm, "{version}_llvm_toolchain".format(version = major_version)),
