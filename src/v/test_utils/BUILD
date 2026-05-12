@@ -180,6 +180,17 @@ redpanda_test_cc_library(
 )
 
 redpanda_test_cc_library(
+    name = "container_ostream",
+    hdrs = [
+        "container_ostream.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@fmt",
+    ],
+)
+
+redpanda_test_cc_library(
     name = "rpc",
     hdrs = [
         "rpc.h",

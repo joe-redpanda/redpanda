@@ -1564,6 +1564,25 @@ class SchemaRegistryTestMethods(SchemaRegistryEndpoints):
         assert set(result) == {"JSON", "PROTOBUF", "AVRO"}
 
     @cluster(num_nodes=3)
+    def test_unmatched_route_404_shape(self):
+        """
+        Unmatched routes on schema registry must return the standard
+        {"error_code": <int>, "message": "..."} JSON envelope, not Seastar's
+        fallback {"message": "Not found", "code": 404}. SR clients parse
+        `error_code`; without this shape, fallback paths that inspect 404
+        bodies produce a 0-coded error.
+        """
+        result_raw = self.sr_client.request("GET", "_no_such_path")
+        assert result_raw.status_code == requests.codes.not_found, (
+            f"expected 404, got {result_raw.status_code}: {result_raw.text}"
+        )
+
+        body = result_raw.json()
+        assert "error_code" in body, f"expected error_code field, got body={body}"
+        assert body["error_code"] == 404, f"expected error_code=404, got body={body}"
+        assert "message" in body, f"expected message field, got body={body}"
+
+    @cluster(num_nodes=3)
     def test_get_schema_id_versions(self):
         """
         Verify schema versions
@@ -3921,9 +3940,12 @@ class SchemaRegistryTestMethods(SchemaRegistryEndpoints):
     @cluster(num_nodes=1)
     def test_qualified_subjects_flag_off(self):
         """
-        With enable_qualified_subjects off (default), the qualified syntax is not parsed, and all
+        With enable_qualified_subjects off, the qualified syntax is not parsed, and all
         subjects are treated as if they are in the default context.
         """
+        self.redpanda.set_cluster_config(
+            {"schema_registry_enable_qualified_subjects": False}, expect_restart=True
+        )
 
         # Register a schema with qualified-looking subject name
         # Flag OFF: treated as literal subject name in default context
@@ -5173,7 +5195,6 @@ class SchemaRegistryContextTest(SchemaRegistryEndpoints):
         super().__init__(
             context,
             schema_registry_config=schema_registry_config,
-            extra_rp_conf={"schema_registry_enable_qualified_subjects": True},
             **kwargs,
         )
 
@@ -10911,7 +10932,6 @@ class SchemaRegistryContextAuthzTest(SchemaRegistryAclAuthzTestBase):
     def __init__(self, context: TestContext, **kwargs: Any):
         super().__init__(
             context,
-            extra_rp_conf={"schema_registry_enable_qualified_subjects": True},
             **kwargs,
         )
 

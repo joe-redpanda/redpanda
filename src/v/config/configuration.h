@@ -503,7 +503,7 @@ struct configuration final : public config_store {
     property<std::chrono::milliseconds> retention_local_trim_interval;
     property<double> retention_local_trim_overage_coeff;
     property<bool> space_management_enable;
-    property<bool> space_management_enable_override;
+    deprecated_property space_management_enable_override;
     bounded_property<double, numeric_bounds> disk_reservation_percent;
     bounded_property<uint16_t> space_management_max_log_concurrency;
     bounded_property<uint16_t> space_management_max_segment_concurrency;
@@ -687,6 +687,7 @@ struct configuration final : public config_store {
 
     // oidc authentication
     property<ss::sstring> oidc_discovery_url;
+    property<std::optional<ss::sstring>> oidc_http_proxy_url;
     property<ss::sstring> oidc_token_audience;
     property<std::chrono::seconds> oidc_clock_skew_tolerance;
     property<ss::sstring> oidc_principal_mapping;

@@ -343,6 +343,7 @@ redpanda_cc_gtest(
         "context_subject.cc",
     ],
     deps = [
+        "//src/v/config",
         "//src/v/pandaproxy/schema_registry:types",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
@@ -438,6 +439,7 @@ redpanda_cc_btest(
         "//src/v/pandaproxy/schema_registry:rjson",
         "//src/v/pandaproxy/test:fixture",
         "//src/v/pandaproxy/test:utils",
+        "//src/v/test_utils:container_ostream",
         "//src/v/test_utils:seastar_boost",
         "@seastar",
         "@seastar//:testing",
@@ -465,6 +467,7 @@ redpanda_cc_btest(
         "//src/v/pandaproxy/schema_registry:core",
         "//src/v/pandaproxy/test:fixture",
         "//src/v/pandaproxy/test:utils",
+        "//src/v/test_utils:container_ostream",
         "//src/v/test_utils:seastar_boost",
         "@boost//:beast",
         "@boost//:test",

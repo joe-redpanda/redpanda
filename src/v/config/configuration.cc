@@ -2873,13 +2873,7 @@ configuration::configuration()
       "disabled following an upgrade.",
       {.needs_restart = needs_restart::no, .visibility = visibility::user},
       true)
-  , space_management_enable_override(
-      *this,
-      "space_management_enable_override",
-      "Enable automatic space management. This option is ignored and "
-      "deprecated in versions >= v23.3.",
-      {.needs_restart = needs_restart::no, .visibility = visibility::user},
-      false)
+  , space_management_enable_override(*this, "space_management_enable_override")
   , disk_reservation_percent(
       *this,
       "disk_reservation_percent",
@@ -3847,11 +3841,11 @@ configuration::configuration()
       *this,
       "schema_registry_enable_qualified_subjects",
       "Enable parsing of qualified subject syntax (:.context:subject). "
+      "When true, qualified syntax is parsed to extract context and subject. "
       "When false, subjects are treated literally, as subjects in the default "
-      "context. When true, qualified syntax is parsed to extract context and "
-      "subject.",
-      {.needs_restart = needs_restart::yes, .visibility = visibility::tunable},
-      false)
+      "context.",
+      {.needs_restart = needs_restart::yes, .visibility = visibility::user},
+      true)
   , pp_sr_smp_max_non_local_requests(
       *this,
       "pp_sr_smp_max_non_local_requests",
@@ -3931,6 +3925,25 @@ configuration::configuration()
       "https://auth.prd.cloud.redpanda.com/.well-known/openid-configuration",
       [](const auto& v) -> std::optional<ss::sstring> {
           auto res = security::oidc::parse_url(v);
+          if (res.has_error()) {
+              return res.error().message();
+          }
+          return std::nullopt;
+      })
+  , oidc_http_proxy_url(
+      *this,
+      "oidc_http_proxy_url",
+      "URL of the HTTP forward proxy used for OIDC discovery and JWKS "
+      "fetches. Accepts http://host:port or https://host:port. When "
+      "set, oidc_discovery_url must use https:// — plaintext OIDC "
+      "origins cannot be routed through a forward proxy.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::user},
+      std::nullopt,
+      [](const auto& v) -> std::optional<ss::sstring> {
+          if (!v.has_value()) {
+              return std::nullopt;
+          }
+          auto res = security::oidc::parse_url(*v);
           if (res.has_error()) {
               return res.error().message();
           }

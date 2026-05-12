@@ -3532,9 +3532,6 @@ class AuditLogTestSchemaRegistryACLs(AuditLogTestSchemaRegistryBase):
         - Context-level (e.g., /config/:.ctx:) uses sr_registry
         - Subject-level (e.g., /config/:.ctx:subject) uses sr_subject
         """
-        self.redpanda.set_cluster_config(
-            {"schema_registry_enable_qualified_subjects": True}, expect_restart=True
-        )
         self.setup_cluster()
 
         context_only = ":.staging:"
@@ -3608,9 +3605,6 @@ class AuditLogTestSchemaRegistryACLs(AuditLogTestSchemaRegistryBase):
     @cluster(num_nodes=5)
     @matrix(audit_transport_mode=get_audit_modes())
     def test_sr_audit_get_contexts(self, audit_transport_mode):
-        self.redpanda.set_cluster_config(
-            {"schema_registry_enable_qualified_subjects": True}, expect_restart=True
-        )
         self.setup_cluster()
 
         schema_data = json.dumps({"schema": schema1_def})
@@ -3685,9 +3679,6 @@ class AuditLogTestSchemaRegistryACLs(AuditLogTestSchemaRegistryBase):
     @cluster(num_nodes=5)
     @matrix(audit_transport_mode=get_audit_modes())
     def test_sr_audit_delete_context(self, audit_transport_mode):
-        self.redpanda.set_cluster_config(
-            {"schema_registry_enable_qualified_subjects": True}, expect_restart=True
-        )
         self.setup_cluster()
 
         schema_data = json.dumps({"schema": schema1_def})
