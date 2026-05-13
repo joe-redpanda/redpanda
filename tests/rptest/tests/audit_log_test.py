@@ -24,7 +24,10 @@ from ducktape.errors import TimeoutError
 from ducktape.mark import matrix
 from keycloak import KeycloakOpenID
 
-from rptest.clients.admin.proto.redpanda.core.admin.v2 import security_pb2
+from rptest.clients.admin.proto.redpanda.core.admin.v2 import (
+    features_pb2,
+    security_pb2,
+)
 from rptest.clients.admin.v2 import Admin as AdminV2
 from rptest.clients.default import DefaultClient
 from rptest.clients.kcl import KCL
@@ -1071,6 +1074,54 @@ class AuditLogTestAdminApi(AuditLogTestBase):
             upsert={"audit_enabled_event_types": ["heartbeat"]}
         )
         wait_for_version_sync(self.admin, self.redpanda, patch_result["config_version"])
+
+    @skip_fips_mode
+    @cluster(num_nodes=5)
+    def test_admin_v2_finalize_upgrade(self):
+        """
+        Verifies that calls to the admin v2 FeaturesService.FinalizeUpgrade
+        RPC produce an api_activity audit record when the "admin" event
+        type is enabled. The audit entry is emitted at the auth boundary,
+        so it appears regardless of whether the service handler later
+        rejects the request — here it does, with FAILED_PRECONDITION,
+        because features_auto_finalization defaults to true.
+        """
+        self.modify_audit_event_types(["admin"])
+
+        admin_v2 = AdminV2(
+            self.redpanda,
+            auth=(
+                self.redpanda.SUPERUSER_CREDENTIALS[0],
+                self.redpanda.SUPERUSER_CREDENTIALS[1],
+            ),
+        )
+
+        try:
+            admin_v2.features().finalize_upgrade(features_pb2.FinalizeUpgradeRequest())
+        except Exception as e:
+            self.logger.debug(f"FinalizeUpgrade returned (expected failure): {e}")
+
+        def is_finalize_upgrade_record(record):
+            if (
+                record["class_uid"] != 6003
+                or record["dst_endpoint"]["svc_name"] != self.admin_audit_svc_name
+            ):
+                return False
+            url = record["http_request"]["url"]["url_string"]
+            return "FeaturesService/FinalizeUpgrade" in url
+
+        records = self.find_matching_record(
+            is_finalize_upgrade_record,
+            lambda count: count >= 1,
+            "admin v2 FinalizeUpgrade audit record",
+        )
+
+        assert len(records) >= 1, (
+            f"Expected at least one record, got {len(records)}: {records}"
+        )
+        actor = records[0]["actor"]["user"]["name"]
+        expected = self.redpanda.SUPERUSER_CREDENTIALS[0]
+        assert actor == expected, f"Expected actor user {expected}, got {actor}"
 
 
 class AuditLogTestAdminAuthApi(AuditLogTestBase):
