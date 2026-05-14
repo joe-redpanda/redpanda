@@ -133,6 +133,27 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "rpc_transport",
+    srcs = [
+        "rpc_transport.cc",
+    ],
+    hdrs = [
+        "rpc_transport.h",
+    ],
+    implementation_deps = [
+        ":exceptions",
+        "//src/v/kafka/protocol",
+        "//src/v/model",
+        "@seastar",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":transport",
+        "//src/v/kafka/data/rpc",
+    ],
+)
+
+redpanda_cc_library(
     name = "compatibility",
     srcs = ["compatibility.cc"],
     hdrs = ["compatibility.h"],
@@ -346,6 +367,7 @@ redpanda_cc_library(
         ":configuration",
         ":exceptions",
         ":kafka_client_transport",
+        ":rpc_transport",
         ":seq_writer",
         ":server",
         ":store",
@@ -353,8 +375,8 @@ redpanda_cc_library(
         "//src/v/cluster:members_table",
         "//src/v/cluster:node_status_table",
         "//src/v/config",
+        "//src/v/features",
         "//src/v/kafka/client:configuration",
-        "//src/v/kafka/data/rpc",
         "//src/v/kafka/protocol:create_topics",
         "//src/v/kafka/server:topic_config_utils",
         "//src/v/metrics",
@@ -370,6 +392,7 @@ redpanda_cc_library(
         ":types",
         "//src/v/base",
         "//src/v/cluster",
+        "//src/v/kafka/data/rpc",
         "//src/v/model",
         "//src/v/security",
         "@seastar",
@@ -415,7 +438,6 @@ redpanda_cc_library(
         ":avro",
         ":context_router",
         ":json_schema",
-        ":kafka_client_transport",
         ":protobuf_schema",
         ":seq_writer",
         ":store",
