@@ -591,7 +591,10 @@ class ConsumerGroupTest(RedpandaTest):
                     )
                     try:
                         consumer.subscribe([self.topic_spec.name])
-                        consumer.poll(1)
+                        # poll() must run long enough for JoinGroup to
+                        # complete so the group is registered; kafka-python
+                        # 2.3.1's coordinator poll honors this timeout.
+                        consumer.poll(timeout_ms=5000)
                     finally:
                         consumer.close(autocommit=True)
                 except Exception as e:
@@ -970,10 +973,12 @@ class ConsumerGroupTest(RedpandaTest):
 
         self.logger.info("Waiting for group to become stable")
         wait_until(
-            lambda: self.admin_client.describe_consumer_groups(group_ids=[group])[group]
-            .result()
-            .state
-            == ConsumerGroupState.STABLE,
+            lambda: (
+                self.admin_client.describe_consumer_groups(group_ids=[group])[group]
+                .result()
+                .state
+                == ConsumerGroupState.STABLE
+            ),
             20,
             1,
             retry_on_exc=True,
@@ -1171,10 +1176,12 @@ class ConsumerGroupTest(RedpandaTest):
         moved = move_partition(topic="__consumer_offsets", partition=0)
         assert moved, "Failed to move coordinator"
         wait_until(
-            lambda: self.admin_client.describe_consumer_groups(group_ids=[group])[group]
-            .result()
-            .state
-            == ConsumerGroupState.STABLE,
+            lambda: (
+                self.admin_client.describe_consumer_groups(group_ids=[group])[group]
+                .result()
+                .state
+                == ConsumerGroupState.STABLE
+            ),
             20,
             1,
             retry_on_exc=True,
