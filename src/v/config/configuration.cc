@@ -706,6 +706,19 @@ configuration::configuration()
       "if it means returning less bytes in the fetch than are available.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       5s)
+  , enable_listoffsets_historical_leader_epoch(
+      *this,
+      "enable_listoffsets_historical_leader_epoch",
+      "When enabled, the Kafka ListOffsets API returns the historical "
+      "(record-time) leader epoch instead of the current leader epoch. "
+      "Intended as a one-way opt-in: disabling after it has been enabled "
+      "regresses to the original bug. "
+      "Gated as a development feature: not all response paths are fixed "
+      "yet (CORE-12505), so enabling this property produces internally "
+      "inconsistent epoch values across paths and must not be enabled in "
+      "production.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      false)
   , fetch_read_strategy(
       *this,
       "fetch_read_strategy",
