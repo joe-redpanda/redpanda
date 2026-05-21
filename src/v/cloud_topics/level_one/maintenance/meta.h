@@ -48,7 +48,8 @@ struct log_compaction_meta {
     // If set, this is cached compaction metadata obtained from the metastore at
     // the `collected_at` time. Guaranteed to have a value if `state == queued`
     // or `state == inflight`.
-    std::optional<compaction_info_and_timestamp> info_and_ts{std::nullopt};
+    std::optional<compaction_info_and_timestamp> compaction_info_and_ts{
+      std::nullopt};
     // If set, this is the shard on which the log is currently undergoing an
     // inflight compaction. Guaranteed to have a value if `state == inflight`.
     std::optional<ss::shard_id> inflight_shard{std::nullopt};

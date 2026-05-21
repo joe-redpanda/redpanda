@@ -78,8 +78,9 @@ TEST_F(LogInfoCollectorTestFixture, TestInfoCollector) {
     while (!cached_metadata.empty()) {
         auto sample = cached_metadata.top();
         cached_metadata.pop();
-        ASSERT_TRUE(sample->info_and_ts.has_value());
-        ASSERT_FLOAT_EQ(sample->info_and_ts->info.dirty_ratio, 1.0);
-        ASSERT_TRUE(sample->info_and_ts->info.earliest_dirty_ts.has_value());
+        ASSERT_TRUE(sample->compaction_info_and_ts.has_value());
+        ASSERT_FLOAT_EQ(sample->compaction_info_and_ts->info.dirty_ratio, 1.0);
+        ASSERT_TRUE(
+          sample->compaction_info_and_ts->info.earliest_dirty_ts.has_value());
     }
 }
