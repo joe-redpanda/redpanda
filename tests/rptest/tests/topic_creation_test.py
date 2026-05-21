@@ -430,6 +430,7 @@ class CreateTopicsTest(RedpandaTest):
                         "type" in r.keys()
                         and r["type"] == "topic_management_cmd"
                         and r["data"]["type"] == 0
+                        and r["data"]["key"]["namespace"] == "kafka"
                     )
 
                 create_topic_cmds = list(filter(is_create_topic_cmd, records))
