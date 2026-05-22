@@ -23,7 +23,6 @@ from rptest.services.multi_cluster_services import (
     SecondaryClusterArgs,
 )
 from rptest.services.redpanda import (
-    CLOUD_TOPICS_CONFIG_STR,
     PandaproxyConfig,
     SISettings,
     SchemaRegistryConfig,
@@ -278,7 +277,6 @@ class ShadowLinkingRandomOpsTest(ShadowLinkTestBase):
                 ),
                 extra_rp_conf={
                     "group_new_member_join_timeout": 3000,
-                    CLOUD_TOPICS_CONFIG_STR: True,
                 },
             ),
             extra_rp_conf={
@@ -295,7 +293,6 @@ class ShadowLinkingRandomOpsTest(ShadowLinkTestBase):
                 "retention_local_trim_interval": 5000,
                 "partition_autobalancing_tick_interval_ms": 2000,
                 "group_new_member_join_timeout": 3000,
-                CLOUD_TOPICS_CONFIG_STR: True,
             },
             schema_registry_config=SchemaRegistryConfig(),
             pandaproxy_config=PandaproxyConfig(),
