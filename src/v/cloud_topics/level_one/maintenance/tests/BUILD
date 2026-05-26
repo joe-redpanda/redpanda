@@ -15,6 +15,7 @@ redpanda_cc_gtest(
         "//src/v/cluster:members_table",
         "//src/v/cluster:partition_leaders_table",
         "//src/v/cluster:topic_table",
+        "//src/v/config",
         "//src/v/model",
         "//src/v/ssx:semaphore",
         "//src/v/test_utils:gtest",

@@ -11,6 +11,7 @@
 #pragma once
 
 #include "base/format_to.h"
+#include "cloud_topics/level_one/metastore/leveling_range_builder.h"
 #include "cloud_topics/level_one/metastore/metastore.h"
 #include "cloud_topics/level_one/metastore/offset_interval_set.h"
 #include "container/chunked_hash_map.h"
@@ -64,6 +65,18 @@ struct log_leveling_state {
     // If set, leveling metadata obtained from the metastore at
     // `collected_at` time.
     std::optional<leveling_info_and_timestamp> info_and_ts{std::nullopt};
+
+    // Number of leveling ranges from this CTP that are currently queued or
+    // inflight.
+    //
+    // TODO: Use as a reference count for controlling `info_and_ts`'s
+    // lifetime. `info_and_ts` should be cleared when all of the outstanding
+    // ranges have been leveled (i.e. when this value reaches 0 again).
+    size_t outstanding_ranges{0};
+
+    // Refcount of inflight leveling ranges per worker shard for this CTP.
+    // A shard is present iff it is currently running at least one range.
+    chunked_hash_map<ss::shard_id, size_t> inflight_shards;
 };
 
 struct log_compaction_meta {
@@ -135,6 +148,34 @@ using log_compaction_queue = std::priority_queue<
   log_compaction_meta_ptr,
   chunked_vector<log_compaction_meta_ptr>,
   cmp_t>;
+
+// A single levelable range scheduled as an independent job. Holds a
+// back-link to the per-CTP meta so the worker_manager can find inflight
+// ranges by tidp for preemption, and so per-log probes can be attributed.
+struct leveling_job {
+    leveling_job(
+      log_compaction_meta_ptr meta,
+      levelable_range range,
+      metastore::compaction_epoch epoch)
+      : meta(std::move(meta))
+      , range(range)
+      , epoch(epoch) {}
+
+    log_compaction_meta_ptr meta;
+    levelable_range range;
+    metastore::compaction_epoch epoch;
+};
+
+using leveling_job_ptr = ss::lw_shared_ptr<leveling_job>;
+using foreign_leveling_job_ptr = ss::foreign_ptr<leveling_job_ptr>;
+
+using leveling_cmp_t
+  = std::function<bool(const leveling_job_ptr&, const leveling_job_ptr&)>;
+
+using leveling_queue = std::priority_queue<
+  leveling_job_ptr,
+  chunked_vector<leveling_job_ptr>,
+  leveling_cmp_t>;
 
 enum class compaction_job_state {
     // No compaction job is currently inflight.
