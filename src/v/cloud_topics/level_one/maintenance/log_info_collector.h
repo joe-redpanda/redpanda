@@ -95,8 +95,8 @@ public:
     // collected and deemed eligible for compaction will also have their
     // `lw_shared_ptr` copied into the `log_compaction_queue` for future
     // compaction.
-    ss::future<>
-    collect_info_for_logs(log_set_t&, log_list_t&, log_compaction_queue&) const;
+    ss::future<> collect_compaction_info(
+      log_set_t&, log_list_t&, log_compaction_queue&) const;
 
     // Issues a batched get_leveling_infos RPC for the provided logs and
     // populates each log's leveling_info_and_ts field. Skips logs whose
@@ -108,12 +108,12 @@ private:
     // Returns a container of `compaction_info_spec` to sample the metastore
     // with based on the input `log_list_t`.
     chunked_vector<metastore::compaction_info_spec>
-    get_logs_to_collect(log_list_t&, size_t, model::timestamp) const;
+    build_compaction_specs(log_list_t&, size_t, model::timestamp) const;
 
     // Sets compaction info state within the input logs per the
     // `compaction_info_map` collected from the metastore and pushes logs
     // eligible for compaction to the provided `log_compaction_queue`.
-    void populate_log_infos(
+    void populate_logs_with_compaction_info(
       metastore::compaction_info_map&,
       log_set_t&,
       log_list_t&,

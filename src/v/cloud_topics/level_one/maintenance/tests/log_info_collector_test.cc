@@ -72,7 +72,7 @@ TEST_F(LogInfoCollectorTestFixture, TestInfoCollector) {
     }
 
     make_l1_objects(std::move(tidp_batches)).get();
-    log_info_collector.collect_info_for_logs(logs, logs_list, cached_metadata)
+    log_info_collector.collect_compaction_info(logs, logs_list, cached_metadata)
       .get();
     ASSERT_EQ(cached_metadata.size(), num_topics);
     while (!cached_metadata.empty()) {

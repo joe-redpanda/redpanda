@@ -120,16 +120,20 @@ log_info_collector::log_info_collector(
   , _max_compactible_offset_provider(
       std::move(max_compactible_offset_provider)) {}
 
-ss::future<> log_info_collector::collect_info_for_logs(
+ss::future<> log_info_collector::collect_compaction_info(
   log_set_t& logs_set,
   log_list_t& logs_list,
   log_compaction_queue& compaction_queue) const {
     auto now = model::timestamp::now();
 
-    auto to_collect = get_logs_to_collect(logs_list, logs_set.size(), now);
+    auto specs = build_compaction_specs(logs_list, logs_set.size(), now);
+
+    if (specs.empty()) {
+        co_return;
+    }
 
     auto compaction_infos_res = co_await _metastore->get_compaction_infos(
-      to_collect);
+      specs);
     if (!compaction_infos_res.has_value()) {
         vlog(
           compaction_log.warn,
@@ -147,7 +151,7 @@ ss::future<> log_info_collector::collect_info_for_logs(
         // compaction_infos unfortunately due to grouping by tidp, but needing
         // to look up compactible_offsets by ntp. If shard_table offered a way
         // to look up by tidp, this wouldn't be pessimized.
-        if (log.link.is_linked() && compaction_infos.contains(log.tidp)) {
+        if (compaction_infos.contains(log.tidp)) {
             // Use kafka::offset::min() as a placeholder; real values are filled
             // in by fill_max_compactible_offsets below.
             ntp_to_max_compactible_offset.insert_or_assign(
@@ -158,7 +162,7 @@ ss::future<> log_info_collector::collect_info_for_logs(
     co_await _max_compactible_offset_provider->fill_max_compactible_offsets(
       ntp_to_max_compactible_offset);
 
-    populate_log_infos(
+    populate_logs_with_compaction_info(
       compaction_infos,
       logs_set,
       logs_list,
@@ -168,19 +172,15 @@ ss::future<> log_info_collector::collect_info_for_logs(
 }
 
 chunked_vector<metastore::compaction_info_spec>
-log_info_collector::get_logs_to_collect(
+log_info_collector::build_compaction_specs(
   log_list_t& logs_list,
   size_t size,
   model::timestamp collection_timestamp) const {
-    chunked_vector<metastore::compaction_info_spec> to_collect;
+    chunked_vector<metastore::compaction_info_spec> specs;
 
-    to_collect.reserve(size);
+    specs.reserve(size);
 
     for (const auto& log : logs_list) {
-        if (!log.link.is_linked()) {
-            continue;
-        }
-
         if (log.state == log_compaction_meta::log_state::inflight) {
             // No need to sample inflight logs
             vlog(
@@ -199,10 +199,9 @@ log_info_collector::get_logs_to_collect(
             if (delta <= sample_interval) {
                 vlog(
                   compaction_log.debug,
-                  "Skipping info collection for CTP {}, delta is less than "
-                  "sample interval.",
+                  "Skipping compaction info collection for CTP {}, delta is "
+                  "less than sample interval.",
                   log.ntp);
-
                 continue;
             }
         }
@@ -242,14 +241,14 @@ log_info_collector::get_logs_to_collect(
           log.ntp,
           tombstone_removal_ts);
 
-        to_collect.emplace_back(log.tidp, tombstone_removal_ts);
+        specs.emplace_back(log.tidp, tombstone_removal_ts);
     }
 
-    to_collect.shrink_to_fit();
-    return to_collect;
+    specs.shrink_to_fit();
+    return specs;
 }
 
-void log_info_collector::populate_log_infos(
+void log_info_collector::populate_logs_with_compaction_info(
   metastore::compaction_info_map& compaction_infos,
   log_set_t& logs_set,
   log_list_t& logs_list,
@@ -258,10 +257,6 @@ void log_info_collector::populate_log_infos(
     ntp_to_max_compactible_offset,
   model::timestamp collection_timestamp) const {
     for (auto& log : logs_list) {
-        if (!log.link.is_linked()) {
-            continue;
-        }
-
         if (log.state == log_compaction_meta::log_state::inflight) {
             // Don't step on compaction info that is actively being used.
             continue;
@@ -289,8 +284,7 @@ void log_info_collector::populate_log_infos(
             vlogl(
               compaction_log,
               lvl,
-              "Failed to collect compaction info for CTP {} during compaction: "
-              "{}",
+              "Failed to collect compaction info for CTP {}: {}",
               log.ntp,
               err);
             continue;
