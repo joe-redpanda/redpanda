@@ -120,6 +120,7 @@ redpanda_cc_library(
         "//src/v/compression",
         "//src/v/container:chunked_vector",
         "//src/v/hashing:crc32",
+        "//src/v/strings:utf8",
         "@abseil-cpp//absl/numeric:int128",
         "@seastar",
     ],
@@ -135,7 +136,6 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         ":column_writer",
-        ":metadata",
         ":shredder",
         "//src/v/bytes:iobuf",
         "//src/v/bytes:iostream",
@@ -144,6 +144,7 @@ redpanda_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":metadata",
         ":schema",
         ":value",
         "//src/v/base",
