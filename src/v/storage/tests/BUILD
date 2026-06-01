@@ -530,6 +530,7 @@ redpanda_cc_gtest(
         "//src/v/compaction:key_offset_map",
         "//src/v/config",
         "//src/v/model",
+        "//src/v/model:batch_compression",
         "//src/v/model/tests:random",
         "//src/v/random:generators",
         "//src/v/storage",
