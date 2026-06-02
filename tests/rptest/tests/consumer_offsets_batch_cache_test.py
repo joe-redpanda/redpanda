@@ -8,8 +8,9 @@
 # by the Apache License, Version 2.0
 import random
 
-from confluent_kafka import Consumer, TopicPartition
+from confluent_kafka import TopicPartition
 
+from rptest.clients.python_librdkafka import ck_consumer
 from rptest.clients.types import TopicSpec
 from rptest.services.cluster import cluster
 from rptest.tests.redpanda_test import DefaultClient, RedpandaTest
@@ -39,17 +40,15 @@ class ConsumerOffsetsCacheTest(RedpandaTest):
 
     def _commit_random_offsets(self, topic: str, partition: int):
         # Create a consumer that will commit random offsets without consuming
-        consumer = Consumer(
-            {
-                "bootstrap.servers": self.redpanda.brokers(),
-                "group.id": "test-consumer-group",
-                "enable.auto.commit": False,
-                "auto.offset.reset": "earliest",
-            }
-        )
+        config = {
+            "bootstrap.servers": self.redpanda.brokers(),
+            "group.id": "test-consumer-group",
+            "enable.auto.commit": False,
+            "auto.offset.reset": "earliest",
+        }
 
         # Commit random offsets for the topic partition
-        try:
+        with ck_consumer(config) as consumer:
             partition = 0
             for _ in range(100):
                 # Generate a random offset between 0 and 1000
@@ -60,8 +59,6 @@ class ConsumerOffsetsCacheTest(RedpandaTest):
                     offsets=[TopicPartition(topic, partition, offset=random_offset)],
                     asynchronous=False,
                 )
-        finally:
-            consumer.close()
 
     @cluster(num_nodes=3)
     def test_enabling_consumer_offsets_cache_test(self):
