@@ -61,6 +61,10 @@ class ExampleRunner(BackgroundThreadService):
                     line = line.strip()
                     self.logger.debug(line)
                 except RemoteCommandError as e:
+                    if self._stopping.is_set():
+                        # Killing the process on stop makes ssh_capture exit
+                        # non-zero; that's expected, not a failure.
+                        break
                     self.logger.exception(f"Command {cmd} returned an error: {e}")
                     self._error = e
                     # No retries: thread is complete, test will fail when
