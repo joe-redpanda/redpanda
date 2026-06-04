@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include "cloud_topics/level_one/maintenance/leveling/leveling_queue.h"
 #include "cloud_topics/level_one/maintenance/meta.h"
 #include "cloud_topics/level_one/metastore/metastore.h"
 #include "cluster/metadata_cache.h"

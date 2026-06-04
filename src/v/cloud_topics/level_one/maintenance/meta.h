@@ -172,11 +172,6 @@ using foreign_leveling_job_ptr = ss::foreign_ptr<leveling_job_ptr>;
 using leveling_cmp_t
   = std::function<bool(const leveling_job_ptr&, const leveling_job_ptr&)>;
 
-using leveling_queue = std::priority_queue<
-  leveling_job_ptr,
-  chunked_vector<leveling_job_ptr>,
-  leveling_cmp_t>;
-
 enum class compaction_job_state {
     // No compaction job is currently inflight.
     idle,

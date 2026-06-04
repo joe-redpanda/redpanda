@@ -152,6 +152,7 @@ redpanda_cc_library(
     deps = [
         ":logger",
         ":meta",
+        "//src/v/cloud_topics/level_one/maintenance/leveling:leveling_queue",
         "//src/v/cloud_topics/level_one/metastore",
         "//src/v/cluster",
         "//src/v/cluster:fwd",

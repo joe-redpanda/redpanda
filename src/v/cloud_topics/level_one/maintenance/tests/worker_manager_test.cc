@@ -8,6 +8,7 @@
  * https://github.com/redpanda-data/redpanda/blob/master/licenses/rcl.md
  */
 
+#include "cloud_topics/level_one/maintenance/leveling/leveling_queue.h"
 #include "cloud_topics/level_one/maintenance/meta.h"
 #include "cloud_topics/level_one/maintenance/scheduler_probe.h"
 #include "cloud_topics/level_one/maintenance/scheduling_policies.h"

@@ -11,6 +11,7 @@ redpanda_cc_gtest(
         "//src/v/cloud_topics/level_one/maintenance:scheduler_probe",
         "//src/v/cloud_topics/level_one/maintenance:scheduling_policies",
         "//src/v/cloud_topics/level_one/maintenance:worker",
+        "//src/v/cloud_topics/level_one/maintenance/leveling:leveling_queue",
         "//src/v/cluster:fwd",
         "//src/v/cluster:members_table",
         "//src/v/cluster:partition_leaders_table",
