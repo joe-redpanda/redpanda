@@ -3,6 +3,22 @@ load("//bazel:build.bzl", "redpanda_cc_library")
 package(default_visibility = ["//src/v/cloud_topics/level_one:__subpackages__"])
 
 redpanda_cc_library(
+    name = "leveling_queue",
+    hdrs = [
+        "leveling_queue.h",
+    ],
+    include_prefix = "cloud_topics/level_one/maintenance/leveling",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/v/base",
+        "//src/v/cloud_topics/level_one/maintenance:meta",
+        "//src/v/container:chunked_hash_map",
+        "//src/v/container:chunked_vector",
+        "//src/v/model",
+    ],
+)
+
+redpanda_cc_library(
     name = "leveling_source",
     srcs = [
         "leveling_source.cc",
