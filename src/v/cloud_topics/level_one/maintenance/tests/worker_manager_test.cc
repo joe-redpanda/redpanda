@@ -8,6 +8,7 @@
  * https://github.com/redpanda-data/redpanda/blob/master/licenses/rcl.md
  */
 
+#include "cloud_topics/level_one/maintenance/compaction/compaction_queue.h"
 #include "cloud_topics/level_one/maintenance/leveling/leveling_queue.h"
 #include "cloud_topics/level_one/maintenance/meta.h"
 #include "cloud_topics/level_one/maintenance/scheduler_probe.h"
@@ -55,8 +56,14 @@ public:
 };
 
 TEST_F(WorkerManagerTestFixture, PauseAndResumeWorkers) {
+    auto cmp_func = [](
+                      const l1::log_compaction_meta_ptr& a,
+                      const l1::log_compaction_meta_ptr& b) {
+        return a->ntp < b->ntp;
+    };
+
     l1::compaction_scheduler_probe probe;
-    l1::log_compaction_queue pq;
+    l1::compaction_queue pq(std::move(cmp_func));
     l1::worker_manager manager(pq, nullptr, nullptr, nullptr, probe, nullptr);
     start_workers(manager).get();
     auto stop_manager = ss::defer([&manager] { manager.stop().get(); });
@@ -86,7 +93,7 @@ TEST_F(WorkerManagerTestFixture, AcquireWork) {
     };
 
     l1::compaction_scheduler_probe probe;
-    l1::log_compaction_queue pq(std::move(cmp_func));
+    l1::compaction_queue pq(std::move(cmp_func));
     l1::log_list_t list;
     l1::worker_manager manager(pq, nullptr, nullptr, nullptr, probe, nullptr);
     auto stop_manager = ss::defer([&manager] { manager.stop().get(); });
@@ -100,7 +107,7 @@ TEST_F(WorkerManagerTestFixture, AcquireWork) {
     list.push_back(*meta);
     using status = l1::log_compaction_state::status;
     meta->compaction.s = status::queued;
-    pq.emplace(meta);
+    pq.push(meta);
 
     auto work_opt = manager.try_acquire_compaction_work(ss::this_shard_id());
     ASSERT_TRUE(work_opt.has_value());
@@ -140,7 +147,7 @@ TEST(DirtyRatioSchedulingPolicyTest, OrdersHighestDirtyRatioFirst) {
     auto high = make_meta("high", 0.9);
 
     l1::dirty_ratio_scheduling_policy policy;
-    l1::log_compaction_queue q(policy.get_comparator());
+    l1::compaction_queue q(policy.get_comparator());
     q.push(low);
     q.push(mid);
     q.push(high);
@@ -178,7 +185,7 @@ TEST(CompactionLagSchedulingPolicyTest, OrdersHighestLagFirst) {
     auto new_log = make_meta("new", model::timestamp{9000});
 
     l1::compaction_lag_scheduling_policy policy;
-    l1::log_compaction_queue q(policy.get_comparator());
+    l1::compaction_queue q(policy.get_comparator());
     q.push(mid_log);
     q.push(new_log);
     q.push(old_log);

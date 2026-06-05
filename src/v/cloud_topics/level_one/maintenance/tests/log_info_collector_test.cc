@@ -104,7 +104,7 @@ TEST_F(LogInfoCollectorTestFixture, TestInfoCollector) {
 
     std::vector<tidp_batches_t> tidp_batches;
     l1::log_set_t logs;
-    l1::log_compaction_queue cached_metadata(
+    l1::compaction_queue cached_metadata(
       [](
         const l1::log_compaction_meta_ptr& a,
         const l1::log_compaction_meta_ptr& b) { return a->ntp < b->ntp; });

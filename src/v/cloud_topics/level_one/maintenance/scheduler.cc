@@ -111,8 +111,13 @@ void compaction_scheduler::unmanage_partition(
 
     auto handle = std::move(handle_opt).value();
 
+    // Evict any queued (non-inflight) compaction entry for this CTP so it does
+    // not linger in the queue holding the meta alive. An inflight log is not in
+    // the queue (it was popped on dispatch); it is stopped below.
+    _compaction_queue.clear(tidp);
+
     // Manually unlink here to ensure that if the handle also exists in the
-    // `log_compaction_queue`, `is_linked()` still returns `false` when it is
+    // `compaction_queue`, `is_linked()` still returns `false` when it is
     // eventually considered for compaction.
     handle->link.unlink();
 

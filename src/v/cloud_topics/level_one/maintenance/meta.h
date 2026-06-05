@@ -147,10 +147,6 @@ using log_list_t
 
 using compaction_cmp_t = std::function<bool(
   const log_compaction_meta_ptr&, const log_compaction_meta_ptr&)>;
-using log_compaction_queue = std::priority_queue<
-  log_compaction_meta_ptr,
-  chunked_vector<log_compaction_meta_ptr>,
-  cmp_t>;
 
 // A single levelable range scheduled as an independent job. Holds a
 // back-link to the per-CTP meta so the worker_manager can find inflight

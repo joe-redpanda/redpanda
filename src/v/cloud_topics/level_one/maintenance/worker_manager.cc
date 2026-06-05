@@ -21,7 +21,7 @@
 namespace cloud_topics::l1 {
 
 worker_manager::worker_manager(
-  log_compaction_queue& work_queue,
+  compaction_queue& work_queue,
   ss::sharded<file_io>* io,
   ss::sharded<replicated_metastore>* metastore,
   ss::sharded<cluster::metadata_cache>* metadata_cache,
@@ -70,9 +70,13 @@ worker_manager::try_acquire_compaction_work(ss::shard_id shard) {
         return std::nullopt;
     }
 
-    if (!log->link.is_linked()) {
-        return std::nullopt;
-    }
+    // An unmanaged CTP is evicted from the queue by
+    // `compaction_scheduler::unmanage_partition`, so a queued entry is always
+    // still linked into the scheduler's managed-log list.
+    dassert(
+      log->link.is_linked(),
+      "Acquired compaction work for an unmanaged CTP {}",
+      log->ntp);
 
     dassert(
       log->compaction.s == log_compaction_state::status::queued,

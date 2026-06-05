@@ -11,6 +11,7 @@
 #pragma once
 
 #include "cloud_topics/level_one/common/file_io.h"
+#include "cloud_topics/level_one/maintenance/compaction/compaction_queue.h"
 #include "cloud_topics/level_one/maintenance/logger.h"
 #include "cloud_topics/level_one/maintenance/meta.h"
 #include "cloud_topics/level_one/maintenance/scheduler_probe.h"
@@ -40,7 +41,7 @@ public:
     static constexpr ss::shard_id worker_manager_shard = 0;
 
     worker_manager(
-      log_compaction_queue&,
+      compaction_queue&,
       ss::sharded<file_io>*,
       ss::sharded<replicated_metastore>*,
       ss::sharded<cluster::metadata_cache>*,
@@ -93,7 +94,7 @@ private:
     friend class ::SchedulerTestFixture;
 
     // Owned by `scheduler`.
-    log_compaction_queue& _compaction_queue;
+    compaction_queue& _compaction_queue;
 
     // Owned by `app`.
     ss::sharded<file_io>* _io;

@@ -123,7 +123,7 @@ log_info_collector::log_info_collector(
 ss::future<> log_info_collector::collect_compaction_info(
   log_set_t& logs_set,
   log_list_t& logs_list,
-  log_compaction_queue& compaction_queue) const {
+  compaction_queue& compaction_queue) const {
     auto now = model::timestamp::now();
 
     auto specs = build_compaction_specs(logs_list, logs_set.size(), now);
@@ -236,7 +236,7 @@ void log_info_collector::populate_logs_with_compaction_info(
   metastore::compaction_info_map& compaction_infos,
   log_set_t& logs_set,
   log_list_t& logs_list,
-  log_compaction_queue& compaction_queue,
+  compaction_queue& compaction_queue,
   const chunked_hash_map<model::ntp, kafka::offset>&
     ntp_to_max_compactible_offset,
   model::timestamp collection_timestamp) const {
