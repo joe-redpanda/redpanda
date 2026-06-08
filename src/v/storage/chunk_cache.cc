@@ -27,9 +27,12 @@ chunk_cache::chunk_cache() noexcept
 
 ss::future<> chunk_cache::start() {
     setup_metrics();
-    const auto num_chunks = memory_groups().chunk_cache_min_memory()
-                            / _chunk_size;
-    return ss::do_for_each(
+    co_await preallocate();
+}
+
+ss::future<> chunk_cache::preallocate() {
+    const auto num_chunks = _size_target / _chunk_size;
+    co_await ss::do_for_each(
       boost::counting_iterator<size_t>(0),
       boost::counting_iterator<size_t>(num_chunks),
       [this](size_t) {

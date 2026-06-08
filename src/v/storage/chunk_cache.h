@@ -57,6 +57,8 @@ private:
     ss::future<chunk_cache::chunk_ptr> wait_and_get();
 
     chunk_ptr pop_or_allocate();
+    // Allocates up to `_size_target` chunks pre-emptively.
+    ss::future<> preallocate();
 
     ss::chunked_fifo<chunk_ptr> _chunks;
     ssx::semaphore _sem{0, "s/chunk-cache"};
