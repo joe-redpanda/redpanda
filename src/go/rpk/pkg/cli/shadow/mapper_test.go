@@ -471,6 +471,158 @@ func TestMapSecuritySyncOptions(t *testing.T) {
 	}
 }
 
+func TestMapSchemaRegistrySyncOptions(t *testing.T) {
+	tests := []struct {
+		name string
+		opts *SchemaRegistrySyncOptions
+		want *adminv2.SchemaRegistrySyncOptions
+	}{
+		{
+			name: "nil options returns nil",
+			opts: nil,
+			want: nil,
+		},
+		{
+			name: "no shadowing mode set",
+			opts: &SchemaRegistrySyncOptions{},
+			want: &adminv2.SchemaRegistrySyncOptions{},
+		},
+		{
+			name: "topic mode",
+			opts: &SchemaRegistrySyncOptions{
+				ShadowSchemaRegistryTopic: &ShadowSchemaRegistryTopic{},
+			},
+			want: &adminv2.SchemaRegistrySyncOptions{
+				SchemaRegistryShadowingMode: &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryTopic_{
+					ShadowSchemaRegistryTopic: &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryTopic{},
+				},
+			},
+		},
+		{
+			name: "API mode minimal",
+			opts: &SchemaRegistrySyncOptions{
+				ShadowSchemaRegistryAPI: &ShadowSchemaRegistryAPI{
+					SourceURL: "https://source-sr.example.com:8081",
+				},
+			},
+			want: &adminv2.SchemaRegistrySyncOptions{
+				SchemaRegistryShadowingMode: &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryApi_{
+					ShadowSchemaRegistryApi: &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryApi{
+						SourceUrl: "https://source-sr.example.com:8081",
+					},
+				},
+			},
+		},
+		{
+			name: "API mode full with exact destination",
+			opts: &SchemaRegistrySyncOptions{
+				ShadowSchemaRegistryAPI: &ShadowSchemaRegistryAPI{
+					SourceURL: "https://source-sr.example.com:8081",
+					AuthOptions: &SchemaRegistryAuthOptions{
+						Basic: &HTTPBasicAuthOptions{
+							Username: "sr-user",
+							Password: "sr-pass",
+						},
+					},
+					TLSSettings: &TLSSettings{
+						Enabled: true,
+						TLSFileSettings: &TLSFileSettings{
+							CAPath: "/path/to/ca.crt",
+						},
+					},
+					TailInterval:               10 * time.Second,
+					FullSyncInterval:           5 * time.Minute,
+					MaxSourceRequestsPerSecond: 30,
+					SourceFilter: &SchemaRegistrySourceFilter{
+						Contexts: []string{".", ".prod"},
+						Subjects: []string{"orders-value"},
+					},
+					Destination: &SchemaRegistryContextDestination{
+						Exact: &SchemaRegistryExactContextMappings{
+							Mappings: []*SchemaRegistryContextMap{
+								{Source: ".", Destination: ".shadow"},
+							},
+						},
+					},
+					UnsupportedSchemaFeaturePolicy: UnsupportedSchemaFeaturePolicyRemove,
+				},
+			},
+			want: &adminv2.SchemaRegistrySyncOptions{
+				SchemaRegistryShadowingMode: &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryApi_{
+					ShadowSchemaRegistryApi: &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryApi{
+						SourceUrl: "https://source-sr.example.com:8081",
+						AuthOptions: &adminv2.SchemaRegistryAuthOptions{
+							AuthOptions: &adminv2.SchemaRegistryAuthOptions_Basic{
+								Basic: &adminv2.HTTPBasicAuthOptions{
+									Username: "sr-user",
+									Password: "sr-pass",
+								},
+							},
+						},
+						TlsSettings: &corecommonv1.TLSSettings{
+							Enabled: true,
+							TlsSettings: &corecommonv1.TLSSettings_TlsFileSettings{
+								TlsFileSettings: &corecommonv1.TLSFileSettings{
+									CaPath: "/path/to/ca.crt",
+								},
+							},
+						},
+						TailInterval:               durationpb.New(10 * time.Second),
+						FullSyncInterval:           durationpb.New(5 * time.Minute),
+						MaxSourceRequestsPerSecond: 30,
+						SourceFilter: &adminv2.SchemaRegistrySourceFilter{
+							Contexts: []string{".", ".prod"},
+							Subjects: []string{"orders-value"},
+						},
+						Destination: &adminv2.SchemaRegistryContextDestination{
+							Mapping: &adminv2.SchemaRegistryContextDestination_Exact{
+								Exact: &adminv2.SchemaRegistryExactContextMappings{
+									Mappings: []*adminv2.SchemaRegistryContextMap{
+										{Source: ".", Destination: ".shadow"},
+									},
+								},
+							},
+						},
+						UnsupportedSchemaFeaturePolicy: adminv2.UnsupportedSchemaFeaturePolicy_UNSUPPORTED_SCHEMA_FEATURE_POLICY_REMOVE,
+					},
+				},
+			},
+		},
+		{
+			name: "API mode with identity destination",
+			opts: &SchemaRegistrySyncOptions{
+				ShadowSchemaRegistryAPI: &ShadowSchemaRegistryAPI{
+					SourceURL: "https://source-sr.example.com:8081",
+					Destination: &SchemaRegistryContextDestination{
+						Identity: &SchemaRegistryIdentityContextMapping{},
+					},
+					UnsupportedSchemaFeaturePolicy: UnsupportedSchemaFeaturePolicyFail,
+				},
+			},
+			want: &adminv2.SchemaRegistrySyncOptions{
+				SchemaRegistryShadowingMode: &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryApi_{
+					ShadowSchemaRegistryApi: &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryApi{
+						SourceUrl: "https://source-sr.example.com:8081",
+						Destination: &adminv2.SchemaRegistryContextDestination{
+							Mapping: &adminv2.SchemaRegistryContextDestination_Identity{
+								Identity: &adminv2.SchemaRegistryIdentityContextMapping{},
+							},
+						},
+						UnsupportedSchemaFeaturePolicy: adminv2.UnsupportedSchemaFeaturePolicy_UNSUPPORTED_SCHEMA_FEATURE_POLICY_FAIL,
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mapSchemaRegistrySyncOptions(tt.opts)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestMapNameFilter(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -300,16 +300,125 @@ func mapSchemaRegistrySyncOptions(opts *SchemaRegistrySyncOptions) *adminv2.Sche
 
 	pbOpts := &adminv2.SchemaRegistrySyncOptions{}
 
-	// Handle schema_registry_shadowing_mode oneof
-	// If the struct has the ShadowSchemaRegistryTopic field populated,
-	// we set the oneof
+	// Handle schema_registry_shadowing_mode oneof. Only one can be set
 	if opts.ShadowSchemaRegistryTopic != nil {
 		pbOpts.SchemaRegistryShadowingMode = &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryTopic_{
 			ShadowSchemaRegistryTopic: &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryTopic{},
 		}
+	} else if opts.ShadowSchemaRegistryAPI != nil {
+		pbOpts.SchemaRegistryShadowingMode = &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryApi_{
+			ShadowSchemaRegistryApi: mapShadowSchemaRegistryAPI(opts.ShadowSchemaRegistryAPI),
+		}
 	}
 
 	return pbOpts
+}
+
+func mapShadowSchemaRegistryAPI(api *ShadowSchemaRegistryAPI) *adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryApi {
+	if api == nil {
+		return nil
+	}
+
+	pbAPI := &adminv2.SchemaRegistrySyncOptions_ShadowSchemaRegistryApi{
+		SourceUrl:                      api.SourceURL,
+		MaxSourceRequestsPerSecond:     api.MaxSourceRequestsPerSecond,
+		AuthOptions:                    mapSchemaRegistryAuthOptions(api.AuthOptions),
+		SourceFilter:                   mapSchemaRegistrySourceFilter(api.SourceFilter),
+		Destination:                    mapSchemaRegistryContextDestination(api.Destination),
+		UnsupportedSchemaFeaturePolicy: mapUnsupportedSchemaFeaturePolicy(api.UnsupportedSchemaFeaturePolicy),
+		// effective_* fields are output-only
+	}
+
+	if api.TLSSettings != nil {
+		pbAPI.TlsSettings = mapTLSSettings(api.TLSSettings)
+	}
+
+	if api.TailInterval > 0 {
+		pbAPI.TailInterval = durationpb.New(api.TailInterval)
+	}
+
+	if api.FullSyncInterval > 0 {
+		pbAPI.FullSyncInterval = durationpb.New(api.FullSyncInterval)
+	}
+
+	return pbAPI
+}
+
+func mapSchemaRegistryAuthOptions(auth *SchemaRegistryAuthOptions) *adminv2.SchemaRegistryAuthOptions {
+	if auth == nil {
+		return nil
+	}
+
+	pbAuth := &adminv2.SchemaRegistryAuthOptions{}
+	if auth.Basic != nil {
+		pbAuth.AuthOptions = &adminv2.SchemaRegistryAuthOptions_Basic{
+			Basic: &adminv2.HTTPBasicAuthOptions{
+				Username: auth.Basic.Username,
+				Password: auth.Basic.Password,
+				// password_set and password_set_at are output-only
+			},
+		}
+	}
+
+	return pbAuth
+}
+
+func mapSchemaRegistrySourceFilter(filter *SchemaRegistrySourceFilter) *adminv2.SchemaRegistrySourceFilter {
+	if filter == nil {
+		return nil
+	}
+
+	return &adminv2.SchemaRegistrySourceFilter{
+		Contexts: filter.Contexts,
+		Subjects: filter.Subjects,
+	}
+}
+
+func mapSchemaRegistryContextDestination(dest *SchemaRegistryContextDestination) *adminv2.SchemaRegistryContextDestination {
+	if dest == nil {
+		return nil
+	}
+
+	pbDest := &adminv2.SchemaRegistryContextDestination{}
+
+	// Handle mapping oneof. only one can be set
+	if dest.Identity != nil {
+		pbDest.Mapping = &adminv2.SchemaRegistryContextDestination_Identity{
+			Identity: &adminv2.SchemaRegistryIdentityContextMapping{},
+		}
+	} else if dest.Exact != nil {
+		exact := &adminv2.SchemaRegistryExactContextMappings{}
+		for _, m := range dest.Exact.Mappings {
+			exact.Mappings = append(exact.Mappings, mapSchemaRegistryContextMap(m))
+		}
+		pbDest.Mapping = &adminv2.SchemaRegistryContextDestination_Exact{
+			Exact: exact,
+		}
+	}
+
+	return pbDest
+}
+
+func mapSchemaRegistryContextMap(m *SchemaRegistryContextMap) *adminv2.SchemaRegistryContextMap {
+	if m == nil {
+		return nil
+	}
+
+	return &adminv2.SchemaRegistryContextMap{
+		Source:      m.Source,
+		Destination: m.Destination,
+	}
+}
+
+func mapUnsupportedSchemaFeaturePolicy(p UnsupportedSchemaFeaturePolicy) adminv2.UnsupportedSchemaFeaturePolicy {
+	switch p {
+	case UnsupportedSchemaFeaturePolicyFail:
+		return adminv2.UnsupportedSchemaFeaturePolicy_UNSUPPORTED_SCHEMA_FEATURE_POLICY_FAIL
+	case UnsupportedSchemaFeaturePolicyRemove:
+		return adminv2.UnsupportedSchemaFeaturePolicy_UNSUPPORTED_SCHEMA_FEATURE_POLICY_REMOVE
+	default:
+		return adminv2.UnsupportedSchemaFeaturePolicy_UNSUPPORTED_SCHEMA_FEATURE_POLICY_UNSPECIFIED
+	}
 }
 
 func mapNameFilter(filter *NameFilter) *adminv2.NameFilter {
