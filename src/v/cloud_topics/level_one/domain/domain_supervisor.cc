@@ -25,7 +25,9 @@
 #include "model/namespace.h"
 #include "ssx/when_all.h"
 #include "ssx/work_queue.h"
+#include "utils/backoff_policy.h"
 
+#include <seastar/core/sleep.hh>
 #include <seastar/coroutine/as_future.hh>
 
 using namespace std::chrono_literals;
@@ -53,8 +55,7 @@ public:
     ss::future<> start() {
         _probe.setup_metrics();
         if (ss::this_shard_id() == 0) {
-            _as = {};
-            _loop = do_topic_reconciliation_loop();
+            _create_loop = ensure_metastore_topic_created();
         }
         co_return;
     }
@@ -79,9 +80,9 @@ public:
     }
 
     ss::future<> stop() {
-        if (ss::this_shard_id() == 0 && _loop) {
+        if (ss::this_shard_id() == 0 && _create_loop) {
             _as.request_abort();
-            co_await *std::exchange(_loop, std::nullopt);
+            co_await *std::exchange(_create_loop, std::nullopt);
         }
         co_await _queue.shutdown();
         chunked_vector<ss::future<std::monostate>> stop_futs;
@@ -118,80 +119,29 @@ public:
     }
 
 private:
-    ss::future<> do_topic_reconciliation_loop() {
-        while (!_as.abort_requested()) {
-            co_await ensure_domains_topic();
-
-            bool aborted = co_await loop_sleep(10min);
-            if (aborted) {
-                // If we were aborted, we exit the loop.
-                co_return;
-            }
-        }
-    }
-
-    ss::future<> ensure_domains_topic() {
+    // Creates the metastore topic on the raft0 leader, retrying until it
+    // exists. RF reconciliation is the health_manager's job.
+    ss::future<> ensure_metastore_topic_created() {
         auto backoff = make_exponential_backoff_policy<ss::lowres_clock>(
           1s, 10s);
         while (!_as.abort_requested()) {
             if (
               _controller->get_topics_state().local().contains(
                 model::l1_metastore_nt)) {
-                if (co_await ensure_domains_replication_factor()) {
-                    break;
-                }
-            } else {
-                if (co_await create_domains_topic()) {
-                    break;
-                }
+                co_return;
+            }
+            if (
+              _controller->is_raft0_leader()
+              && co_await create_domains_topic()) {
+                co_return;
             }
             backoff.next_backoff();
-            if (co_await loop_sleep(backoff.current_backoff_duration())) {
-                break;
+            try {
+                co_await ss::sleep_abortable<ss::lowres_clock>(
+                  backoff.current_backoff_duration(), _as);
+            } catch (const ss::sleep_aborted&) {
+                co_return;
             }
-        }
-    }
-
-    ss::future<bool> loop_sleep(std::chrono::milliseconds duration) {
-        simple_time_jitter<ss::lowres_clock> jitter(duration);
-        try {
-            co_await ss::sleep_abortable<ss::lowres_clock>(
-              jitter.next_duration(), _as);
-            co_return false;
-        } catch (const ss::sleep_aborted& ex) {
-            // do nothing, the caller will handle exiting properly.
-            std::ignore = ex;
-            co_return true;
-        }
-    }
-
-    ss::future<bool> ensure_domains_replication_factor() {
-        auto tp_ns = model::l1_metastore_nt;
-        auto rf = _controller->get_topics_state()
-                    .local()
-                    .get_topic_replication_factor(tp_ns);
-        if (!rf) {
-            vlog(cd_log.warn, "unable to find {} replication factor", tp_ns);
-            co_return false;
-        }
-        auto target_rf = cluster::replication_factor(
-          _controller->internal_topic_replication());
-        if (*rf != target_rf) {
-            vlog(
-              cd_log.info,
-              "updating {} replication factor to {}",
-              tp_ns,
-              target_rf);
-            cluster::topic_properties_update update{tp_ns};
-            update.custom_properties.replication_factor.op
-              = cluster::incremental_update_operation::set;
-            update.custom_properties.replication_factor.value = target_rf;
-            co_await update_topic(std::move(update));
-            co_return false;
-        } else {
-            vlog(
-              cd_log.trace, "replication factor for {} is already set", tp_ns);
-            co_return true;
         }
     }
 
@@ -212,29 +162,6 @@ private:
           num_partitions.value_or(
             config::shard_local_cfg().cloud_topics_num_metastore_partitions()),
           topic_props);
-    }
-
-    ss::future<> update_topic(cluster::topic_properties_update update) {
-        cluster::errc ec{};
-        try {
-            auto res = co_await _controller->get_topics_frontend()
-                         .local()
-                         .update_topic_properties(
-                           {update},
-                           ss::lowres_clock::now()
-                             + config::shard_local_cfg()
-                                 .internal_rpc_request_timeout_ms());
-            vassert(res.size() == 1, "expected a single result");
-            ec = res[0].ec;
-        } catch (const std::exception& ex) {
-            vlog(
-              cd_log.warn, "unable to update topic {}: {}", update.tp_ns, ex);
-            co_return;
-        }
-        if (ec != cluster::errc::success) {
-            vlog(
-              cd_log.warn, "failed to update topic {}: {}", update.tp_ns, ec);
-        }
     }
 
     ss::future<bool> create_topic(
@@ -364,8 +291,9 @@ private:
 
     domain_manager_probe _probe;
 
-    std::optional<ss::future<>> _loop;
     ss::abort_source _as;
+    // Creates the metastore topic at startup; only set on shard 0.
+    std::optional<ss::future<>> _create_loop;
 };
 
 domain_supervisor::domain_supervisor(

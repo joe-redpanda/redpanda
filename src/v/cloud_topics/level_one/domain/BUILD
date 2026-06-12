@@ -44,6 +44,7 @@ redpanda_cc_library(
         "//src/v/config",
         "//src/v/ssx:when_all",
         "//src/v/ssx:work_queue",
+        "//src/v/utils:backoff_policy",
     ],
     visibility = ["//visibility:public"],
     deps = [
