@@ -19,7 +19,8 @@ from requests.exceptions import HTTPError
 from rptest.clients.admin.proto.redpanda.core.admin.v2 import features_pb2
 from rptest.clients.admin.v2 import Admin as AdminV2
 from rptest.clients.kafka_cli_tools import KafkaCliTools
-from rptest.clients.rpk import RpkTool
+from rptest.clients.rpk import RpkException, RpkTool
+from rptest.clients.types import TopicSpec
 from rptest.services.admin import Admin
 from rptest.services.cluster import cluster
 from rptest.services.redpanda import RESTART_LOG_ALLOW_LIST
@@ -1401,18 +1402,87 @@ class ManualFinalizationUpgradeTest(FeaturesTestBase):
         """Per-step perturbation for the v26.1 -> v26.2 unfinalized upgrade (the
         N=1 part of the 1 + N structure).
 
-        INTENTIONALLY EMPTY for now. As v26.2 development proceeds, fill this in
-        with operations that exercise the features GATED BY the unfinalized v26.2
-        upgrade -- behaviour that becomes available once the binaries are on
-        v26.2 but before finalization. The aim is to confirm those features
-        behave correctly (or are correctly unavailable) while unfinalized, and
-        that exercising them does not break a subsequent downgrade to v26.1.
+        Exercises the code paths gated by the v26.2 feature flags. While the
+        upgrade is unfinalized the active version is held at v26.1, so these
+        features are still unavailable and their gates are in force -- which is
+        what keeps a downgrade safe. Each feature's check is feature-specific
+        (see the helpers); the shared harness separately confirms the system
+        stays functional after the up/downgrade, and _verify_v26_2_features_working
+        confirms the features actually work once finalized.
 
-        `phase` tells you the current state: branch on it so v26.2-only
-        behaviour is driven only in the upgraded states ("...-upgraded-..."),
-        while the downgraded states ("...-downgraded") confirm v26.1 semantics
-        have returned."""
-        pass
+        Only runs on the v26.2 binary: on the rolled-back v26.1 binary these code
+        paths and config values do not exist, so there is nothing to exercise."""
+        if "upgraded" not in phase:
+            return
+        self._exercise_tiered_cloud_topics()
+        # The other two v26.2-gated features are not exercised by this
+        # single-cluster perturbation: shadow_link_sr_api_sync and
+        # batch_mirror_topic_status are both cluster-linking features
+        # (batch_mirror_topic_status additionally needs a second cluster).
+
+    def _exercise_tiered_cloud_topics(self):
+        """tiered_cloud_topics gate: creating a topic with storage mode
+        `tiered_cloud` is refused until the feature is active. Drive that
+        validator path while unfinalized and confirm the feature is unavailable
+        and the create is rejected. The topic is never created, so exercising
+        the gate cannot leave state that would block a downgrade."""
+        assert self._feature_state("tiered_cloud_topics") == "unavailable", (
+            "tiered_cloud_topics should be unavailable while the upgrade is unfinalized"
+        )
+        try:
+            RpkTool(self.redpanda).create_topic(
+                "perturb-tiered-cloud",
+                partitions=1,
+                config={
+                    TopicSpec.PROPERTY_STORAGE_MODE: TopicSpec.STORAGE_MODE_TIERED_CLOUD
+                },
+            )
+        except RpkException as e:
+            # Confirm the create failed via the storage-mode gate, not an
+            # unrelated rpk/controller error (timeout, UNAVAILABLE, controller
+            # not ready) that would otherwise read as a false "gate worked". The
+            # HEAD validator rejects with INVALID_CONFIG and this distinctive
+            # message; the create only ever runs on the HEAD binary, so the
+            # string is stable.
+            assert "Invalid storage mode" in str(e), (
+                f"tiered_cloud create failed, but not via the storage-mode gate: {e}"
+            )
+        else:
+            raise AssertionError(
+                "creating a tiered_cloud topic should be gated while unfinalized"
+            )
+
+    def _verify_tiered_cloud_topics_working(self):
+        """After finalize the active version has advanced past the feature's
+        require_version, so the gate opens: the feature moves from unavailable to
+        available (it is explicit_only, so it does not auto-activate) and can
+        then be enabled to active -- the simple signal that it now works.
+        (Creating an actual tiered_cloud topic additionally needs cloud storage,
+        which this test does not configure.)"""
+        wait_until(
+            lambda: self._feature_state("tiered_cloud_topics") == "available",
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg="tiered_cloud_topics did not become available after finalize",
+        )
+        self.admin.put_feature("tiered_cloud_topics", {"state": "active"})
+        wait_until(
+            lambda: self._feature_state("tiered_cloud_topics") == "active",
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg="tiered_cloud_topics did not activate after being enabled",
+        )
+
+    def _verify_v26_2_features_working(self):
+        """After the upgrade is finalized, confirm each v26.2 feature's gate has
+        opened and the feature actually works (simple per-feature predicates)."""
+        self._verify_tiered_cloud_topics_working()
+
+    def _feature_state(self, name):
+        for f in self.admin.get_features()["features"]:
+            if f["name"] == name:
+                return f["state"]
+        return None
 
     def _disable_auto_finalization(self):
         self.redpanda.set_cluster_config({"features_auto_finalization": False})
@@ -1707,6 +1777,10 @@ class ManualFinalizationUpgradeTest(FeaturesTestBase):
         )
         assert finalized.active_version == self.new_logical
         assert finalized.version_after_finalization == self.new_logical
+
+        # With the upgrade finalized, the v26.2 feature gates have opened:
+        # confirm the features actually work.
+        self._verify_v26_2_features_working()
 
     @cluster(
         num_nodes=3,
