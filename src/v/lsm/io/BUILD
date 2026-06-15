@@ -71,6 +71,31 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "chunked_remote_file_reader",
+    srcs = ["chunked_remote_file_reader.cc"],
+    hdrs = ["chunked_remote_file_reader.h"],
+    implementation_deps = [
+        ":file_io",
+        "//src/v/cloud_io:io_result",
+        "//src/v/container:chunked_vector",
+        "//src/v/lsm/core:exceptions",
+        "@fmt",
+    ],
+    deps = [
+        ":persistence",
+        "//src/v/base",
+        "//src/v/bytes:ioarray",
+        "//src/v/cloud_io:cache",
+        "//src/v/cloud_io:remote",
+        "//src/v/cloud_io:scheduler_types",
+        "//src/v/cloud_storage_clients",
+        "//src/v/container:chunked_hash_map",
+        "//src/v/utils:retry_chain_node",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "readahead_file_reader",
     srcs = ["readahead_file_reader.cc"],
     hdrs = ["readahead_file_reader.h"],
