@@ -538,7 +538,9 @@ void application::setup_public_metrics() {
        {"memory_free_memory", metrics::public_metrics_handle},
        {"io_queue_consumption", metrics::public_metrics_handle},
        {"io_queue_total_bytes", metrics::public_metrics_handle},
-       {"io_queue_disk_queue_length", metrics::public_metrics_handle}})
+       {"io_queue_disk_queue_length", metrics::public_metrics_handle},
+       {"network_bytes_received", metrics::public_metrics_handle},
+       {"network_bytes_sent", metrics::public_metrics_handle}})
       .get();
 
     _public_metrics.start().get();
