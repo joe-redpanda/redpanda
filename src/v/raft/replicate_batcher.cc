@@ -266,9 +266,16 @@ ss::future<> replicate_batcher::flush(
                 has_quorum_ack_requests
                   = has_quorum_ack_requests
                     || (n->get_consistency_level() == consistency_level::quorum_ack);
-                for (auto& b : batches) {
-                    b.set_term(term);
-                    data.push_back(std::move(b));
+                if (data.empty()) {
+                    data = std::move(batches);
+                    for (auto& b : data) {
+                        b.set_term(term);
+                    }
+                } else {
+                    for (auto& b : batches) {
+                        b.set_term(term);
+                        data.push_back(std::move(b));
+                    }
                 }
                 notifications.push_back(std::move(n));
             } else {
