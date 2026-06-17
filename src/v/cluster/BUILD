@@ -747,6 +747,19 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "data_policy",
+    hdrs = [
+        "data_policy.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/v/base",
+        "//src/v/reflection:adl",
+        "//src/v/serde",
+    ],
+)
+
+redpanda_cc_library(
     name = "types",
     srcs = [
         "types.cc",
@@ -763,6 +776,7 @@ redpanda_cc_library(
     deps = [
         ":cloud_metadata_cluster_manifest",
         ":cluster_link_errc",
+        ":data_policy",
         ":errc",
         ":features",
         ":fwd",
@@ -793,7 +807,6 @@ redpanda_cc_library(
         "//src/v/serde:vector",
         "//src/v/storage",
         "//src/v/utils:tristate",
-        "//src/v/v8_engine",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:node_hash_map",
         "@fmt",
@@ -2449,6 +2462,7 @@ redpanda_cc_library(
         "//src/v/net:tls",
         "//src/v/net:types",
         "//src/v/pandaproxy/schema_registry:config",
+        "//src/v/pandaproxy/schema_registry:fwd",
         "//src/v/pandaproxy/schema_registry:subject_name_strategy",
         "//src/v/pandaproxy/schema_registry:types",
         "//src/v/raft",
@@ -2521,7 +2535,6 @@ redpanda_cc_library(
         "//src/v/utils:unresolved_address",
         "//src/v/utils:uuid",
         "//src/v/utils:waiter_queue",
-        "//src/v/v8_engine",
         "//src/v/version",
         "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
