@@ -783,6 +783,7 @@ redpanda_cc_btest(
         "//src/v/cluster:client_quota_store",
         "//src/v/config",
         "//src/v/kafka/server",
+        "//src/v/test_utils:metrics",
         "//src/v/test_utils:seastar_boost",
         "@boost//:test",
         "@seastar",

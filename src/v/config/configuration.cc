@@ -1401,6 +1401,15 @@ configuration::configuration()
       "Fail-safe maximum throttle delay on Kafka requests.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       30'000ms)
+  , kafka_per_entity_quota_metrics(
+      *this,
+      "kafka_per_entity_quota_metrics",
+      "Enable per-entity labels on quota throttle time and throughput "
+      "metrics. Metric series are registered only when an entity is actively "
+      "being throttled and deregistered after the quota GC window. Opt-in "
+      "due to cardinality and performance implications.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::user},
+      false)
   , kafka_max_bytes_per_fetch(
       *this,
       "kafka_max_bytes_per_fetch",

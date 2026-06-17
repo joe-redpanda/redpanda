@@ -291,6 +291,7 @@ struct configuration final : public config_store {
     property<std::chrono::milliseconds> kvstore_flush_interval;
     property<size_t> kvstore_max_segment_size;
     property<std::chrono::milliseconds> max_kafka_throttle_delay_ms;
+    property<bool> kafka_per_entity_quota_metrics;
     property<size_t> kafka_max_bytes_per_fetch;
     property<std::chrono::milliseconds> raft_io_timeout_ms;
     property<std::chrono::milliseconds> join_retry_timeout_ms;
