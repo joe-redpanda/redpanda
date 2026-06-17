@@ -176,4 +176,24 @@ TEST(test_model, schema_registry_sync_config_legacy_skips_v1_api_mode) {
 
     EXPECT_FALSE(legacy.sync_schema_registry_topic_mode.has_value());
 }
+
+TEST(test_model, role_sync_config_serde_round_trip) {
+    link_configuration cfg;
+    cfg.role_sync_cfg.is_enabled = enabled_t::no;
+    cfg.role_sync_cfg.task_interval = std::chrono::seconds{45};
+    cfg.role_sync_cfg.role_name_filters.push_back(
+      resource_name_filter_pattern{
+        .pattern_type = filter_pattern_type::prefix,
+        .filter = filter_type::include,
+        .pattern = "analytics-"});
+
+    auto buf = serde::to_iobuf(cfg.copy());
+    auto decoded = serde::from_iobuf<link_configuration>(std::move(buf));
+
+    EXPECT_EQ(decoded, cfg);
+    ASSERT_EQ(decoded.role_sync_cfg.role_name_filters.size(), 1);
+    EXPECT_EQ(decoded.role_sync_cfg.is_enabled, enabled_t::no);
+    EXPECT_EQ(
+      decoded.role_sync_cfg.get_task_interval(), std::chrono::seconds{45});
+}
 } // namespace cluster_link::model::tests
