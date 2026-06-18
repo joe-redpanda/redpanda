@@ -31,14 +31,14 @@ void check_all_types(kafka::type_list<Ts...>) {
 }
 
 BOOST_AUTO_TEST_CASE(handler_all_types) {
-    check_all_types(kafka::request_types{});
+    check_all_types(kafka::handler_request_types{});
 }
 
 BOOST_AUTO_TEST_CASE(handler_handler_for_key) {
     // key too low
     BOOST_CHECK(!kafka::handler_for_key(kafka::api_key(-1)).has_value());
     // key too high
-    const auto max_key = kafka::max_api_key(kafka::request_types{});
+    const auto max_key = kafka::max_api_key(kafka::handler_request_types{});
     BOOST_CHECK(
       !kafka::handler_for_key(kafka::api_key(max_key + 1)).has_value());
     // last key should be present
