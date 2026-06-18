@@ -1,4 +1,4 @@
-load("//bazel:test.bzl", "redpanda_cc_btest")
+load("//bazel:test.bzl", "redpanda_cc_btest", "redpanda_cc_gtest")
 load("//src/v/kafka/protocol:protocol.bzl", "MESSAGE_TYPES")
 
 redpanda_cc_btest(
@@ -103,5 +103,20 @@ redpanda_cc_btest(
         "@boost//:test",
         "@seastar",
         "@seastar//:testing",
+    ],
+)
+
+redpanda_cc_gtest(
+    name = "describe_redpanda_roles_test",
+    timeout = "short",
+    srcs = [
+        "describe_redpanda_roles_test.cc",
+    ],
+    deps = [
+        "//src/v/bytes:iobuf",
+        "//src/v/kafka/protocol",
+        "//src/v/kafka/protocol:describe_redpanda_roles",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
     ],
 )
