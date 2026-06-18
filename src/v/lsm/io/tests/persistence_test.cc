@@ -68,7 +68,8 @@ TEST_P(PersistenceTest, CanWriteAndReadAFile) {
         w->append(iobuf::from("world")).get();
     }
     {
-        auto maybe_r = persistence->open_random_access_reader({}, 0).get();
+        auto maybe_r
+          = persistence->open_random_access_reader({}, /*file_size=*/10).get();
         ASSERT_TRUE(bool(maybe_r));
         auto r = std::move(*maybe_r);
         auto _ = ss::defer([&r] { r->close().get(); });
@@ -114,7 +115,8 @@ TEST_P(PersistenceTest, DuplicateWritePreservesOriginal) {
     } catch (...) {
         // Expected for backends that use O_EXCL.
     }
-    auto maybe_r = persistence->open_random_access_reader({}, 0).get();
+    auto maybe_r
+      = persistence->open_random_access_reader({}, /*file_size=*/13).get();
     ASSERT_TRUE(bool(maybe_r));
     auto r = std::move(*maybe_r);
     auto _ = ss::defer([&r] { r->close().get(); });
@@ -124,7 +126,10 @@ TEST_P(PersistenceTest, DuplicateWritePreservesOriginal) {
 }
 
 TEST_P(PersistenceTest, ReadNonExisting) {
-    auto maybe_r = persistence->open_random_access_reader({}, 0).get();
+    // A nonzero size is required by backends that probe the object on open;
+    // the file does not exist, so the result is still nullopt.
+    auto maybe_r
+      = persistence->open_random_access_reader({}, /*file_size=*/16).get();
     EXPECT_FALSE(bool(maybe_r));
 }
 
@@ -156,7 +161,7 @@ TEST_P(PersistenceTest, RandomAccessReaderComprehensive) {
     }
 
     // Open reader for all tests
-    auto maybe_r = persistence->open_random_access_reader({}, 0).get();
+    auto maybe_r = persistence->open_random_access_reader({}, file_size).get();
     ASSERT_TRUE(bool(maybe_r));
     auto r = std::move(*maybe_r);
 
@@ -359,7 +364,8 @@ INSTANTIATE_TEST_SUITE_P(
           &cache->local(),
           &sr->remote.local(),
           fixture->bucket_name,
-          cloud_storage_clients::object_key("test-prefix"));
+          cloud_storage_clients::object_key("test-prefix"),
+          config::mock_binding<size_t>(1_MiB));
 
         co_return std::make_unique<mock_cloud_cache_data_persistence>(
           std::move(fixture),

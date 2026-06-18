@@ -252,7 +252,9 @@ public:
                           &test_cache.local(),
                           &sr->remote.local(),
                           bucket_name,
-                          domain_prefix)
+                          domain_prefix,
+                          config::shard_local_cfg()
+                            .cloud_topics_metastore_sst_chunk_size.bind())
                           .get(),
                 .metadata = lsm::io::open_cloud_metadata_persistence(
                               &sr->remote.local(), bucket_name, domain_prefix)

@@ -52,9 +52,9 @@ redpanda_cc_library(
     srcs = ["cloud_cache_persistence.cc"],
     hdrs = ["cloud_cache_persistence.h"],
     implementation_deps = [
+        ":chunked_remote_file_reader",
         ":file_io",
         "//src/v/cloud_io:io_result",
-        "//src/v/config",
         "//src/v/lsm/core:exceptions",
         "//src/v/lsm/core/internal:files",
         "//src/v/ssx:future_util",
@@ -66,6 +66,7 @@ redpanda_cc_library(
         "//src/v/cloud_io:cache",
         "//src/v/cloud_io:remote",
         "//src/v/cloud_storage_clients",
+        "//src/v/config",
         "@seastar",
     ],
 )

@@ -232,16 +232,22 @@ void flush_as_manifest(
   term_state_update_t new_terms) {
     auto domain_prefix = cloud_storage_clients::object_key{
       domain_cloud_prefix(uuid)};
-    auto cloud_db = lsm::database::open(
-                      {.database_epoch = db_epoch},
-                      lsm::io::persistence{
-                        .data = lsm::io::open_cloud_cache_data_persistence(
-                                  cache, remote, bucket, domain_prefix)
-                                  .get(),
-                        .metadata = lsm::io::open_cloud_metadata_persistence(
-                                      remote, bucket, domain_prefix)
-                                      .get()})
-                      .get();
+    auto cloud_db
+      = lsm::database::open(
+          {.database_epoch = db_epoch},
+          lsm::io::persistence{
+            .data = lsm::io::open_cloud_cache_data_persistence(
+                      cache,
+                      remote,
+                      bucket,
+                      domain_prefix,
+                      config::shard_local_cfg()
+                        .cloud_topics_metastore_sst_chunk_size.bind())
+                      .get(),
+            .metadata = lsm::io::open_cloud_metadata_persistence(
+                          remote, bucket, domain_prefix)
+                          .get()})
+          .get();
 
     // Pre-register the object IDs before building the add_objects rows.
     preregister_objects_db_update prereg_update;
