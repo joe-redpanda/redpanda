@@ -10,6 +10,7 @@
  */
 #pragma once
 
+#include "kafka/protocol/type_list.h"
 #include "kafka/server/handlers/add_offsets_to_txn.h"
 #include "kafka/server/handlers/add_partitions_to_txn.h"
 #include "kafka/server/handlers/alter_client_quotas.h"
@@ -57,8 +58,6 @@
 #include "kafka/server/handlers/txn_offset_commit.h"
 
 namespace kafka {
-template<typename... Ts>
-struct type_list {};
 
 template<typename... Requests>
 requires(KafkaApiHandler<Requests>, ...)

@@ -55,13 +55,11 @@
 #include "kafka/protocol/schemata/sasl_handshake_request.h"
 #include "kafka/protocol/schemata/sync_group_request.h"
 #include "kafka/protocol/schemata/txn_offset_commit_request.h"
+#include "kafka/protocol/type_list.h"
 
 #include <algorithm>
 
 namespace kafka {
-
-template<typename... Ts>
-struct type_list {};
 
 template<typename... Requests>
 using make_request_types = type_list<Requests...>;
