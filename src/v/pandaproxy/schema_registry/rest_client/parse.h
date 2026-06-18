@@ -46,4 +46,20 @@ struct parse_error {
 ss::future<std::expected<chunked_vector<context_subject>, parse_error>>
 parse_subjects(iobuf body, qualified_subjects_enabled qualified);
 
+/// Parse the body of a `GET /subjects/{subject}/versions` response into a list
+/// of versions.
+///
+/// The body must be exactly a JSON array of integers, each a version number in
+/// [1, INT32_MAX]; a non-array, a non-integer or out-of-range element, or any
+/// trailing content after the array yields a parse_error (same strict, fixed
+/// shape as parse_subjects).
+///
+/// Negative values are rejected. The Schema Registry `deletedAsNegative` mode
+/// encodes soft-deleted versions as negative numbers, but this client does not
+/// request that mode; modeling per-version deletion state is future work to add
+/// only if a client feature needs it. The function does not throw: malformed
+/// input is reported via the returned std::expected.
+ss::future<std::expected<chunked_vector<schema_version>, parse_error>>
+parse_subject_versions(iobuf body);
+
 } // namespace pandaproxy::schema_registry::rest_client

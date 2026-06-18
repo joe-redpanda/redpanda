@@ -18,6 +18,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <string_view>
 #include <vector>
 
@@ -168,6 +170,114 @@ TEST_CORO(parse_subjects_test, round_trip) {
 
     auto res = co_await parse_subjects(
       std::move(body), qualified_subjects_enabled::yes);
+    ASSERT_TRUE_CORO(res.has_value());
+    const auto& s = res.value();
+    ASSERT_EQ_CORO(s.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        SCOPED_TRACE(i);
+        ASSERT_EQ_CORO(s[i], expected[i]);
+    }
+}
+
+TEST_CORO(parse_subject_versions_test, basic) {
+    auto res = co_await parse_subject_versions(iobuf::from("[1, 2, 3]"));
+    ASSERT_TRUE_CORO(res.has_value());
+    const auto& s = res.value();
+    ASSERT_EQ_CORO(s.size(), size_t{3});
+    ASSERT_EQ_CORO(s[0], schema_version{1});
+    ASSERT_EQ_CORO(s[1], schema_version{2});
+    ASSERT_EQ_CORO(s[2], schema_version{3});
+}
+
+TEST_CORO(parse_subject_versions_test, empty_array) {
+    auto res = co_await parse_subject_versions(iobuf::from("[]"));
+    ASSERT_TRUE_CORO(res.has_value());
+    ASSERT_TRUE_CORO(res.value().empty());
+}
+
+TEST_CORO(parse_subject_versions_test, gaps_and_single) {
+    // Version numbers need not be contiguous; deleted versions leave gaps.
+    auto res = co_await parse_subject_versions(iobuf::from("[1, 3]"));
+    ASSERT_TRUE_CORO(res.has_value());
+    ASSERT_EQ_CORO(res.value().size(), size_t{2});
+    ASSERT_EQ_CORO(res.value()[0], schema_version{1});
+    ASSERT_EQ_CORO(res.value()[1], schema_version{3});
+
+    auto one = co_await parse_subject_versions(iobuf::from("[1]"));
+    ASSERT_TRUE_CORO(one.has_value());
+    ASSERT_EQ_CORO(one.value().size(), size_t{1});
+    ASSERT_EQ_CORO(one.value()[0], schema_version{1});
+}
+
+TEST_CORO(parse_subject_versions_test, rejects_invalid_elements) {
+    for (std::string_view body :
+         {R"([-2])",         // negative (deletedAsNegative not supported)
+          R"([1, -2, 3])",   // mixed signs
+          R"([0])",          // zero never occurs
+          R"([2147483648])", // > INT32_MAX
+          R"([1.5])",        // non-integer (double)
+          R"([1e2])",        // scientific notation -> double
+          R"(["1"])",        // string
+          R"([null])",
+          R"([{}])",
+          R"([[1]])"}) {
+        SCOPED_TRACE(body);
+        auto res = co_await parse_subject_versions(iobuf::from(body));
+        ASSERT_FALSE_CORO(res.has_value());
+    }
+}
+
+TEST_CORO(parse_subject_versions_test, trailing_content_is_error) {
+    for (std::string_view body : {R"([1] 2)", R"([1][])", R"([1]garbage)"}) {
+        SCOPED_TRACE(body);
+        auto res = co_await parse_subject_versions(iobuf::from(body));
+        ASSERT_FALSE_CORO(res.has_value());
+    }
+}
+
+TEST_CORO(parse_subject_versions_test, trailing_whitespace_is_ok) {
+    auto res = co_await parse_subject_versions(iobuf::from("[1]  \n\t "));
+    ASSERT_TRUE_CORO(res.has_value());
+    ASSERT_EQ_CORO(res.value().size(), size_t{1});
+}
+
+TEST_CORO(parse_subject_versions_test, malformed_or_truncated_is_error) {
+    for (std::string_view body : {"", "[", "[1", "[1,", "not json", "{}"}) {
+        SCOPED_TRACE(body);
+        auto res = co_await parse_subject_versions(iobuf::from(body));
+        ASSERT_FALSE_CORO(res.has_value());
+    }
+}
+
+TEST_CORO(parse_subject_versions_test, fragmented_input) {
+    // One byte per fragment: multi-digit numbers span fragment boundaries.
+    constexpr std::string_view body = "[1, 22, 333]";
+    auto res = co_await parse_subject_versions(fragmented_iobuf(body, 1));
+    ASSERT_TRUE_CORO(res.has_value());
+    const auto& s = res.value();
+    ASSERT_EQ_CORO(s.size(), size_t{3});
+    ASSERT_EQ_CORO(s[0], schema_version{1});
+    ASSERT_EQ_CORO(s[1], schema_version{22});
+    ASSERT_EQ_CORO(s[2], schema_version{333});
+}
+
+TEST_CORO(parse_subject_versions_test, round_trip) {
+    std::vector<schema_version> expected{
+      schema_version{1},
+      schema_version{2},
+      schema_version{5},
+      schema_version{std::numeric_limits<int32_t>::max()},
+    };
+
+    iobuf body;
+    body.append("[", 1);
+    for (size_t i = 0; i < expected.size(); ++i) {
+        auto elem = ssx::sformat("{}{}", i == 0 ? "" : ",", expected[i]());
+        body.append(elem.data(), elem.size());
+    }
+    body.append("]", 1);
+
+    auto res = co_await parse_subject_versions(std::move(body));
     ASSERT_TRUE_CORO(res.has_value());
     const auto& s = res.value();
     ASSERT_EQ_CORO(s.size(), expected.size());
