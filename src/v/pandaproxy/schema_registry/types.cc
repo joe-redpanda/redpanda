@@ -117,8 +117,12 @@ context_subject context_subject::from_string(
 
 context_subject_reference
 context_subject_reference::from_string(std::string_view input) {
-    auto [sub, qualified] = parse_subject(
-      input, cluster_qualified_subjects_enabled());
+    return from_string(input, cluster_qualified_subjects_enabled());
+}
+
+context_subject_reference context_subject_reference::from_string(
+  std::string_view input, qualified_subjects_enabled enabled) {
+    auto [sub, qualified] = parse_subject(input, enabled);
     return context_subject_reference{
       .sub = std::move(sub),
       .qualified = qualified,

@@ -286,8 +286,17 @@ void validate_context(const context& ctx);
 /// A reference subject that may be qualified or unqualified.
 /// Unqualified references are resolved relative to a parent schema's context.
 struct context_subject_reference {
-    /// Parse from a string while detecting qualification status
+    /// Parse from a string while detecting qualification status. Whether the
+    /// qualified form is honored is read from this node's cluster config
+    /// (schema_registry_enable_qualified_subjects).
     static context_subject_reference from_string(std::string_view input);
+
+    /// As above, but the caller supplies whether qualified parsing is enabled
+    /// instead of reading cluster config. Use from code that must not depend on
+    /// this node's cluster config, e.g. a client parsing the responses of a
+    /// remote schema registry.
+    static context_subject_reference
+    from_string(std::string_view input, qualified_subjects_enabled enabled);
 
     /// Helper for testing to create a simple unqualified reference
     static context_subject_reference unqualified(std::string_view input) {

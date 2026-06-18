@@ -259,7 +259,13 @@ TEST_F(ContextSubjectTest, ValidateSubjectConfigModeFlag) {
       exception);
 }
 
-class ContextSubjectReferenceTest : public ::testing::Test {};
+class ContextSubjectReferenceTest : public ::testing::Test {
+protected:
+    void TearDown() override {
+        config::shard_local_cfg()
+          .schema_registry_enable_qualified_subjects.reset();
+    }
+};
 
 TEST_F(ContextSubjectReferenceTest, FromString) {
     // Unqualified subjects: qualified=false
@@ -318,6 +324,27 @@ TEST_F(ContextSubjectReferenceTest, ToStringRoundTrip) {
         auto got = context_subject_reference::from_string(input).to_string();
         EXPECT_EQ(got, input);
     }
+}
+
+TEST_F(
+  ContextSubjectReferenceTest, FromStringExplicitPolicyIgnoresClusterConfig) {
+    // The two-arg overload honors the caller-supplied policy regardless of the
+    // cluster config flag: set the global flag opposite to each explicit policy
+    // and prove the argument wins.
+    config::shard_local_cfg()
+      .schema_registry_enable_qualified_subjects.set_value(false);
+    auto qual = context_subject_reference::from_string(
+      ":.ctx:sub", qualified_subjects_enabled::yes);
+    EXPECT_EQ(qual.qualified, is_qualified::yes);
+    EXPECT_EQ(qual.sub, (context_subject{context{".ctx"}, subject{"sub"}}));
+
+    config::shard_local_cfg()
+      .schema_registry_enable_qualified_subjects.set_value(true);
+    auto unqual = context_subject_reference::from_string(
+      ":.ctx:sub", qualified_subjects_enabled::no);
+    EXPECT_EQ(unqual.qualified, is_qualified::no);
+    EXPECT_EQ(
+      unqual.sub, (context_subject{default_context, subject{":.ctx:sub"}}));
 }
 
 } // namespace pandaproxy::schema_registry
