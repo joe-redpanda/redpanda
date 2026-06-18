@@ -147,3 +147,18 @@ redpanda_cc_gtest(
         "@googletest//:gtest",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "flex_versions_test",
+    timeout = "short",
+    srcs = [
+        "flex_versions_test.cc",
+    ],
+    deps = [
+        "//src/v/kafka/protocol",
+        "//src/v/kafka/protocol:flex_versions",
+        "//src/v/kafka/protocol:messages",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+    ],
+)
