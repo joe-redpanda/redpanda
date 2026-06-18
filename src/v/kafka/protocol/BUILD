@@ -28,6 +28,7 @@ redpanda_cc_library(
     ],
     hdrs = [
         "api_key_indexed_array.h",
+        "api_key_table.h",
         "batch_consumer.h",
         "batch_reader.h",
         "errors.h",

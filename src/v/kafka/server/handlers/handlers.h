@@ -32,6 +32,7 @@
 #include "kafka/server/handlers/describe_groups.h"
 #include "kafka/server/handlers/describe_log_dirs.h"
 #include "kafka/server/handlers/describe_producers.h"
+#include "kafka/server/handlers/describe_redpanda_roles.h"
 #include "kafka/server/handlers/describe_transactions.h"
 #include "kafka/server/handlers/describe_user_scram_credentials.h"
 #include "kafka/server/handlers/end_txn.h"
@@ -115,6 +116,11 @@ using handler_request_types = make_handler_request_types<
   describe_cluster_handler,
   describe_user_scram_credentials_handler,
   alter_user_scram_credentials_handler>;
+
+// Handler counterparts of kafka::redpanda_request_types (the reserved-range
+// APIs). Feeds the reserved region of the dispatch LUT.
+using redpanda_handler_request_types
+  = make_handler_request_types<describe_redpanda_roles_handler>;
 
 template<typename... RequestTypes>
 static constexpr size_t max_api_key(type_list<RequestTypes...>) {

@@ -122,6 +122,20 @@ redpanda_cc_gtest(
 )
 
 redpanda_cc_gtest(
+    name = "api_key_table_test",
+    timeout = "short",
+    srcs = [
+        "api_key_table_test.cc",
+    ],
+    deps = [
+        "//src/v/kafka/protocol",
+        "//src/v/kafka/protocol:messages",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+    ],
+)
+
+redpanda_cc_gtest(
     name = "api_key_indexed_array_test",
     timeout = "short",
     srcs = [
