@@ -27,6 +27,7 @@ redpanda_cc_library(
         "types.cc",
     ],
     hdrs = [
+        "api_key_indexed_array.h",
         "batch_consumer.h",
         "batch_reader.h",
         "errors.h",
