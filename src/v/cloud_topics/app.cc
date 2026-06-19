@@ -185,8 +185,12 @@ ss::future<> app::construct(
 
     co_await construct_service(
       l0_notifier,
+      self,
+      leaders_table,
+      metadata_cache,
       &controller->get_shard_table(),
-      &controller->get_partition_manager());
+      &controller->get_partition_manager(),
+      connection_cache);
 
     co_await construct_service(
       topic_manifest_upload_mgr, std::ref(*remote), bucket);
@@ -427,6 +431,10 @@ ss::sharded<level_zero_gc>* app::get_level_zero_gc() { return &l0_gc; }
 
 cluster_services& app::get_local_cluster_services() {
     return std::ref(cluster_services.local());
+}
+
+ss::sharded<level_zero_notifier>* app::get_sharded_l0_notifier() {
+    return &l0_notifier;
 }
 
 } // namespace cloud_topics

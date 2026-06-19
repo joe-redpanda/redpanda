@@ -92,6 +92,7 @@ public:
     l1::compaction_scheduler* get_compaction_scheduler();
     ss::sharded<level_zero_gc_t<ss::lowres_clock>>* get_level_zero_gc();
     cluster_services& get_local_cluster_services();
+    ss::sharded<level_zero_notifier>* get_sharded_l0_notifier();
 
     // TODO: add 'get_control_plane_api' etc
 
