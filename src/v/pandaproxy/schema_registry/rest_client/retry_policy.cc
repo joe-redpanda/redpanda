@@ -13,7 +13,7 @@
 
 #include "bytes/iobuf.h"
 #include "net/connection.h"
-#include "pandaproxy/logger.h"
+#include "pandaproxy/schema_registry/rest_client/logger.h"
 
 #include <exception>
 
@@ -90,9 +90,9 @@ default_retry_policy::should_retry(http::downloaded_response response) const {
     // when 400 bytes is not enough to diagnose a failure. Capped at the
     // linearize limit since linearize_to_string() throws above it; share()
     // clamps to the available size, so this is safe for any body size.
-    if (srlog.is_enabled(ss::log_level::trace)) {
+    if (srclog.is_enabled(ss::log_level::trace)) {
         vlog(
-          srlog.trace,
+          srclog.trace,
           "schema registry error response (status={}): {}",
           status,
           response.body.share(0, iobuf::max_linearize_size)

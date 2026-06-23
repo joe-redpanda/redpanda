@@ -13,7 +13,7 @@
 #include "bytes/iobuf.h"
 #include "http/request_builder.h"
 #include "http/utils.h"
-#include "pandaproxy/logger.h"
+#include "pandaproxy/schema_registry/rest_client/logger.h"
 #include "pandaproxy/schema_registry/rest_client/parse.h"
 #include "ssx/future-util.h"
 
@@ -168,13 +168,13 @@ ss::future<std::expected<iobuf, domain_error>> client::perform_request(
             auto ex = std::current_exception();
             auto msg = fmt::format("{}", ex);
             if (ssx::is_shutdown_exception(ex)) {
-                vlog(srlog.debug, "shutting down during request: {}", msg);
+                vlog(srclog.debug, "shutting down during request: {}", msg);
                 co_return std::unexpected(domain_error{aborted_error{msg}});
             }
             // We only expect shutdown exceptions here; treat anything else
             // conservatively as exhausted rather than aborted.
             vlog(
-              srlog.warn,
+              srclog.warn,
               "schema registry request gave up [{}]: {}",
               request_target,
               msg);
@@ -216,7 +216,7 @@ ss::future<std::expected<iobuf, domain_error>> client::perform_request(
         }
         if (!is_retriable(error.kind)) {
             vlog(
-              srlog.warn,
+              srclog.warn,
               "schema registry request failed [{}]: {}",
               request_target,
               error.err);
@@ -225,7 +225,7 @@ ss::future<std::expected<iobuf, domain_error>> client::perform_request(
         }
 
         vlog(
-          srlog.trace,
+          srclog.trace,
           "schema registry request failed [{}], retrying in {}ms: {}",
           request_target,
           std::chrono::duration_cast<std::chrono::milliseconds>(permit.delay)
@@ -238,7 +238,7 @@ ss::future<std::expected<iobuf, domain_error>> client::perform_request(
         if (sleep_fut.failed()) {
             auto msg = fmt::format(
               "exception during retry sleep: {}", sleep_fut.get_exception());
-            vlog(srlog.debug, "{}", msg);
+            vlog(srclog.debug, "{}", msg);
             co_return std::unexpected(domain_error{aborted_error{msg}});
         }
     }

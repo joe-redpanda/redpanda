@@ -40,6 +40,17 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "logger",
+    hdrs = [
+        "logger.h",
+    ],
+    deps = [
+        "//src/v/base",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
     name = "retry_policy",
     srcs = [
         "retry_policy.cc",
@@ -48,8 +59,8 @@ redpanda_cc_library(
         "retry_policy.h",
     ],
     implementation_deps = [
+        ":logger",
         "//src/v/bytes:iobuf",
-        "//src/v/pandaproxy:logger",
     ],
     deps = [
         ":error",
@@ -79,9 +90,9 @@ redpanda_cc_library(
         "client.h",
     ],
     implementation_deps = [
+        ":logger",
         "//src/v/http:request_builder",
         "//src/v/http:utils",
-        "//src/v/pandaproxy:logger",
         "//src/v/ssx:future_util",
         "@boost//:beast",
     ],
