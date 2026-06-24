@@ -1037,7 +1037,18 @@ class ConsumerGroupTest(RedpandaTest):
             hwm_by_tp = {}
             for s in metrics["redpanda_kafka_max_offset"].samples:
                 if s.labels["redpanda_topic"] in topics:
-                    key = tuple((k, v) for k, v in s.labels.items() if k != "node")
+                    # Group by partition identity only. Exclude "node" and
+                    # "shard": redpanda_kafka_max_offset is emitted per replica
+                    # and carries a per-shard "shard" label, and each broker
+                    # assigns a partition to a shard independently, so a single
+                    # partition's replicas otherwise spread across distinct
+                    # (node, shard) pairs and inflate the count past
+                    # partition_count.
+                    key = tuple(
+                        (k, v)
+                        for k, v in s.labels.items()
+                        if k not in ("node", "shard")
+                    )
                     hwm_by_tp.setdefault(key, []).append(s.value)
             return [max(hwm) for hwm in hwm_by_tp.values()]
 
