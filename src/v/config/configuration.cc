@@ -5021,6 +5021,35 @@ configuration::configuration()
       "behind and writes are being throttled.",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
       5min)
+  , cloud_topics_metastore_block_cache_size(
+      *this,
+      "cloud_topics_metastore_block_cache_size",
+      "Size in bytes of the per-database uncompressed-block cache used by the "
+      "L1 metastore LSM database. Only takes effect when an LSM database is "
+      "opened (broker restart or metastore partition leadership transfer).",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      10_MiB,
+      {.min = 1_MiB, .max = 64_GiB})
+  , cloud_topics_metastore_write_buffer_size(
+      *this,
+      "cloud_topics_metastore_write_buffer_size",
+      "Size in bytes of the memtable for the L1 metastore LSM database. Also "
+      "parameterizes per-level target SST file sizes (each level is sized "
+      "proportionally to this value). Only takes effect when an LSM database "
+      "is opened (broker restart or metastore partition leadership transfer).",
+      {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
+      16_MiB,
+      {.min = 1_MiB, .max = 1_GiB})
+  , cloud_topics_metastore_max_pre_open_fibers(
+      *this,
+      "cloud_topics_metastore_max_pre_open_fibers",
+      "If non-zero, the number of fibers used to pre-open every SST file in "
+      "the L1 metastore LSM database at open time (broker restart or "
+      "partition leadership transfer), populating caches before the first "
+      "read. Set to 0 to open SSTs lazily.",
+      {.needs_restart = needs_restart::yes, .visibility = visibility::tunable},
+      10,
+      {.min = 0, .max = 1024})
   , cloud_topics_parallel_fetch_enabled(
       *this,
       "cloud_topics_parallel_fetch_enabled",

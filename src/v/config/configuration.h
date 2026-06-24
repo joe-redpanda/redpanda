@@ -848,6 +848,9 @@ public:
       cloud_topics_metastore_replication_timeout_ms;
     property<std::chrono::milliseconds>
       cloud_topics_metastore_lsm_apply_timeout_ms;
+    bounded_property<size_t> cloud_topics_metastore_block_cache_size;
+    bounded_property<size_t> cloud_topics_metastore_write_buffer_size;
+    bounded_property<uint32_t> cloud_topics_metastore_max_pre_open_fibers;
 
     property<bool> cloud_topics_parallel_fetch_enabled;
 
