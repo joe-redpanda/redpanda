@@ -133,6 +133,7 @@ public:
           std::make_unique<test_data_writer_factory>(false),
           schema_mgr,
           type_resolver,
+          bin_key_resolver,
           translator,
           t_creator,
           model::iceberg_invalid_record_action::dlq_table,
@@ -255,6 +256,7 @@ public:
     features::feature_table features;
     catalog_schema_manager schema_mgr;
     record_schema_resolver type_resolver;
+    binary_type_resolver bin_key_resolver;
     direct_table_creator t_creator;
     std::map<model::ntp, ss::lw_shared_ptr<translation_probe>> probes;
     ss::abort_source as;
@@ -600,6 +602,7 @@ TEST_F(RecordMultiplexerTest, TestRecordTimestamp) {
       topic_rev,
       std::make_unique<test_data_writer_factory>(false),
       schema_mgr,
+      kv_resolver,
       kv_resolver,
       kv_translator,
       table_creator,

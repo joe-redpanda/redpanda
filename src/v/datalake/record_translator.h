@@ -31,9 +31,17 @@ struct record_type {
 /// Translates Kafka records into Iceberg rows. Key, value, and header handling
 /// are each driven by the section configs baked in at construction time:
 ///
+/// - key_cfg.mode binary:  key stored as a raw binary blob in the redpanda
+///                         system struct.
+/// - key_cfg.mode schema:  key is schema-decoded; the key field in the
+///                         redpanda system struct is replaced with the schema
+///                         type.
 /// - val_cfg.mode binary:  value stored as a raw binary "value" blob column.
 /// - val_cfg.mode schema:  value is schema-decoded and its fields are promoted
 ///                         to top-level columns.
+///
+/// The resolved types (key_type, val_type) passed at call time are the runtime
+/// fulfillment of the declared config. Mismatches are treated as errors.
 class record_translator {
 public:
     enum class errc {
@@ -59,13 +67,16 @@ public:
       , _val_cfg(val_cfg)
       , _headers_cfg(headers_cfg) {}
 
-    record_type build_type(std::optional<shared_resolved_type_t> val_type);
+    record_type build_type(
+      std::optional<shared_resolved_type_t> key_type,
+      std::optional<shared_resolved_type_t> val_type);
 
     ss::future<checked<iceberg::struct_value, errc>> translate_data(
       model::partition_id pid,
       kafka::offset o,
-      std::optional<iobuf> key,
-      const std::optional<shared_resolved_type_t>& val_type,
+      std::optional<shared_resolved_type_t> key_type,
+      std::optional<iobuf> parsable_key,
+      std::optional<shared_resolved_type_t> val_type,
       std::optional<iobuf> parsable_val,
       model::timestamp ts,
       model::timestamp_type ts_t,

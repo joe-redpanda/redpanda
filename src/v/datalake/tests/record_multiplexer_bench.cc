@@ -555,6 +555,7 @@ private:
     datalake::chunked_resolved_type_cache _resolved_type_cache;
     datalake::catalog_schema_manager _schema_mgr;
     datalake::record_schema_resolver _type_resolver;
+    datalake::binary_type_resolver _key_type_resolver;
     datalake::tests::record_generator _record_gen;
     // Configured to match record_schema_resolver (schema_id_prefix val mode).
     datalake::record_translator _translator{
@@ -571,6 +572,7 @@ private:
           std::make_unique<datalake::test_serde_parquet_writer_factory>(),
           _schema_mgr,
           _type_resolver,
+          _key_type_resolver,
           _translator,
           _table_creator,
           model::iceberg_invalid_record_action::dlq_table,

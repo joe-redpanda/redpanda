@@ -441,6 +441,16 @@ struct coordinator::main_table_schema_provider
             co_return errc::failed;
         }
 
+        std::optional<shared_resolved_type_t> key_type;
+        if (comps.key_identifier) {
+            auto type_res = co_await parent.type_resolver_.resolve_identifier(
+              comps.key_identifier.value(), ctx_);
+            if (type_res.has_error()) {
+                co_return errc::failed;
+            }
+            key_type = std::move(type_res.value());
+        }
+
         std::optional<shared_resolved_type_t> val_type;
         if (comps.val_identifier) {
             auto type_res = co_await parent.type_resolver_.resolve_identifier(
@@ -453,7 +463,7 @@ struct coordinator::main_table_schema_provider
 
         auto record_type
           = record_translator{mode.key(), mode.value(), mode.headers()}
-              .build_type(std::move(val_type));
+              .build_type(std::move(key_type), std::move(val_type));
         co_return std::move(record_type.type);
     }
 
@@ -522,7 +532,7 @@ struct coordinator::dlq_table_schema_provider
             co_return errc::failed;
         }
         co_return record_translator{{}, {}, mode.headers()}
-          .build_type(std::nullopt)
+          .build_type(std::nullopt, std::nullopt)
           .type;
     }
 
