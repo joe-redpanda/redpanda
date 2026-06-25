@@ -71,10 +71,11 @@ public:
         pandaproxy::schema_registry::context_subject,
         std::optional<pandaproxy::schema_registry::schema_version>) const = 0;
 
-    /// Lists every (subject, version) whose subject matches `filter`. The
-    /// predicate must be pure and copyable (it runs on each registry shard).
+    /// Lists every (subject, version) whose subject matches `filter`, each
+    /// carrying its version's soft-delete state. The predicate must be pure and
+    /// copyable (it runs on each registry shard).
     virtual ss::future<
-      chunked_vector<pandaproxy::schema_registry::subject_version>>
+      chunked_vector<pandaproxy::schema_registry::subject_version_deleted>>
     list_subject_versions(
       std::function<bool(const pandaproxy::schema_registry::context_subject&)>
         filter,

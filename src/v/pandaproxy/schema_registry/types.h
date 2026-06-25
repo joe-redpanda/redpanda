@@ -650,6 +650,17 @@ struct subject_version {
     }
 };
 
+/// A (subject, version) pair carrying that version's soft-delete state, so a
+/// single include_deleted scan can report both the live and deleted nodes.
+struct subject_version_deleted {
+    context_subject sub;
+    schema_version version;
+    is_deleted deleted{is_deleted::no};
+
+    friend bool operator==(
+      const subject_version_deleted&, const subject_version_deleted&) = default;
+};
+
 // Very similar to topic_key_type, separate to avoid intermingling storage code
 enum class seq_marker_key_type {
     invalid = 0,

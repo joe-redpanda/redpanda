@@ -608,7 +608,8 @@ public:
         return _registry.get_subject_schema(sub, version);
     }
 
-    ss::future<chunked_vector<pandaproxy::schema_registry::subject_version>>
+    ss::future<
+      chunked_vector<pandaproxy::schema_registry::subject_version_deleted>>
     list_subject_versions(
       std::function<bool(const pandaproxy::schema_registry::context_subject&)>
         filter,
