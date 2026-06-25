@@ -92,12 +92,23 @@ level_one_log_reader_impl::open_reader_at(
       .position = extent_position,
       .size = extent_size,
     };
+    // Choose the abort source for the read. Prefer the caller's, which always
+    // outlives the read. A skip_cache read streams in the background and
+    // outlives this call, so it can't fall back to the local abort source
+    // (it would dangle) and uses none; a cached read completes before we
+    // return, so the local fallback is safe there.
     ss::abort_source default_abort_source;
-    auto* abort_source = _config.abort_source
-                           ? &_config.abort_source.value().get()
-                           : &default_abort_source;
-    auto stream_fut = co_await ss::coroutine::as_future(
-      _io->read_object(extent, abort_source, _config.group));
+    ss::abort_source* abort_source = nullptr;
+    if (_config.abort_source) {
+        abort_source = &_config.abort_source.value().get();
+    } else {
+        vassert(
+          !_config.skip_cache,
+          "skip_cache reads require a caller-provided abort source");
+        abort_source = &default_abort_source;
+    }
+    auto stream_fut = co_await ss::coroutine::as_future(_io->read_object(
+      extent, abort_source, _config.group, _config.skip_cache));
     if (stream_fut.failed()) {
         auto ex = stream_fut.get_exception();
         vlog(
@@ -315,8 +326,8 @@ ss::future<l1::footer> level_one_log_reader_impl::read_footer(
     auto* abort_source = _config.abort_source
                            ? &_config.abort_source.value().get()
                            : &default_abort_source;
-    auto read_fut = co_await ss::coroutine::as_future(
-      _io->read_object_as_iobuf(extent, abort_source, _config.group));
+    auto read_fut = co_await ss::coroutine::as_future(_io->read_object_as_iobuf(
+      extent, abort_source, _config.group, _config.skip_cache));
     if (read_fut.failed()) {
         auto ex = read_fut.get_exception();
         vlog(
