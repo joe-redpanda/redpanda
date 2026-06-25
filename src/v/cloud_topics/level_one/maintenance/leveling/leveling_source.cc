@@ -82,6 +82,7 @@ ss::future<ss::stop_iteration> leveling_source::deduplication_iteration(
       last_offset,
       std::nullopt,
       _as);
+    config.skip_cache = true;
     auto rdr = model::record_batch_reader(
       std::make_unique<level_one_log_reader_impl>(
         config, _ntp, _tp, _metastore, _io));

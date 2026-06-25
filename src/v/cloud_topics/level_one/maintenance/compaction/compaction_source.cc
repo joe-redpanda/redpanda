@@ -216,6 +216,7 @@ ss::future<ss::stop_iteration> compaction_source::map_building_iteration() {
           max_offset,
           std::nullopt,
           _as);
+        config.skip_cache = true;
         auto rdr = model::record_batch_reader(
           std::make_unique<level_one_log_reader_impl>(
             config, _ntp, _tp, _metastore, _io, _l1_reader_probe));
@@ -289,6 +290,7 @@ ss::future<ss::stop_iteration> compaction_source::deduplication_iteration(
           last_offset,
           std::nullopt,
           _as);
+        config.skip_cache = true;
         auto rdr = model::record_batch_reader(
           std::make_unique<level_one_log_reader_impl>(
             config, _ntp, _tp, _metastore, _io, _l1_reader_probe));
