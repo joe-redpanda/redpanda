@@ -530,6 +530,14 @@ class ResourceSettings:
     def num_cpus(self) -> int | None:
         return self._num_cpus
 
+    @property
+    def core_dump_limit(self) -> str | None:
+        return self._core_dump_limit
+
+    @core_dump_limit.setter
+    def core_dump_limit(self, value: str | None) -> None:
+        self._core_dump_limit = value
+
     def to_cli(self, *, dedicated_node: bool) -> Tuple[str, str]:
         """
 
@@ -3753,6 +3761,28 @@ class RedpandaService(Service, RedpandaServiceABC):
         finally:
             self.signal_redpanda(node, signal=signal.SIGCONT)
             self.add_to_started_nodes(node)
+
+    @contextmanager
+    def core_dumps_disabled(self):
+        """Context manager that disables core dumps for redpanda processes
+        started within the block, restoring the prior limit on exit.
+
+        Intended for tests that deliberately abort a node -- e.g. a startup that
+        is expected to fail -- where the SIGILL from vassert's __builtin_trap()
+        would otherwise trigger a core dump. Flushing a multi-GB core on a loaded
+        host can take longer than the start/termination timeout and flake the
+        test; the abort reason is already captured in the log and the
+        crash_tracker crash file, so the kernel core adds no diagnostic value.
+
+        The limit is a shared resource setting, so this affects every node
+        started while the block is active -- fine for the sequential single-node
+        starts these tests perform."""
+        prev = self._resource_settings.core_dump_limit
+        self._resource_settings.core_dump_limit = "0"
+        try:
+            yield
+        finally:
+            self._resource_settings.core_dump_limit = prev
 
     def sockets_clear(self, node: RemoteClusterNode):
         """
