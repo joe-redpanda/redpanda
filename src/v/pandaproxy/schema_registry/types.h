@@ -640,6 +640,25 @@ struct subject_version {
       , version{v} {}
     context_subject sub;
     schema_version version;
+
+    friend bool
+    operator==(const subject_version&, const subject_version&) = default;
+
+    template<typename H>
+    friend H AbslHashValue(H h, const subject_version& sv) {
+        return H::combine(std::move(h), sv.sub, sv.version);
+    }
+};
+
+/// A (subject, version) pair carrying that version's soft-delete state, so a
+/// single include_deleted scan can report both the live and deleted nodes.
+struct subject_version_deleted {
+    context_subject sub;
+    schema_version version;
+    is_deleted deleted{is_deleted::no};
+
+    friend bool operator==(
+      const subject_version_deleted&, const subject_version_deleted&) = default;
 };
 
 // Very similar to topic_key_type, separate to avoid intermingling storage code

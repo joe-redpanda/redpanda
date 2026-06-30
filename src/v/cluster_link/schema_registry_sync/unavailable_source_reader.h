@@ -22,11 +22,15 @@ namespace cluster_link::schema_registry_sync {
 /// the Schema Registry shadowing task parks the link in `link_unavailable`.
 class unavailable_source_reader final : public source_reader {
 public:
+    ss::future<source_result<chunked_vector<ppsr::context>>>
+    list_contexts(ss::abort_source&) override;
+
     ss::future<source_result<chunked_vector<ppsr::context_subject>>>
     list_subjects(ppsr::context, ss::abort_source&) override;
 
     ss::future<source_result<chunked_vector<ppsr::schema_version>>>
-    list_subject_versions(ppsr::context_subject, ss::abort_source&) override;
+    list_subject_versions(
+      ppsr::context_subject, ppsr::include_deleted, ss::abort_source&) override;
 
     ss::future<source_result<ppsr::stored_schema>> read_subject_version(
       ppsr::context_subject, ppsr::schema_version, ss::abort_source&) override;

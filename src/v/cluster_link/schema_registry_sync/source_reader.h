@@ -59,14 +59,18 @@ public:
     source_reader& operator=(source_reader&&) = delete;
     virtual ~source_reader() = default;
 
+    virtual ss::future<source_result<chunked_vector<ppsr::context>>>
+    list_contexts(ss::abort_source&) = 0;
+
     virtual ss::future<source_result<chunked_vector<ppsr::context_subject>>>
     list_subjects(ppsr::context, ss::abort_source&) = 0;
 
     virtual ss::future<source_result<chunked_vector<ppsr::schema_version>>>
-    list_subject_versions(ppsr::context_subject, ss::abort_source&) = 0;
+    list_subject_versions(
+      ppsr::context_subject, ppsr::include_deleted, ss::abort_source&) = 0;
 
-    /// Reads a specific subject version's schema. Not used yet (the apply path
-    /// is not implemented); kept here so the reader seam is stable.
+    /// Reads a specific subject version's schema. The reconcile engine's
+    /// schema-body fetch path: called for every node it discovers and imports.
     virtual ss::future<source_result<ppsr::stored_schema>> read_subject_version(
       ppsr::context_subject, ppsr::schema_version, ss::abort_source&) = 0;
 };

@@ -23,6 +23,11 @@ source_error unavailable() {
 }
 } // namespace
 
+ss::future<source_result<chunked_vector<ppsr::context>>>
+unavailable_source_reader::list_contexts(ss::abort_source&) {
+    co_return std::unexpected(unavailable());
+}
+
 ss::future<source_result<chunked_vector<ppsr::context_subject>>>
 unavailable_source_reader::list_subjects(ppsr::context, ss::abort_source&) {
     co_return std::unexpected(unavailable());
@@ -30,7 +35,7 @@ unavailable_source_reader::list_subjects(ppsr::context, ss::abort_source&) {
 
 ss::future<source_result<chunked_vector<ppsr::schema_version>>>
 unavailable_source_reader::list_subject_versions(
-  ppsr::context_subject, ss::abort_source&) {
+  ppsr::context_subject, ppsr::include_deleted, ss::abort_source&) {
     co_return std::unexpected(unavailable());
 }
 

@@ -156,7 +156,7 @@ ss::future<task::state_transition> mirroring_task::full_source_sync(
     for (const auto& subject : subjects) {
         as.check();
         auto versions_res = co_await _reader->list_subject_versions(
-          subject, as);
+          subject, ppsr::include_deleted::no, as);
         if (!versions_res.has_value()) {
             if (
               versions_res.error().kind

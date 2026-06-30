@@ -78,6 +78,18 @@ public:
     explicit fake_source_reader(fake_source_state* state)
       : _state(state) {}
 
+    ss::future<srs::source_result<chunked_vector<ppsr::context>>>
+    list_contexts(ss::abort_source&) override {
+        chunked_hash_set<ppsr::context> seen;
+        chunked_vector<ppsr::context> contexts;
+        for (const auto& s : _state->schemas) {
+            if (seen.insert(s.schema.sub().ctx).second) {
+                contexts.push_back(s.schema.sub().ctx);
+            }
+        }
+        co_return contexts;
+    }
+
     ss::future<srs::source_result<chunked_vector<ppsr::context_subject>>>
     list_subjects(ppsr::context ctx, ss::abort_source&) override {
         if (_state->list_subjects_error.has_value()) {
@@ -98,7 +110,9 @@ public:
 
     ss::future<srs::source_result<chunked_vector<ppsr::schema_version>>>
     list_subject_versions(
-      ppsr::context_subject sub, ss::abort_source&) override {
+      ppsr::context_subject sub,
+      ppsr::include_deleted,
+      ss::abort_source&) override {
         chunked_vector<ppsr::schema_version> versions;
         for (const auto& s : _state->schemas) {
             if (s.schema.sub() == sub) {

@@ -111,8 +111,10 @@ public:
       std::optional<ss::sstring> subject_prefix = std::nullopt);
 
     ///\brief Return every (subject, version) whose subject matches `filter`,
-    /// in a single scatter-gather across shards.
-    ss::future<chunked_vector<subject_version>> list_subject_versions(
+    /// in a single scatter-gather across shards. Each result carries its
+    /// version's soft-delete state, so an include_deleted scan reports both the
+    /// live and deleted nodes in one pass.
+    ss::future<chunked_vector<subject_version_deleted>> list_subject_versions(
       std::function<bool(const context_subject&)> filter,
       include_deleted inc_del);
 
