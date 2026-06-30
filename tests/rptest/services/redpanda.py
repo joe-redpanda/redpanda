@@ -1314,6 +1314,10 @@ class RedpandaServiceConstants:
     # at bootstrap with rf=1 and reconfigured up to
     # internal_topic_replication_factor as nodes join.
     CLOUD_TOPICS_METASTORE_TOPIC = "ct_l1_domain"
+    # ID allocator topic (model::id_allocator_nt). Created lazily on the first
+    # init_producer_id request, so it may appear in the data directory even on
+    # an otherwise-idle cluster.
+    ID_ALLOCATOR_TOPIC = "id_allocator"
 
 
 class RedpandaServiceABC(ABC, RedpandaServiceConstants):
@@ -3498,7 +3502,10 @@ class RedpandaService(Service, RedpandaServiceABC):
                     "_redpanda.audit_log",
                     "_redpanda.transform_logs",
                 },
-                self.KAFKA_INTERNAL_NAMESPACE: {self.CLOUD_TOPICS_METASTORE_TOPIC},
+                self.KAFKA_INTERNAL_NAMESPACE: {
+                    self.CLOUD_TOPICS_METASTORE_TOPIC,
+                    self.ID_ALLOCATOR_TOPIC,
+                },
             }
             expected["l1_staging"] = set()  # make type deduction happy
 
